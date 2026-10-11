@@ -35,7 +35,7 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。文件面板新增只读 SFTP 入口：核对真实指纹后可列目录、查看属性、解析符号链接并预览不超过 64 KiB 的文件；信任只在窗口内存中短时保留，没有上传、下载落盘、删除或改名，不代表应用 SFTP 完成。普通「新建连接」仍是演示。当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [只读 SFTP 切片](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
 
-独立浏览器回归 **108/108**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。另有独立系统 OpenSSH 交互夹具完成随机 loopback sshd、PTY/UTF-8/中断/退出和清理回归，但尚未接入 Rust `ssh_open`。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
+独立浏览器回归 **108/108**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。系统 OpenSSH 交互夹具现已用于 Rust `ssh_open` 互操作验收：真实 sshd 的 PTY shell 下，UTF-8、窗口变化、Ctrl-C 中断与 exit 7 通过（本机 macOS，非 WebView，非全屏程序）。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
 
 PTY 新增默认关闭的 `pty-readiness` 实验：本机三组配对均通过精确 2 MiB 与回收检查，负载中位数从 6898.175 ms 降为 342.195 ms（含 300 ms 人工 ACK 暂停）。这是直接调用 Rust PTY 的 CLI 实验，不代表默认应用或 WebView 性能达标；默认仍使用原读取策略。[实验方法与限制](docs/p0/PTY_READINESS.zh-CN.md)
 

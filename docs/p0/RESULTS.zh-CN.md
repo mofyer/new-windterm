@@ -2,7 +2,11 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
-## 最新本地轮：只读 SFTP 文件面板闭环
+## 最新本地轮：Rust `ssh_open` 与真实 OpenSSH 交互 shell
+
+`node --test tests/fixtures/ssh-terminal/rust-client.test.mjs` 经 Rust `Ssh` 服务对系统 OpenSSH 10.3p1 的 PTY shell 包装完成指纹比对、一次性信任、`ssh_open`、输入、逐块 ACK、中文与 emoji、window-change（`stty size` 由强制的 `24 80` 变为 `40 120`）、输出中 Ctrl-C 与 exit 7。macOS arm64 本机连续 **4/4** 通过，0 残留。此前交互 SSH 只在有限命令 russh 服务端验证；本轮仍不涉及 WebView、vim/tmux、长期背压或 Linux/Windows 客户端。[夹具说明](OPENSSH_INTERACTIVE.zh-CN.md)
+
+## 只读 SFTP 文件面板闭环
 
 本轮把只读 SFTP 接入桌面文件面板。用户在独立入口核对一次真实指纹后，Rust 签发窗口内、仅内存的短时浏览授权（空闲 5 分钟、最长 30 分钟、最多 4 个）；之后每次列目录、读属性或预览仍重新连接、固定校验已确认的主机密钥并重新读取所选私钥。主机密钥变化、公钥被拒或 rekey 立即吊销授权，前端回到重新核对指纹；传输、文件级错误、超时和取消保留授权。目录读取改为 raw SFTP 逐页读取，达到 4,096 项或 1 MiB 文件名即停止并标记截断；预览最多 64 KiB 且长度须与 `stat` 一致。此前三个 SFTP 命令未登记到 `build.rs` 与 capability，WebView 调用会被 ACL 拒绝；本轮五个命令均已登记。
 
@@ -13,7 +17,9 @@
 | 浏览器全套 | **108/108**（新增 `sftp-panel.spec.ts` 10 项）；TypeScript/build 通过 | IPC stub，验证令牌归属、取消与晚到结果、授权失效、远端名称文本渲染和 1000px 布局；不代表原生 WKWebView |
 | 独立审查 | Rust 与前端审查均无 CRITICAL/HIGH；MEDIUM（吊销分类、内存说明、容量预检）与 LOW 已修复并复测 | — |
 
-仍未完成：原生 WKWebView 中的面板实测、三平台 CI 回执、下载落盘与全部写操作（F02–F07）、非 UTF-8 文件名（当前整页报错）、持久连接与断线恢复。授权可读取远端账户可读的任意路径，与文件浏览语义一致，仅限主窗口调用。功能矩阵 F01 仍为“未实现”，局部原型不改变整行状态。
+三平台 CI [run 38130138348](https://github.com/mofyer/new-windterm/actions/runs/38130138348)（工作分支 `p0/sftp-panel`）**success**：Rust 单元 macOS 40、Linux 39、Windows 38 passed，均 2 ignored；SSH target 三端 10/10，macOS/Linux 默认与 readiness PTY 通过。
+
+仍未完成：原生 WKWebView 中的面板实测、下载落盘与全部写操作（F02–F07）、非 UTF-8 文件名（当前整页报错）、持久连接与断线恢复。授权可读取远端账户可读的任意路径，与文件浏览语义一致，仅限主窗口调用。功能矩阵 F01 仍为“未实现”，局部原型不改变整行状态。
 
 ## 上一提交：只读 SFTP IPC 与 Windows shell 契约
 

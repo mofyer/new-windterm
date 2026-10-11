@@ -483,4 +483,138 @@ mod tests {
         assert!(size(80, 1001).is_err());
         assert!(size(80, 24).is_ok());
     }
+
+    /// Collects terminal events in order and acknowledges every data chunk,
+    /// as the xterm front end does.
+    struct Screen {
+        events: tokio::sync::mpsc::UnboundedReceiver<PtyEvent>,
+        output: Vec<u8>,
+        exit: Option<Option<u32>>,
+    }
+
+    impl Screen {
+        async fn until(&mut self, service: &Ssh, id: &str, marker: &str) {
+            let wanted = |screen: &Self| String::from_utf8_lossy(&screen.output).contains(marker);
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+            while !wanted(self) {
+                let event = tokio::time::timeout_at(deadline, self.events.recv())
+                    .await
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "missing {marker:?}; tail: {:?}",
+                            String::from_utf8_lossy(
+                                &self.output[self.output.len().saturating_sub(600)..]
+                            )
+                        )
+                    })
+                    .expect("terminal event stream ended");
+                match event {
+                    PtyEvent::Data { sequence, data, .. } => {
+                        self.output.extend_from_slice(&data);
+                        service.ack("main", id, sequence).unwrap();
+                    }
+                    PtyEvent::Exit { code, .. } => self.exit = Some(code),
+                    PtyEvent::Error { message, .. } => panic!("terminal error: {message}"),
+                }
+            }
+        }
+
+        async fn exit_code(&mut self, service: &Ssh, id: &str) -> Option<u32> {
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+            while self.exit.is_none() {
+                match tokio::time::timeout_at(deadline, self.events.recv())
+                    .await
+                    .expect("exit deadline exceeded")
+                    .expect("terminal event stream ended")
+                {
+                    PtyEvent::Data { sequence, data, .. } => {
+                        self.output.extend_from_slice(&data);
+                        let _ = service.ack("main", id, sequence);
+                    }
+                    PtyEvent::Exit { code, .. } => self.exit = Some(code),
+                    PtyEvent::Error { message, .. } => panic!("terminal error: {message}"),
+                }
+            }
+            self.exit.unwrap()
+        }
+    }
+
+    /// Real system OpenSSH sshd with a PTY and an interactive OS shell wrapper.
+    /// Markers are server output only; none appears in the typed commands.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "requires the OpenSSH PTY fixture; run tests/fixtures/ssh-terminal/rust-client.test.mjs"]
+    async fn real_openssh_interactive_shell() {
+        let env = |name: &str| std::env::var(name).unwrap();
+        let id = || uuid::Uuid::new_v4().to_string();
+        let service = Arc::new(Ssh::default());
+        let scope = service.context("main").unwrap();
+        let request = Request {
+            host: env("P0_SSH_FIXTURE_HOST"),
+            port: env("P0_SSH_FIXTURE_PORT").parse().unwrap(),
+            username: env("P0_SSH_FIXTURE_USER"),
+            private_key_path: env("P0_SSH_FIXTURE_KEY"),
+        };
+        let challenge = service.probe("main", &id(), request, &scope).await.unwrap();
+        assert_eq!(challenge.fingerprint, env("P0_SSH_FIXTURE_FINGERPRINT"));
+        let (sender, events) = tokio::sync::mpsc::unbounded_channel();
+        let sink: EventSink = Arc::new(move |event| sender.send(event).map_err(|e| e.to_string()));
+        let terminal = service
+            .open(
+                "main",
+                &id(),
+                &challenge.challenge_token,
+                &scope,
+                100,
+                30,
+                sink,
+            )
+            .await
+            .unwrap();
+        let mut screen = Screen {
+            events,
+            output: Vec::new(),
+            exit: None,
+        };
+        let write = |text: &str| {
+            service
+                .write("main", &terminal, text.as_bytes().to_vec())
+                .unwrap()
+        };
+
+        screen
+            .until(&service, &terminal, "P0_INTERACTIVE_READY")
+            .await;
+        write("printf\r");
+        screen
+            .until(&service, &terminal, "P0_SSH_TERM_OK 中文 🌏")
+            .await;
+
+        // The wrapper starts with `stty rows 24 cols 80`; only a window-change
+        // that reached the remote PTY can make it report 40 rows, 120 columns.
+        service.resize("main", &terminal, 120, 40).unwrap();
+        write("stty size\r");
+        screen.until(&service, &terminal, "40 120").await;
+
+        write("generate\r");
+        screen
+            .until(&service, &terminal, "P0_GENERATOR_BEGIN")
+            .await;
+        tokio::time::sleep(Duration::from_millis(35)).await;
+        write("\x03");
+        screen
+            .until(&service, &terminal, "P0_SSH_INTERRUPTED")
+            .await;
+        let text = String::from_utf8_lossy(&screen.output).into_owned();
+        let generated = text
+            .split("P0_GENERATOR_BEGIN")
+            .nth(1)
+            .and_then(|tail| tail.split("P0_SSH_INTERRUPTED").next())
+            .map_or(0, str::len);
+        assert!(generated > 0 && generated < 2 * 1024 * 1024, "{generated}");
+
+        write("exit\r");
+        assert_eq!(screen.exit_code(&service, &terminal).await, Some(7));
+        let registry = service.registry.lock().unwrap();
+        assert!(registry.terminals.is_empty() && registry.active.is_empty());
+    }
 }

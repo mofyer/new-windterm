@@ -56,7 +56,8 @@ cargo run    --locked --manifest-path $M --features pty-readiness --bin pty_prob
 ```sh
 node --test tests/fixtures/ssh-sftp/fixture.test.mjs      # 夹具自身的启动/清理回归
 node --test tests/fixtures/ssh-sftp/rust-client.test.mjs  # 先 cargo build --bin ssh_probe；启动夹具并以 P0_SSH_FIXTURE_* 环境变量运行被 #[ignore] 的 Rust 真实夹具测试（含只读 SFTP 验收）
-node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交互 PTY 夹具（尚未接入 Rust ssh_open）
+node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交互 PTY 夹具自检
+node --test tests/fixtures/ssh-terminal/rust-client.test.mjs  # Rust ssh_open 对真实 OpenSSH shell 的互操作（ignored 测试）
 ```
 
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
