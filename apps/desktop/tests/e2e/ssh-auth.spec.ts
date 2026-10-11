@@ -94,3 +94,20 @@ test('terminal and file hand-offs carry the credential, never the key path', asy
     expect(JSON.stringify(call)).not.toContain('privateKeyPath');
   }
 });
+
+test('keyboard-interactive: ordered answers stay out of the probe and are cleared', async ({ page }) => {
+  await open(page);
+  await page.locator('#ssh-auth').selectOption('keyboardInteractive');
+  await expect(page.locator('#ssh-key-path')).toBeHidden();
+  await page.locator('#ssh-kbdint-1').fill('first-answer');
+  await page.locator('#ssh-kbdint-2').fill('123456');
+  await page.locator('#ssh-probe').click();
+  await expect(page.locator('#ssh-fingerprint')).toHaveText('SHA256:key');
+  const probe = (await calls(page, 'ssh_probe'))[0];
+  expect(probe.request.privateKeyPath).toBe('');
+  expect(JSON.stringify(probe)).not.toContain('first-answer');
+  await expect(page.locator('#ssh-kbdint-1')).toHaveValue('');
+  await page.locator('#ssh-accept').click();
+  await expect(page.locator('#ssh-result')).toContainText('exit 7');
+  expect((await calls(page, 'ssh_accept'))[0].credential).toEqual({ method: 'keyboardInteractive', responses: ['first-answer', '123456'] });
+});

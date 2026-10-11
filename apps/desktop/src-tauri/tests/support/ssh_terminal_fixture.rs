@@ -19,6 +19,8 @@ use tokio::{
 
 pub const PASSWORD: &str = "fixture-password";
 pub const PASSPHRASE: &str = "fixture-passphrase";
+/// Second keyboard-interactive factor after [`PASSWORD`].
+pub const CODE: &str = "123456";
 
 pub struct Fixture {
     pub port: u16,
@@ -105,7 +107,7 @@ impl Fixture {
                             auth_rejection_time_initial: Some(Duration::ZERO),
                             ..Default::default()
                         });
-                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shell: None, size: (80,24), line: Vec::new(), output: None };
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shell: None, round: 0, size: (80,24), line: Vec::new(), output: None };
                         count.fetch_add(1, Ordering::SeqCst);
                         connections.spawn(async move {
                             let _guard = guard;
@@ -166,6 +168,8 @@ struct Handler {
     /// The channel running the line-based shell; russh delivers every
     /// channel's data to `Handler::data`, so forwarded bytes must be ignored.
     shell: Option<ChannelId>,
+    /// Keyboard-interactive progress: 0 none, 1 password asked, 2 code asked.
+    round: u8,
     size: (u32, u32),
     line: Vec<u8>,
     output: Option<JoinHandle<()>>,
@@ -193,6 +197,40 @@ impl server::Handler for Handler {
                 server::Auth::reject()
             },
         )
+    }
+    /// Two rounds: password (no echo), then a verification code (echo).
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        user: &str,
+        _submethods: &str,
+        response: Option<server::Response<'a>>,
+    ) -> Result<server::Auth, Self::Error> {
+        let answer = response.and_then(|mut r| r.next()).map(|b| b.to_vec());
+        let partial = |prompt: &'static str, echo: bool| server::Auth::Partial {
+            name: "P0 fixture".into(),
+            instructions: "Two factors".into(),
+            prompts: vec![(prompt.into(), echo)].into(),
+        };
+        let reply = match (self.round, answer.as_deref()) {
+            (0, _) if user == "fixture" => {
+                self.round = 1;
+                partial("Password: ", false)
+            }
+            (1, Some(answer)) if answer == PASSWORD.as_bytes() => {
+                self.round = 2;
+                partial("Verification code: ", true)
+            }
+            (2, Some(answer)) if answer == CODE.as_bytes() => {
+                self.auth.fetch_add(1, Ordering::SeqCst);
+                server::Auth::Accept
+            }
+            _ => {
+                self.auth.fetch_add(1, Ordering::SeqCst);
+                self.round = 0;
+                server::Auth::reject()
+            }
+        };
+        Ok(reply)
     }
     /// Loopback-only local forwarding: bytes are relayed to 127.0.0.1:port.
     async fn channel_open_direct_tcpip(

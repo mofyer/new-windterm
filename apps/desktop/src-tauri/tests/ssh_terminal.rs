@@ -707,3 +707,43 @@ async fn agent_authenticates_with_a_loaded_key() {
     result.unwrap();
     server.stop().await;
 }
+
+#[tokio::test]
+async fn keyboard_interactive_answers_two_rounds_and_rejects_wrong_codes() {
+    let _serial = TEST_LOCK.lock().await;
+    let mut server = fixture::Fixture::start().await;
+    let service = Arc::new(Ssh::default());
+    let none = std::path::PathBuf::new();
+    let answers = |items: &[&str]| Credential::KeyboardInteractive {
+        responses: items
+            .iter()
+            .map(|item| Zeroizing::new(item.to_string()))
+            .collect(),
+    };
+    attempt(
+        &server,
+        &service,
+        &none,
+        answers(&[fixture::PASSWORD, fixture::CODE]),
+    )
+    .await
+    .unwrap();
+    let wrong = attempt(
+        &server,
+        &service,
+        &none,
+        answers(&[fixture::PASSWORD, "000000"]),
+    )
+    .await;
+    assert_eq!(
+        wrong.unwrap_err(),
+        "SSH keyboard-interactive authentication rejected"
+    );
+    // Too few answers stops before guessing; the server sees no wrong answer.
+    let short = attempt(&server, &service, &none, answers(&[fixture::PASSWORD])).await;
+    assert_eq!(
+        short.unwrap_err(),
+        "SSH keyboard-interactive needs more answers"
+    );
+    server.stop().await;
+}

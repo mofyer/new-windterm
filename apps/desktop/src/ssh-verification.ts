@@ -17,7 +17,8 @@ type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number
 export type SshCredential =
   | { method: "key"; passphrase?: string }
   | { method: "password"; password: string }
-  | { method: "agent" };
+  | { method: "agent" }
+  | { method: "keyboardInteractive"; responses: string[] };
 export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string; credential: SshCredential };
 type Purpose = "verification" | "terminal" | "files";
 
@@ -37,10 +38,12 @@ export function createSshVerification(
     <form id="ssh-verification-form" autocomplete="off">
       <fieldset id="ssh-fields"><div class="form-row"><label>主机<input id="ssh-host" name="host" placeholder="127.0.0.1" maxlength="253" required spellcheck="false"/></label><label class="port">端口<input id="ssh-port" name="port" type="number" value="22" min="1" max="65535" required/></label></div>
       <label>SSH 用户名<input id="ssh-username" name="username" maxlength="64" required spellcheck="false"/></label>
-      <label>认证方式<select id="ssh-auth" name="auth"><option value="key">私钥文件</option><option value="password">密码</option><option value="agent">SSH agent</option></select></label>
+      <label>认证方式<select id="ssh-auth" name="auth"><option value="key">私钥文件</option><option value="password">密码</option><option value="agent">SSH agent</option><option value="keyboardInteractive">键盘交互（按提示顺序预填）</option></select></label>
       <div id="ssh-key-fields"><label>私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
       <label>私钥口令（未加密的私钥留空）<input id="ssh-passphrase" type="password" autocomplete="off" maxlength="1024"/></label></div>
       <label id="ssh-password-row" hidden>密码<input id="ssh-password" type="password" autocomplete="off" maxlength="1024"/></label>
+      <div id="ssh-kbdint-fields" hidden><label>第 1 个提示的答案<input id="ssh-kbdint-1" type="password" autocomplete="off" maxlength="1024"/></label>
+      <label>第 2 个提示的答案（例如动态验证码，可留空）<input id="ssh-kbdint-2" type="password" autocomplete="off" maxlength="1024"/></label></div>
       <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p></fieldset>
       <div class="dialog-actions"><button type="submit" id="ssh-probe" class="primary">检查主机指纹</button></div>
     </form>
@@ -82,6 +85,8 @@ export function createSshVerification(
     const method = authMethod.value;
     get("ssh-key-fields").hidden = method !== "key";
     get("ssh-password-row").hidden = method !== "password";
+    get("ssh-kbdint-fields").hidden = method !== "keyboardInteractive";
+    get<HTMLInputElement>("ssh-kbdint-1").required = method === "keyboardInteractive";
     get<HTMLInputElement>("ssh-key-path").required = method === "key";
     get<HTMLInputElement>("ssh-password").required = method === "password";
   };
@@ -113,6 +118,8 @@ export function createSshVerification(
     get<HTMLInputElement>("ssh-key-path").value = "";
     get<HTMLInputElement>("ssh-passphrase").value = "";
     get<HTMLInputElement>("ssh-password").value = "";
+    get<HTMLInputElement>("ssh-kbdint-1").value = "";
+    get<HTMLInputElement>("ssh-kbdint-2").value = "";
     authMethod.value = "key";
     showAuthFields();
     resultView.replaceChildren();
@@ -178,11 +185,13 @@ export function createSshVerification(
     operationId = id;
     const method = authMethod.value;
     const passphrase = get<HTMLInputElement>("ssh-passphrase").value;
+    const answers = ["ssh-kbdint-1", "ssh-kbdint-2"].map(id => get<HTMLInputElement>(id).value).filter(Boolean);
     credential = method === "password"
       ? { method: "password", password: get<HTMLInputElement>("ssh-password").value }
-      : method === "agent" ? { method: "agent" } : passphrase ? { method: "key", passphrase } : { method: "key" };
-    get<HTMLInputElement>("ssh-passphrase").value = "";
-    get<HTMLInputElement>("ssh-password").value = "";
+      : method === "agent" ? { method: "agent" }
+      : method === "keyboardInteractive" ? { method: "keyboardInteractive", responses: answers }
+      : passphrase ? { method: "key", passphrase } : { method: "key" };
+    for (const id of ["ssh-passphrase", "ssh-password", "ssh-kbdint-1", "ssh-kbdint-2"]) get<HTMLInputElement>(id).value = "";
     fields.disabled = probe.disabled = true;
     retry.hidden = true;
     error.textContent = "";
