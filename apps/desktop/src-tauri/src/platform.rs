@@ -98,89 +98,6 @@ pub(crate) fn is_pty_eof(_error: &std::io::Error) -> bool {
     false
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_probe_command_is_explicit_and_does_not_inherit_agent_access() {
-        let command = local_command().unwrap();
-        assert!(ensure_supported().is_ok());
-        assert_eq!(
-            command.get_argv().as_slice(),
-            &["/bin/zsh", "-f", "-i"].map(std::ffi::OsString::from)
-        );
-        assert_eq!(
-            command.get_env("ZDOTDIR"),
-            Some(std::ffi::OsStr::new("/var/empty"))
-        );
-        assert!(command.get_env("SSH_AUTH_SOCK").is_none());
-        assert!(command.get_env("DYLD_INSERT_LIBRARIES").is_none());
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    #[test]
-    fn pending_adapter_rejects_session_before_allocating_a_pty() {
-        let sessions = crate::pty::Sessions::default();
-        let error = sessions
-            .open("main", 80, 24, std::sync::Arc::new(|_| Ok(())))
-            .unwrap_err();
-        assert_eq!(error, UNSUPPORTED);
-        assert!(local_command().is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn linux_command_skips_profiles_and_uses_linux_locale_policy() {
-        let command = linux_command().unwrap();
-        assert_eq!(
-            command.get_argv().as_slice(),
-            &["/bin/bash", "--noprofile", "--norc", "-i"].map(std::ffi::OsString::from)
-        );
-        assert_eq!(
-            command.get_env("LC_ALL"),
-            Some(std::ffi::OsStr::new("C.UTF-8"))
-        );
-        assert_eq!(
-            command.get_cwd().map(std::path::Path::new),
-            Some(std::env::temp_dir().as_path())
-        );
-        for name in [
-            "SSH_AUTH_SOCK",
-            "LD_PRELOAD",
-            "BASH_ENV",
-            "ENV",
-            "ZDOTDIR",
-            "LC_CTYPE",
-        ] {
-            assert!(
-                command.get_env(name).is_none(),
-                "unexpected inherited {name}"
-            );
-        }
-    }
-
-    #[test]
-    fn missing_linux_shell_returns_an_explicit_error() {
-        let absent =
-            std::env::temp_dir().join(format!("p0-missing-shell-{}", uuid::Uuid::new_v4()));
-        assert!(require_shell(&absent)
-            .unwrap_err()
-            .contains("requires Bash"));
-    }
-
-    #[test]
-    fn eof_does_not_treat_arbitrary_os_errors_as_successful_exit() {
-        let permission_denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-        assert!(!is_pty_eof(&permission_denied));
-        #[cfg(windows)]
-        assert!(!is_pty_eof(&std::io::Error::from_raw_os_error(5)));
-        #[cfg(unix)]
-        assert!(is_pty_eof(&std::io::Error::from_raw_os_error(libc::EIO)));
-    }
-}
-
 /// Experimental cancellation socket, independent of the PTY descriptor lifetime.
 #[cfg(all(feature = "pty-readiness", unix))]
 pub(crate) struct Readiness {
@@ -272,6 +189,89 @@ impl Readiness {
     }
     pub(crate) fn wait(&self, _timeout: std::time::Duration) -> Result<(), String> {
         Err(UNSUPPORTED.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_probe_command_is_explicit_and_does_not_inherit_agent_access() {
+        let command = local_command().unwrap();
+        assert!(ensure_supported().is_ok());
+        assert_eq!(
+            command.get_argv().as_slice(),
+            &["/bin/zsh", "-f", "-i"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(
+            command.get_env("ZDOTDIR"),
+            Some(std::ffi::OsStr::new("/var/empty"))
+        );
+        assert!(command.get_env("SSH_AUTH_SOCK").is_none());
+        assert!(command.get_env("DYLD_INSERT_LIBRARIES").is_none());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[test]
+    fn pending_adapter_rejects_session_before_allocating_a_pty() {
+        let sessions = crate::pty::Sessions::default();
+        let error = sessions
+            .open("main", 80, 24, std::sync::Arc::new(|_| Ok(())))
+            .unwrap_err();
+        assert_eq!(error, UNSUPPORTED);
+        assert!(local_command().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linux_command_skips_profiles_and_uses_linux_locale_policy() {
+        let command = linux_command().unwrap();
+        assert_eq!(
+            command.get_argv().as_slice(),
+            &["/bin/bash", "--noprofile", "--norc", "-i"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(
+            command.get_env("LC_ALL"),
+            Some(std::ffi::OsStr::new("C.UTF-8"))
+        );
+        assert_eq!(
+            command.get_cwd().map(std::path::Path::new),
+            Some(std::env::temp_dir().as_path())
+        );
+        for name in [
+            "SSH_AUTH_SOCK",
+            "LD_PRELOAD",
+            "BASH_ENV",
+            "ENV",
+            "ZDOTDIR",
+            "LC_CTYPE",
+        ] {
+            assert!(
+                command.get_env(name).is_none(),
+                "unexpected inherited {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_linux_shell_returns_an_explicit_error() {
+        let absent =
+            std::env::temp_dir().join(format!("p0-missing-shell-{}", uuid::Uuid::new_v4()));
+        assert!(require_shell(&absent)
+            .unwrap_err()
+            .contains("requires Bash"));
+    }
+
+    #[test]
+    fn eof_does_not_treat_arbitrary_os_errors_as_successful_exit() {
+        let permission_denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(!is_pty_eof(&permission_denied));
+        #[cfg(windows)]
+        assert!(!is_pty_eof(&std::io::Error::from_raw_os_error(5)));
+        #[cfg(unix)]
+        assert!(is_pty_eof(&std::io::Error::from_raw_os_error(libc::EIO)));
     }
 }
 

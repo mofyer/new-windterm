@@ -512,7 +512,7 @@ fn launch_workers(
         }
         let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
         drop(reader);
-        #[cfg(feature = "pty-readiness")]
+        #[cfg(all(feature = "pty-readiness", unix))]
         drop(readiness);
         let writer_reaped = writer_worker.join().is_ok();
         if !writer_reaped {
