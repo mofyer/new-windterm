@@ -1,0 +1,288 @@
+//! Loopback SSH protocol fixture. No OS shell or child process is executed.
+use russh::keys::{ssh_key, Algorithm, HashAlg, PrivateKey, PublicKey};
+use russh::{server, Channel, ChannelId, Pty};
+use std::{
+    net::Shutdown,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
+use tokio::{
+    net::TcpListener,
+    sync::watch,
+    task::{JoinHandle, JoinSet},
+};
+
+pub struct Fixture {
+    pub port: u16,
+    pub key_path: PathBuf,
+    pub host: Arc<Mutex<PrivateKey>>,
+    pub authentications: Arc<AtomicUsize>,
+    pub active: Arc<AtomicUsize>,
+    pub denial: Arc<AtomicUsize>,
+    pub rekey_limit: Arc<AtomicUsize>,
+    directory: PathBuf,
+    cancel: watch::Sender<bool>,
+    task: Option<JoinHandle<()>>,
+}
+struct Socket(std::net::TcpStream);
+impl Drop for Socket {
+    fn drop(&mut self) {
+        let _ = self.0.shutdown(Shutdown::Both);
+    }
+}
+pub fn key() -> PrivateKey {
+    PrivateKey::random(&mut russh::keys::key::safe_rng(), Algorithm::Ed25519).unwrap()
+}
+
+impl Fixture {
+    pub async fn start() -> Self {
+        let directory =
+            std::env::temp_dir().join(format!("new-windterm-terminal-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let private_key = key();
+        assert_eq!(private_key.algorithm(), Algorithm::Ed25519);
+        let public_key = private_key.public_key().clone();
+        let key_path = directory.join("client_ed25519");
+        private_key
+            .write_openssh_file(&key_path, ssh_key::LineEnding::LF)
+            .unwrap();
+        let host = Arc::new(Mutex::new(key()));
+        let authentications = Arc::new(AtomicUsize::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let denial = Arc::new(AtomicUsize::new(0));
+        let rekey_limit = Arc::new(AtomicUsize::new(1 << 30));
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (cancel, mut cancelled) = watch::channel(false);
+        let server_host = host.clone();
+        let auth = authentications.clone();
+        let count = active.clone();
+        let denied = denial.clone();
+        let rekey = rekey_limit.clone();
+        let task = tokio::spawn(async move {
+            let mut connections = JoinSet::new();
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = cancelled.changed() => break,
+                    Some(_) = connections.join_next(), if !connections.is_empty() => {},
+                    accepted = listener.accept() => {
+                        let Ok((stream, _)) = accepted else { break; };
+                        let socket = stream.into_std().unwrap();
+                        let guard = Socket(socket.try_clone().unwrap());
+                        let stream = tokio::net::TcpStream::from_std(socket).unwrap();
+                        let config = Arc::new(server::Config {
+                            keys: vec![server_host.lock().unwrap().clone()],
+                            limits: russh::Limits::new(rekey.load(Ordering::SeqCst), rekey.load(Ordering::SeqCst), Duration::from_secs(3600)),
+                            inactivity_timeout: Some(Duration::from_secs(30)),
+                            auth_rejection_time: Duration::ZERO,
+                            auth_rejection_time_initial: Some(Duration::ZERO),
+                            ..Default::default()
+                        });
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), size: (80,24), line: Vec::new(), output: None };
+                        count.fetch_add(1, Ordering::SeqCst);
+                        connections.spawn(async move {
+                            let _guard = guard;
+                            if let Ok(session) = server::run_stream(config, stream, handler).await { let _ = session.await; }
+                        });
+                    }
+                }
+            }
+            connections.abort_all();
+            while connections.join_next().await.is_some() {}
+        });
+        Self {
+            port,
+            key_path,
+            host,
+            authentications,
+            active,
+            denial,
+            rekey_limit,
+            directory,
+            cancel,
+            task: Some(task),
+        }
+    }
+    pub fn fingerprint(&self) -> String {
+        self.host
+            .lock()
+            .unwrap()
+            .public_key()
+            .fingerprint(HashAlg::Sha256)
+            .to_string()
+    }
+    pub async fn stop(&mut self) {
+        self.cancel.send_replace(true);
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.cancel.send_replace(true);
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
+}
+struct Handler {
+    public_key: PublicKey,
+    auth: Arc<AtomicUsize>,
+    active: Arc<AtomicUsize>,
+    denial: Arc<AtomicUsize>,
+    size: (u32, u32),
+    line: Vec<u8>,
+    output: Option<JoinHandle<()>>,
+}
+impl Drop for Handler {
+    fn drop(&mut self) {
+        if let Some(output) = self.output.take() {
+            output.abort();
+        }
+        self.active.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+impl server::Handler for Handler {
+    type Error = russh::Error;
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        key: &PublicKey,
+    ) -> Result<server::Auth, Self::Error> {
+        self.auth.fetch_add(1, Ordering::SeqCst);
+        Ok(
+            if user == "fixture" && key.key_data() == self.public_key.key_data() {
+                server::Auth::Accept
+            } else {
+                server::Auth::reject()
+            },
+        )
+    }
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<server::Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        term: &str,
+        cols: u32,
+        rows: u32,
+        _width: u32,
+        _height: u32,
+        _modes: &[(Pty, u32)],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.size = (cols, rows);
+        if term == "xterm-256color" && self.denial.load(Ordering::SeqCst) != 1 {
+            session.channel_success(channel)?;
+        } else {
+            session.channel_failure(channel)?;
+        }
+        Ok(())
+    }
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        if self.denial.load(Ordering::SeqCst) == 3 {
+            return Ok(());
+        }
+        if self.denial.load(Ordering::SeqCst) == 2 {
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
+        session.channel_success(channel)?;
+        session.data(channel, b"P0 SSH terminal fixture\r\nCommands: unicode, size, large, burst, exit; Ctrl-C interrupts output\r\n> ".to_vec())?;
+        Ok(())
+    }
+    async fn window_change_request(
+        &mut self,
+        _channel: ChannelId,
+        cols: u32,
+        rows: u32,
+        _width: u32,
+        _height: u32,
+        _session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.size = (cols, rows);
+        Ok(())
+    }
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        for byte in data {
+            if *byte == 3 {
+                if let Some(output) = self.output.take() {
+                    output.abort();
+                }
+                self.line.clear();
+                session.data(channel, b"\r\nINTERRUPTED\r\n> ".to_vec())?;
+                continue;
+            }
+            if *byte != b'\r' && *byte != b'\n' {
+                if self.line.len() >= 256 {
+                    return Err(russh::Error::Disconnect);
+                }
+                self.line.push(*byte);
+                continue;
+            }
+            let command = std::mem::take(&mut self.line);
+            match command.as_slice() {
+                b"unicode" => session.data(channel, "中文 🌏\r\n> ".as_bytes().to_vec())?,
+                b"size" => session.data(
+                    channel,
+                    format!("SIZE {} {}\r\n> ", self.size.0, self.size.1).into_bytes(),
+                )?,
+                b"large" | b"burst" => {
+                    if let Some(output) = self.output.take() {
+                        output.abort();
+                    }
+                    let handle = session.handle();
+                    let paced = command == b"large";
+                    self.output = Some(tokio::spawn(async move {
+                        for _ in 0..512 {
+                            if handle.data(channel, vec![b'X'; 4096]).await.is_err() {
+                                return;
+                            }
+                            if paced {
+                                tokio::time::sleep(Duration::from_millis(6)).await;
+                            }
+                        }
+                        let _ = handle.data(channel, b"\r\nLARGE_DONE\r\n> ".to_vec()).await;
+                    }));
+                }
+                b"exit" => {
+                    session.exit_status_request(channel, 7)?;
+                    session.eof(channel)?;
+                    session.close(channel)?;
+                }
+                b"" => {}
+                _ => session.data(channel, b"Unknown fixture command\r\n> ".to_vec())?,
+            }
+        }
+        Ok(())
+    }
+}

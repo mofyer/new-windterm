@@ -1,4 +1,6 @@
-//! P0 one-shot SSH verification. No shell, agent, password, or persisted trust.
+//! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
+#[path = "ssh_terminal.rs"]
+pub mod terminal;
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate},
@@ -14,6 +16,8 @@ use std::{
 };
 use tokio::{net::TcpStream, sync::watch};
 
+const REKEY_ERROR: &str =
+    "SSH rekey is not supported in P0; reconnect to verify the host key again";
 const DEADLINE: Duration = Duration::from_secs(15);
 const TRUST_TTL: Duration = Duration::from_secs(60);
 const MAX_BYTES: usize = 64 * 1024;
@@ -72,6 +76,7 @@ struct Registry {
     cancelled: HashMap<String, HashSet<String>>,
     completed: VecDeque<(String, String)>,
     shutdown: bool,
+    terminals: HashMap<String, Arc<terminal::Terminal>>,
 }
 
 #[derive(Default)]
@@ -84,10 +89,14 @@ struct Operation<'a> {
     id: String,
     owner: String,
     cancel: watch::Receiver<bool>,
+    handed_off: bool,
 }
 
 impl Drop for Operation<'_> {
     fn drop(&mut self) {
+        if self.handed_off {
+            return;
+        }
         let mut registry = self
             .service
             .registry
@@ -160,6 +169,7 @@ impl Ssh {
             id: id.into(),
             owner: owner.into(),
             cancel: receiver,
+            handed_off: false,
         })
     }
 
@@ -259,6 +269,8 @@ impl Ssh {
                 expected: None,
                 observed: observed.clone(),
                 mismatch: Arc::default(),
+                kex_seen: false,
+                rekey_rejected: Arc::default(),
             };
             // Deliberately reject every unknown key. No user authentication occurs.
             let _ = client::connect_stream(config(), stream, handler).await;
@@ -384,9 +396,28 @@ struct KeyCheck {
     expected: Option<Vec<u8>>,
     observed: Observed,
     mismatch: Arc<std::sync::atomic::AtomicBool>,
+    kex_seen: bool,
+    rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
 }
 impl client::Handler for KeyCheck {
     type Error = russh::Error;
+    async fn kex_done(
+        &mut self,
+        _shared_secret: Option<&[u8]>,
+        _names: &russh::Names,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        // russh 0.64.1 calls check_server_key only for the initial exchange.
+        // Its rekey callback exposes no host key, so reject subsequent exchanges
+        // before new keys are installed instead of silently weakening the pin.
+        if self.kex_seen {
+            self.rekey_rejected
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            return Err(russh::Error::UnknownKey);
+        }
+        self.kex_seen = true;
+        Ok(())
+    }
     async fn check_server_key(
         &mut self,
         key: &PublicKeyOrCertificate,
@@ -453,10 +484,13 @@ fn private_key(path: &str) -> Result<PrivateKeyWithHashAlg, String> {
 async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Output, String> {
     let (_socket, stream) = transport(&pending.request).await?;
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
         expected: Some(pending.key),
         observed: Arc::default(),
         mismatch: mismatch.clone(),
+        kex_seen: false,
+        rekey_rejected: rekey_rejected.clone(),
     };
     let mut session = client::connect_stream(config(), stream, handler)
         .await
@@ -498,6 +532,9 @@ async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Outp
             ChannelMsg::Close => break,
             _ => {}
         }
+    }
+    if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(REKEY_ERROR.into());
     }
     output.exit_code = exit.ok_or("SSH channel closed without exit status")?;
     // The command result is complete. Graceful disconnect is best effort and
@@ -809,6 +846,8 @@ mod tests {
             expected: Some(vec![0]),
             observed,
             mismatch: mismatch.clone(),
+            kex_seen: false,
+            rekey_rejected: Arc::default(),
         };
         assert!(!handler.check_server_key(&public).await.unwrap());
         assert!(mismatch.load(std::sync::atomic::Ordering::Relaxed));

@@ -67,6 +67,69 @@ fn ssh_cancel(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn ssh_open(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+    cols: u16,
+    rows: u16,
+    on_event: Channel<PtyEvent>,
+) -> Result<Opened, String> {
+    service
+        .inner()
+        .open(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+            cols,
+            rows,
+            Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
+        )
+        .await
+        .map(|id| Opened { id })
+}
+#[tauri::command]
+fn ssh_write(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    service.write(window.label(), &id, data)
+}
+#[tauri::command]
+fn ssh_resize(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    service.resize(window.label(), &id, cols, rows)
+}
+#[tauri::command]
+fn ssh_ack(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+    sequence: u64,
+) -> Result<(), String> {
+    service.ack(window.label(), &id, sequence)
+}
+#[tauri::command]
+fn ssh_close(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+) -> Result<(), String> {
+    service.close(window.label(), &id)
+}
+
+#[tauri::command]
 async fn pty_open(
     window: WebviewWindow,
     sessions: State<'_, Arc<Sessions>>,
@@ -138,6 +201,11 @@ pub fn run() {
         .manage(Arc::new(ssh::Ssh::default()))
         .invoke_handler(tauri::generate_handler![
             ssh_context,
+            ssh_open,
+            ssh_write,
+            ssh_resize,
+            ssh_ack,
+            ssh_close,
             pty_open,
             pty_write,
             pty_resize,

@@ -11,6 +11,11 @@ fn main() {
             "ssh_reject",
             "ssh_cancel",
             "ssh_context",
+            "ssh_open",
+            "ssh_write",
+            "ssh_resize",
+            "ssh_ack",
+            "ssh_close",
         ]));
     tauri_build::try_build(attributes).expect("Tauri build configuration failed");
 }
