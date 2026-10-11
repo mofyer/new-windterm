@@ -12,6 +12,8 @@
 
 现有 `pty.rs` 的 reader worker 在 Unix 上依靠非阻塞描述符、`WouldBlock` 和 EIO EOF 约定运行。portable-pty 的 Windows ConPTY reader 使用匿名管道上的同步 `ReadFile`；`filedescriptor` 文档也明确指出 Windows 的 readiness 检查只适用于 socket。当前 `Session::close()` 会释放 master、标记 flow 并唤醒 Unix readiness，但 reader 可能仍阻塞在同步读，随后 `cleanup_child()` 才会执行。因此仅把 `configure_io()` 改成 no-op、或让 readiness 在 Windows 睡眠轮询，都会产生关闭超时、worker 残留或把未验证路径误报为支持。
 
+本轮源码核查进一步确认：`try_clone_reader()` 只是复制匿名管道句柄；`WinChildKiller` 只终止直接子进程，不处理子进程树。当前 reader worker 必须先从 `ReadFile` 返回，才会进入 `cleanup_child()`、释放 reader、join writer 并设置 `done`。因此现有 `ChildKiller + master.take()` 即使杀掉 `cmd.exe`，也无法证明 `wait_closed(2s)` 会收敛。可行的 Windows 专用原型需要在 reader 线程上持有可取消的线程句柄，关闭时调用 `CancelSynchronousIo`，将 `ERROR_OPERATION_ABORTED` 映射为取消，再完成 join；正式产品还需 Job Object 或等价的进程树治理。
+
 ## 允许的实现方向
 
 下一次实现必须先拆出 Windows 专用的取消生命周期：
@@ -20,6 +22,8 @@
 2. 证明终止子进程后同步管道读会在固定期限内返回；若系统 API 需要 `CancelSynchronousIo` 或关闭读句柄，必须把线程/句柄所有权写入平台模块，不用未定义的跨线程 drop 假设。
 3. reader 返回后再 join writer、wait child，并对每次超时报告明确错误；不能用 `wait_closed` 超时后把 session 标记成已回收。
 4. Windows readiness 继续关闭，直到有真实可取消的等待机制；Unix 的 `pty-readiness` 行为不能复制到匿名管道。
+
+建议的 Windows runner 验收顺序为：空闲 `cmd.exe` close、输出中 close、自然 `exit /B 7`、重复 close/reload、ACK 超时、12 次 open/write/close/reap，以及 `cmd /c start` 子进程树清理；每项都必须记录 reader 返回、worker join、child wait、2 秒期限和进程/句柄残留。只在这组结果和 Unix 回归都通过后，才考虑解除 `ensure_supported()`。
 
 ## 验收门槛
 
