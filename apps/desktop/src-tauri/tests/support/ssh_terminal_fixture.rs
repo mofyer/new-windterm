@@ -21,6 +21,8 @@ pub const PASSWORD: &str = "fixture-password";
 pub const PASSPHRASE: &str = "fixture-passphrase";
 /// Second keyboard-interactive factor after [`PASSWORD`].
 pub const CODE: &str = "123456";
+/// Output of the `fixture-check` command, which exits with status 7.
+pub const FIXTURE_CHECK: &[u8] = b"P0 fixture check\n";
 
 pub struct Fixture {
     pub port: u16,
@@ -354,6 +356,36 @@ impl server::Handler for Handler {
             tokio::join!(upstream, downstream);
             let _ = to_client.close().await;
         });
+        Ok(())
+    }
+    /// Only the fixed verification command runs: fixed output, exit status 7.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        if data != b"fixture-check" {
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
+        session.channel_success(channel)?;
+        session.data(channel, FIXTURE_CHECK.to_vec())?;
+        session.exit_status_request(channel, 7)?;
+        session.eof(channel)?;
+        session.close(channel)?;
+        Ok(())
+    }
+    /// No SFTP server here: the request is refused and the channel closed, so
+    /// SFTP clients fail right after authentication instead of waiting.
+    async fn subsystem_request(
+        &mut self,
+        channel: ChannelId,
+        _name: &str,
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_failure(channel)?;
+        session.close(channel)?;
         Ok(())
     }
     async fn auth_password(

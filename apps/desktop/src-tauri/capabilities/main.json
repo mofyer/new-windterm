@@ -16,6 +16,7 @@
     "allow-ssh-accept",
     "allow-ssh-reject",
     "allow-ssh-cancel",
+    "allow-ssh-auth-respond",
     "allow-ssh-context",
     "allow-ssh-open",
     "allow-ssh-write",

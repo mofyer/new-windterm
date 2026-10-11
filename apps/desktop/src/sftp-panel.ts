@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SshTerminalRequest } from "./ssh-verification";
+import { authPromptsFor, type SshCredential, type SshTerminalRequest } from "./ssh-verification";
 
 type RemoteKind = "directory" | "file" | "symlink" | "other";
 interface RemoteEntry {
@@ -84,6 +84,9 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
   let selection: Selection | undefined;
   let busy: string | undefined; // In-flight operation ID; one at a time.
   let revision = 0;
+  // A prompted grant keeps no answers, so every reconnect asks the user again.
+  let credential: SshCredential | undefined;
+  let hostName = "";
 
   const show = (real: boolean) => {
     demo.hidden = real;
@@ -199,15 +202,17 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     if (busy || !grantToken || !scopeToken) return;
     const version = ++revision;
     const operationId = crypto.randomUUID();
+    const prompts = credential && authPromptsFor(credential, operationId, hostName);
     error.textContent = "";
-    setBusy(operationId, message);
+    setBusy(operationId, prompts ? `${message}（服务器要求重新回答键盘交互提示）` : message);
     try {
-      const result = await invoke<T>(command, { ...args, grantToken, scopeToken, operationId });
+      const result = await invoke<T>(command, { ...args, grantToken, scopeToken, operationId, onAuth: prompts?.channel });
       return version === revision ? result : undefined;
     } catch (reason) {
       if (version === revision) failed(reason);
       return;
     } finally {
+      prompts?.finish();
       if (version === revision) setBusy(undefined);
     }
   }
@@ -257,7 +262,8 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
   }
   function reset() {
     revision++;
-    grantToken = scopeToken = listing = selection = undefined;
+    grantToken = scopeToken = listing = selection = credential = undefined;
+    hostName = "";
     setBusy(undefined);
     error.textContent = "";
     get("sftp-reconnect").hidden = true;
@@ -291,13 +297,19 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
       reset();
       show(true);
       scopeToken = request.scopeToken;
+      hostName = request.name;
       get("sftp-host").textContent = request.name;
       const version = ++revision;
-      setBusy(request.operationId, "正在认证并读取登录目录…可随时取消。");
+      const prompts = authPromptsFor(request.credential, request.operationId, request.name);
+      // Only the method is kept for later reconnects, never a secret.
+      credential = prompts ? { method: "keyboardInteractivePrompted" } : undefined;
+      setBusy(request.operationId, prompts
+        ? "正在连接；请在弹出的对话框中回答服务器提示…可随时取消。"
+        : "正在认证并读取登录目录…可随时取消。");
       void invoke<SftpOpened>("ssh_sftp_open", {
         challengeToken: request.challengeToken, operationId: request.operationId, scopeToken: request.scopeToken,
-        credential: request.credential,
-      }).then(opened => {
+        credential: request.credential, onAuth: prompts?.channel,
+      }).finally(() => prompts?.finish()).then(opened => {
         if (version !== revision) {
           // Cancelled or disconnected while opening: release the late grant.
           void invoke("ssh_sftp_close", { grantToken: opened.grantToken }).catch(() => {});

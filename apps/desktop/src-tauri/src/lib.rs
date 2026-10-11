@@ -9,11 +9,37 @@ pub mod tmux_control;
 use pty::{PtyEvent, Sessions};
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{ipc::Channel, Manager, State, WebviewWindow};
+use tauri::{
+    ipc::{Channel, JavaScriptChannelId},
+    Manager, State, WebviewWindow,
+};
+use zeroize::Zeroizing;
 
 #[derive(Serialize)]
 struct Opened {
     id: String,
+}
+
+/// Keyboard-interactive rounds go back only to the window that sent the command.
+fn prompts(
+    window: &WebviewWindow,
+    on_auth: Option<JavaScriptChannelId>,
+) -> Option<ssh::PromptSink> {
+    on_auth.map(|id| {
+        let channel: Channel<ssh::AuthPrompt> = id.channel_on(window.as_ref().clone());
+        Arc::new(move |prompt| channel.send(prompt).map_err(|e| e.to_string())) as ssh::PromptSink
+    })
+}
+
+fn login(
+    window: &WebviewWindow,
+    credential: Option<ssh::Credential>,
+    on_auth: Option<JavaScriptChannelId>,
+) -> ssh::Login {
+    ssh::Login {
+        credential: credential.unwrap_or_default(),
+        prompts: prompts(window, on_auth),
+    }
 }
 
 #[tauri::command]
@@ -42,14 +68,16 @@ async fn ssh_accept(
     operation_id: String,
     scope_token: String,
     credential: Option<ssh::Credential>,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<ssh::Output, String> {
+    let login = login(&window, credential, on_auth);
     service
         .accept_with(
             window.label(),
             &operation_id,
             &challenge_token,
             &scope_token,
-            credential.unwrap_or_default(),
+            login,
         )
         .await
 }
@@ -62,14 +90,16 @@ async fn ssh_sftp_open(
     operation_id: String,
     scope_token: String,
     credential: Option<ssh::Credential>,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<ssh::SftpOpened, String> {
+    let login = login(&window, credential, on_auth);
     service
         .sftp_open_with(
             window.label(),
             &operation_id,
             &challenge_token,
             &scope_token,
-            credential.unwrap_or_default(),
+            login,
         )
         .await
 }
@@ -82,7 +112,9 @@ async fn ssh_sftp_list(
     operation_id: String,
     scope_token: String,
     path: String,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<sftp::RemoteListing, String> {
+    let prompts = prompts(&window, on_auth);
     service
         .sftp_list(
             window.label(),
@@ -90,6 +122,7 @@ async fn ssh_sftp_list(
             &grant_token,
             &scope_token,
             path,
+            prompts,
         )
         .await
 }
@@ -102,7 +135,9 @@ async fn ssh_sftp_metadata(
     operation_id: String,
     scope_token: String,
     path: String,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<sftp::RemoteEntry, String> {
+    let prompts = prompts(&window, on_auth);
     service
         .sftp_metadata(
             window.label(),
@@ -110,6 +145,7 @@ async fn ssh_sftp_metadata(
             &grant_token,
             &scope_token,
             path,
+            prompts,
         )
         .await
 }
@@ -122,7 +158,9 @@ async fn ssh_sftp_read(
     operation_id: String,
     scope_token: String,
     path: String,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<Vec<u8>, String> {
+    let prompts = prompts(&window, on_auth);
     service
         .sftp_read(
             window.label(),
@@ -130,6 +168,7 @@ async fn ssh_sftp_read(
             &grant_token,
             &scope_token,
             path,
+            prompts,
         )
         .await
 }
@@ -170,6 +209,18 @@ fn ssh_reject(
     service.reject(window.label(), &challenge_token)
 }
 
+/// Answers the waiting keyboard-interactive round of this window's operation.
+#[tauri::command]
+fn ssh_auth_respond(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    operation_id: String,
+    round: u32,
+    answers: Vec<Zeroizing<String>>,
+) -> Result<(), String> {
+    service.auth_respond(window.label(), &operation_id, round, answers)
+}
+
 #[tauri::command]
 fn ssh_cancel(
     window: WebviewWindow,
@@ -191,7 +242,9 @@ async fn ssh_open(
     cols: u16,
     rows: u16,
     on_event: Channel<PtyEvent>,
+    on_auth: Option<JavaScriptChannelId>,
 ) -> Result<Opened, String> {
+    let login = login(&window, credential, on_auth);
     service
         .inner()
         .open_with(
@@ -199,7 +252,7 @@ async fn ssh_open(
             &operation_id,
             &challenge_token,
             &scope_token,
-            credential.unwrap_or_default(),
+            login,
             cols,
             rows,
             Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
@@ -342,7 +395,8 @@ pub fn run() {
             ssh_trust_save,
             ssh_trust_replace,
             ssh_reject,
-            ssh_cancel
+            ssh_cancel,
+            ssh_auth_respond
         ])
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {

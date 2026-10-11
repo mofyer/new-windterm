@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { createAuthPrompts, type AuthPrompts } from "./ssh-kbdint";
 
 type Trust = "new" | "known" | "changed";
 type Challenge = {
@@ -18,9 +19,16 @@ export type SshCredential =
   | { method: "key"; passphrase?: string }
   | { method: "password"; password: string }
   | { method: "agent" }
-  | { method: "keyboardInteractive"; responses: string[] };
+  | { method: "keyboardInteractive"; responses: string[] }
+  // Answers are typed into a dialog per server round while connecting.
+  | { method: "keyboardInteractivePrompted" };
 export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string; credential: SshCredential };
 type Purpose = "verification" | "terminal" | "files";
+
+/** The `onAuth` channel for a credential that asks the user while connecting. */
+export function authPromptsFor(credential: SshCredential, operationId: string, label: string): AuthPrompts | undefined {
+  return credential.method === "keyboardInteractivePrompted" ? createAuthPrompts(operationId, label) : undefined;
+}
 
 // Trust is always explicit. The terminal and file callbacks synchronously reserve
 // their surface before consuming the one-use challenge; verification remains separate.
@@ -38,7 +46,8 @@ export function createSshVerification(
     <form id="ssh-verification-form" autocomplete="off">
       <fieldset id="ssh-fields"><div class="form-row"><label>主机<input id="ssh-host" name="host" placeholder="127.0.0.1" maxlength="253" required spellcheck="false"/></label><label class="port">端口<input id="ssh-port" name="port" type="number" value="22" min="1" max="65535" required/></label></div>
       <label>SSH 用户名<input id="ssh-username" name="username" maxlength="64" required spellcheck="false"/></label>
-      <label>认证方式<select id="ssh-auth" name="auth"><option value="key">私钥文件</option><option value="password">密码</option><option value="agent">SSH agent</option><option value="keyboardInteractive">键盘交互（按提示顺序预填）</option></select></label>
+      <label>认证方式<select id="ssh-auth" name="auth"><option value="key">私钥文件</option><option value="password">密码</option><option value="agent">SSH agent</option><option value="keyboardInteractivePrompted">键盘交互（连接时按服务器提示输入）</option><option value="keyboardInteractive">键盘交互（按提示顺序预填）</option></select></label>
+      <p id="ssh-kbdint-prompted-note" class="caption" hidden>核对指纹后，服务器的每一轮提示会在单独的对话框中按纯文本显示；答案不预先填写、不保存，每轮须在 120 秒内提交。</p>
       <div id="ssh-key-fields"><label>私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
       <label>私钥口令（未加密的私钥留空）<input id="ssh-passphrase" type="password" autocomplete="off" maxlength="1024"/></label></div>
       <label id="ssh-password-row" hidden>密码<input id="ssh-password" type="password" autocomplete="off" maxlength="1024"/></label>
@@ -86,6 +95,7 @@ export function createSshVerification(
     get("ssh-key-fields").hidden = method !== "key";
     get("ssh-password-row").hidden = method !== "password";
     get("ssh-kbdint-fields").hidden = method !== "keyboardInteractive";
+    get("ssh-kbdint-prompted-note").hidden = method !== "keyboardInteractivePrompted";
     get<HTMLInputElement>("ssh-kbdint-1").required = method === "keyboardInteractive";
     get<HTMLInputElement>("ssh-key-path").required = method === "key";
     get<HTMLInputElement>("ssh-password").required = method === "password";
@@ -190,6 +200,7 @@ export function createSshVerification(
       ? { method: "password", password: get<HTMLInputElement>("ssh-password").value }
       : method === "agent" ? { method: "agent" }
       : method === "keyboardInteractive" ? { method: "keyboardInteractive", responses: answers }
+      : method === "keyboardInteractivePrompted" ? { method: "keyboardInteractivePrompted" }
       : passphrase ? { method: "key", passphrase } : { method: "key" };
     for (const id of ["ssh-passphrase", "ssh-password", "ssh-kbdint-1", "ssh-kbdint-2"]) get<HTMLInputElement>(id).value = "";
     fields.disabled = probe.disabled = true;
@@ -313,13 +324,17 @@ export function createSshVerification(
     const version = ++revision;
     const id = crypto.randomUUID();
     operationId = id;
+    const login = credential ?? { method: "key" };
+    const prompts = authPromptsFor(login, id, `${challenge.host}:${challenge.port}`);
     challenge = undefined; // Consumed once; retries must obtain a new challenge.
     window.clearTimeout(expiryTimer);
     accept.disabled = true;
-    status.textContent = "正在认证并执行 fixture-check…可随时取消。";
+    status.textContent = prompts
+      ? "正在连接；请在弹出的对话框中回答服务器提示…可随时取消。"
+      : "正在认证并执行 fixture-check…可随时取消。";
     dialog.setAttribute("aria-busy", "true");
     try {
-      const result = await invoke<VerificationResult>("ssh_accept", { scopeToken, challengeToken: token, operationId: id, credential: credential ?? { method: "key" } });
+      const result = await invoke<VerificationResult>("ssh_accept", { scopeToken, challengeToken: token, operationId: id, credential: login, onAuth: prompts?.channel });
       credential = undefined;
       if (!current(version)) return;
       challengeView.hidden = true;
@@ -347,6 +362,7 @@ export function createSshVerification(
     } catch (reason) {
       if (current(version)) failed(reason);
     } finally {
+      prompts?.finish();
       if (current(version)) {
         operationId = undefined;
         dialog.removeAttribute("aria-busy");

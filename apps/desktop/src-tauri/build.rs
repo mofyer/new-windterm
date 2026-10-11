@@ -10,6 +10,7 @@ fn main() {
             "ssh_accept",
             "ssh_reject",
             "ssh_cancel",
+            "ssh_auth_respond",
             "ssh_context",
             "ssh_open",
             "ssh_write",

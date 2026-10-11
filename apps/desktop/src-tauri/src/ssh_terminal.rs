@@ -147,20 +147,34 @@ impl Ssh {
         id: &str,
         token: &str,
         scope: &str,
-        credential: Credential,
+        login: impl Into<Login>,
         cols: u16,
         rows: u16,
         sink: EventSink,
     ) -> Result<String, String> {
+        let Login {
+            credential,
+            prompts,
+        } = login.into();
         size(cols, rows)?;
         let mut operation = self.start(owner, id, scope)?;
+        check_prompts(&credential, prompts.as_ref())?;
         let pending = self.consume(owner, token)?;
         credential.validate(&pending.request)?;
-        let work = connect(pending, credential, operation.cancel.clone(), cols, rows);
+        let clock = Clock::new(DEADLINE);
+        let prompter = self.prompter(&operation, prompts, &clock);
+        let work = connect(
+            pending,
+            credential,
+            operation.cancel.clone(),
+            prompter.as_ref(),
+            (cols, rows),
+        );
         let connection = tokio::select! {
             biased;
             _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
-            result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SSH terminal open timed out")??,
+            _ = clock.expired() => return Err("SSH terminal open timed out".into()),
+            result = work => result?,
         };
         let (input, receiver) = mpsc::channel(16);
         let terminal = Arc::new(Terminal {
@@ -233,8 +247,8 @@ async fn connect(
     pending: Pending,
     credential: Credential,
     cancel: watch::Receiver<bool>,
-    cols: u16,
-    rows: u16,
+    prompter: Option<&Prompter>,
+    (cols, rows): (u16, u16),
 ) -> Result<Connection, String> {
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let result = async {
@@ -264,9 +278,15 @@ async fn connect(
                     "SSH handshake failed"
                 }
             })?;
-        auth::authenticate(&mut session, &pending.request, &credential, cancel)
-            .await
-            .map_err(AuthFailure::message)?;
+        auth::authenticate(
+            &mut session,
+            &pending.request,
+            &credential,
+            cancel,
+            prompter,
+        )
+        .await
+        .map_err(AuthFailure::message)?;
         let mut channel = session
             .channel_open_session()
             .await
