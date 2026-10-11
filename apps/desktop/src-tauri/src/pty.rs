@@ -1043,7 +1043,9 @@ mod tests {
 }
 
 /// Windows ConPTY lifecycle acceptance, run on the `windows-2022` CI runner.
-/// Markers use `%OS%` so the shell's echo of the typed command never matches.
+/// Markers are typed as `P0_^NAME`; cmd drops the caret, so only command output
+/// (not the echoed input line) contains `P0_NAME`. The shell environment is
+/// cleared, so variables such as `%OS%` are deliberately unavailable.
 #[cfg(all(test, windows))]
 mod windows_tests {
     use super::*;
@@ -1141,8 +1143,8 @@ mod windows_tests {
             // in the app, so the probe answers as a terminal would.
             self.expect("\x1b[6n");
             self.send("\x1b[1;1R");
-            self.send("echo P0_%OS%_READY\r\n");
-            self.expect("P0_Windows_NT_READY");
+            self.send("echo P0_^READY\r\n");
+            self.expect("P0_READY");
         }
 
         /// Reader returned, writer joined, child waited, job empty, within 2 s.
@@ -1176,8 +1178,8 @@ mod windows_tests {
     fn utf8_input_and_output_round_trip() {
         let mut probe = Probe::open();
         probe.ready();
-        probe.send("echo P0_%OS%_中文\r\n");
-        probe.expect("P0_Windows_NT_中文");
+        probe.send("echo P0_^中文\r\n");
+        probe.expect("P0_中文");
         probe.session.close();
         probe.assert_reaped();
     }
@@ -1222,8 +1224,8 @@ mod windows_tests {
         probe.send(LOOP);
         assert!(probe.pump(DEADLINE, true, |probe| probe.output.len() > 64 * 1024));
         probe.send("\x03");
-        probe.send("echo P0_%OS%_AFTER_CTRL_C\r\n");
-        probe.expect("P0_Windows_NT_AFTER_CTRL_C");
+        probe.send("echo P0_^AFTER_CTRL_C\r\n");
+        probe.expect("P0_AFTER_CTRL_C");
         probe.session.close();
         probe.assert_reaped();
     }
@@ -1259,8 +1261,8 @@ mod windows_tests {
             let mut probe = Probe::open();
             probe.ready();
             probe.send("start \"\" /B ping -n 60 127.0.0.1 >NUL\r\n");
-            probe.send("echo P0_%OS%_STARTED\r\n");
-            probe.expect("P0_Windows_NT_STARTED");
+            probe.send("echo P0_^STARTED\r\n");
+            probe.expect("P0_STARTED");
             let spawned = probe.pump(DEADLINE, true, |probe| {
                 probe.session.live_processes().unwrap() >= 2
             });
