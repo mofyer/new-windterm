@@ -30,9 +30,14 @@ type Session = {
   ended: boolean;
   bytes: number;
   pendingInput: number;
+  // Input produced before the native ID exists, e.g. xterm's automatic reply
+  // to ConPTY's startup cursor-position query. Flushed in order once opened.
+  early: Uint8Array[];
+  earlyBytes: number;
   ack: Promise<unknown>;
   input: Promise<unknown>;
 };
+const EARLY_INPUT_LIMIT = 4096;
 const icon = (name: string) => {
   const paths: Record<string, string> = {
     sidebar:
@@ -341,6 +346,25 @@ function sendInput(s: Session, bytes: Uint8Array) {
       if (diagnostics) diagnostics.pendingInputBytes -= bytes.length;
     });
 }
+function queueInput(s: Session, bytes: Uint8Array) {
+  if (s.ptyId) {
+    sendInput(s, bytes);
+    return;
+  }
+  if (s.disposed || s.ended || s.closing) return;
+  if (s.earlyBytes + bytes.length > EARLY_INPUT_LIMIT) {
+    toast("会话仍在启动，输入暂未发送；请稍后重试。");
+    return;
+  }
+  s.early.push(bytes);
+  s.earlyBytes += bytes.length;
+}
+function flushEarlyInput(s: Session) {
+  const queued = s.early;
+  s.early = [];
+  s.earlyBytes = 0;
+  for (const bytes of queued) sendInput(s, bytes);
+}
 function backendError(s: Session, error: unknown) {
   if (s.disposed) return;
   s.status = `错误：${String(error)}`;
@@ -380,6 +404,8 @@ function createSession(
     ended: false,
     bytes: 0,
     pendingInput: 0,
+    early: [],
+    earlyBytes: 0,
     ack: Promise.resolve(),
     input: Promise.resolve(),
   };
@@ -388,13 +414,11 @@ function createSession(
   activeKey = s.key;
   terminal.onData((data) => {
     if (mode === "demo") demoInput(s, data);
-    else if (s.ptyId) {
-      sendInput(s, encoder.encode(data));
-    }
+    else queueInput(s, encoder.encode(data));
   });
   terminal.onBinary((data) => {
-    if (s.ptyId)
-      sendInput(
+    if (mode !== "demo")
+      queueInput(
         s,
         Uint8Array.from(data, (c) => c.charCodeAt(0) & 255),
       );
@@ -490,6 +514,7 @@ async function openPty(s: Session) {
     }
     if (s.ended) return;
     s.ptyId = id;
+    flushEarlyInput(s);
     s.status = "本机 shell 已启动";
     await invoke("pty_resize", {
       id,
@@ -525,6 +550,7 @@ async function openSsh(s: Session, request: SshTerminalRequest) {
       return;
     }
     s.ptyId = id;
+    flushEarlyInput(s);
     s.status = "SSH 已连接";
     if (!s.closing) await invoke("ssh_resize", { id, cols: s.terminal.cols, rows: s.terminal.rows });
     updateStatus();

@@ -802,6 +802,9 @@ fn validate(request: &Request) -> Result<(), String> {
     {
         return Err("An absolute private key path is required".into());
     }
+    if crate::platform::is_device_path(std::path::Path::new(&request.private_key_path)) {
+        return Err("Private key must be a regular file".into());
+    }
     Ok(())
 }
 
@@ -994,6 +997,11 @@ fn private_key(path: &str, passphrase: Option<&str>) -> Result<PrivateKeyWithHas
         return Err("Private key must be a regular file".into());
     }
     let file = options.open(path).map_err(|_| "Cannot read private key")?;
+    // Windows `is_file` also accepts pipes and character devices (`C:\x\CON`).
+    #[cfg(windows)]
+    if !crate::platform::windows::is_disk_file(&file) {
+        return Err("Private key must be a regular file".into());
+    }
     let metadata = file.metadata().map_err(|_| "Cannot read private key")?;
     if !metadata.is_file() || metadata.len() > MAX_BYTES as u64 {
         return Err("Private key must be a regular file of at most 64 KiB".into());

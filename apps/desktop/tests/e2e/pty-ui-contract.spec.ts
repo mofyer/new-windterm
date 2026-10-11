@@ -93,3 +93,17 @@ test('large terminal input is split and waits for each IPC write', async ({ page
   });
   await expect.poll(() => page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_write').map((c: any) => c.data.length))).toEqual([4096, 904]);
 });
+
+test('terminal replies produced before the native ID arrive are sent once it exists', async ({ page }) => {
+  await installIpc(page);
+  // ConPTY asks for the cursor position before pty_open has returned.
+  await page.evaluate(() => (window as any).qaIpc.channel.onmessage({ kind: 'data', id: 'test-pty', sequence: 1, data: [27, 91, 54, 110] }));
+  await expect.poll(() => page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_ack').length)).toBe(1);
+  expect(await page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_write'))).toEqual([]);
+  await ready(page);
+  const writes = await page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_write'));
+  expect(writes).toHaveLength(1);
+  const reply = String.fromCharCode(...writes[0].data);
+  expect(writes[0].id).toBe('test-pty');
+  expect(reply).toMatch(/^\x1b\[\d+;\d+R$/);
+});

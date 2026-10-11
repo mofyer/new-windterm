@@ -38,7 +38,7 @@ jobs:
             runner: ubuntu-24.04
             host: x86_64-unknown-linux-gnu
             real_pty: true
-          - name: Windows x64 — build and pending-adapter tests
+          - name: Windows x64 — build and ConPTY lifecycle tests
             runner: windows-2022
             host: x86_64-pc-windows-msvc
             real_pty: false
@@ -100,7 +100,7 @@ jobs:
         id: rust_check
         run: cargo check --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-check.log"
 
-      - name: Run Rust unit, platform policy and loopback SSH protocol tests
+      - name: Run Rust unit, platform, Windows ConPTY lifecycle and loopback SSH protocol tests
         id: rust_tests
         run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
 
@@ -137,8 +137,8 @@ jobs:
             printf '| Desktop executable link | %s |\n' '${{ steps.desktop_build.outcome }}'
             printf '| Default real PTY probe | %s |\n' '${{ steps.pty.outcome }}'
             printf '| Opt-in readiness real PTY probe | %s |\n\n' '${{ steps.pty_readiness.outcome }}'
-            printf 'Windows local PTY remains disabled. Windows tests include PTY rejection policy and controlled loopback SSH protocol checks.\n\n'
-            printf 'SSH tests use a bounded in-memory russh server, not an OS shell. No GUI, IME, WebView, signing, installer, OpenSSH interoperability, SFTP or full feature-parity acceptance is implied.\n'
+            printf 'Windows runs cmd.exe ConPTY lifecycle tests inside the Rust test step (exit code, UTF-8, resize, close, Ctrl-C, ACK budget/timeout, reload, Job Object tree reaping, 12 cycles); the Unix pty_probe is skipped there.\n\n'
+            printf 'SSH tests use a bounded in-memory russh server, not an OS shell. No GUI, IME, WebView, PowerShell, signing, installer, OpenSSH interoperability, SFTP or full feature-parity acceptance is implied.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload validation logs
