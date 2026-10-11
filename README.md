@@ -33,7 +33,7 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本机已生成的 debug 应用位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，属于本地构建产物，不随 Git 分发，也不是签名公证后的发行包。
 
-本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。普通「新建连接」与 SFTP 文件界面仍是演示；当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
+本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。普通「新建连接」与 SFTP 文件界面仍是演示；Rust 内部已加入未接 IPC 的只读 SFTP 切片（目录、元数据、64 KiB 读取），不代表应用 SFTP 完成。当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [只读 SFTP 切片](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
 
 独立浏览器回归 **98/98**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。另有独立系统 OpenSSH 交互夹具完成随机 loopback sshd、PTY/UTF-8/中断/退出和清理回归，但尚未接入 Rust `ssh_open`。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
 
