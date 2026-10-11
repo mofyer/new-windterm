@@ -8,7 +8,7 @@
 
 已建立130项台账：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整范围尚未冻结，功能对齐未完成。浅色白银浮层与深色中性炭灰方向均已获用户认可。
 
-本轮将真实 SSH 字节流接入 xterm 标签页，加入输入、尺寸更新、取消、关闭和受限输出队列；独立浏览器 98 项通过。协议测试使用真实 TCP/SSH 的 loopback russh 有限命令服务端，不等于真实远端系统 shell、OpenSSH 或 SFTP 验收。本机 Rust 独立复验与 macOS arm64 WKWebView 交互冒烟通过，最终 `8ee49a4` 的三平台 CI 通过，含三端 SSH target（9 协议 + 1 helper）及 Mac/Linux 默认与 readiness PTY；Windows PTY 仍跳过，前两次失败保留。[本轮结果](p0/RESULTS.zh-CN.md) · [各轮平台回执](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)
+最新本地轮把只读 SFTP 接入文件面板（窗口内短时授权、每次操作重新固定校验主机密钥、有界目录与 64 KiB 预览），真实 OpenSSH 夹具与浏览器 108 项通过，原生面板与三平台回执待补。此前一轮将真实 SSH 字节流接入 xterm 标签页，加入输入、尺寸更新、取消、关闭和受限输出队列。协议测试使用真实 TCP/SSH 的 loopback russh 有限命令服务端，不等于真实远端系统 shell、OpenSSH 或 SFTP 验收。本机 Rust 独立复验与 macOS arm64 WKWebView 交互冒烟通过，最终 `8ee49a4` 的三平台 CI 通过，含三端 SSH target（9 协议 + 1 helper）及 Mac/Linux 默认与 readiness PTY；Windows PTY 仍跳过，前两次失败保留。[本轮结果](p0/RESULTS.zh-CN.md) · [各轮平台回执](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)
 
 PTY `pty-readiness` 是默认关闭的实验。本机三组配对通过有界 2 MiB 完整性与响应筛选，仅用于继续评估；默认应用策略未切换，GUI 高输出性能仍未验收。[实验报告](p0/PTY_READINESS.zh-CN.md)
 

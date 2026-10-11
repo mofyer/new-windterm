@@ -2,7 +2,20 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
-## 最新提交：只读 SFTP IPC 与 Windows shell 契约
+## 最新本地轮：只读 SFTP 文件面板闭环
+
+本轮把只读 SFTP 接入桌面文件面板。用户在独立入口核对一次真实指纹后，Rust 签发窗口内、仅内存的短时浏览授权（空闲 5 分钟、最长 30 分钟、最多 4 个）；之后每次列目录、读属性或预览仍重新连接、固定校验已确认的主机密钥并重新读取所选私钥。主机密钥变化、公钥被拒或 rekey 立即吊销授权，前端回到重新核对指纹；传输、文件级错误、超时和取消保留授权。目录读取改为 raw SFTP 逐页读取，达到 4,096 项或 1 MiB 文件名即停止并标记截断；预览最多 64 KiB 且长度须与 `stat` 一致。此前三个 SFTP 命令未登记到 `build.rs` 与 capability，WebView 调用会被 ACL 拒绝；本轮五个命令均已登记。
+
+| 检查 | 结果 | 边界 |
+| --- | --- | --- |
+| Rust 单元 | **40 passed / 2 ignored**；fmt、check、clippy `-D warnings`、桌面可执行文件链接通过；SSH 集成 10/10 | ignored 项需真实夹具，见下行 |
+| 真实 OpenSSH 夹具 | `rust-client.test.mjs` **3/3 passed**，0 残留临时目录/进程；SFTP 用例覆盖 challenge 一次消费、登录目录、符号链接 `stat`、逐字节读取、1 MiB+ 文件拒绝、目录/缺失路径报错不吊销、子目录、4,097 项截断为 4,096、关闭后过期、主机密钥变化即吊销 | 经 Rust `Ssh` 服务直连系统 OpenSSH `sftp-server`，不经过 WebView；原始日志在被忽略的 `.artifacts/p0/sftp-grant-round/` |
+| 浏览器全套 | **108/108**（新增 `sftp-panel.spec.ts` 10 项）；TypeScript/build 通过 | IPC stub，验证令牌归属、取消与晚到结果、授权失效、远端名称文本渲染和 1000px 布局；不代表原生 WKWebView |
+| 独立审查 | Rust 与前端审查均无 CRITICAL/HIGH；MEDIUM（吊销分类、内存说明、容量预检）与 LOW 已修复并复测 | — |
+
+仍未完成：原生 WKWebView 中的面板实测、三平台 CI 回执、下载落盘与全部写操作（F02–F07）、非 UTF-8 文件名（当前整页报错）、持久连接与断线恢复。授权可读取远端账户可读的任意路径，与文件浏览语义一致，仅限主窗口调用。功能矩阵 F01 仍为“未实现”，局部原型不改变整行状态。
+
+## 上一提交：只读 SFTP IPC 与 Windows shell 契约
 
 提交 `3216339` 已推送公开仓库。新增 `ReadOnlySftp` Rust 抽象，并通过 Tauri 暴露 `ssh_sftp_list`、`ssh_sftp_metadata`、`ssh_sftp_read` 三个受限 IPC 命令；每次操作重新完成当前 challenge 绑定的 Ed25519 认证并在操作后断开，没有写入/删除/重命名接口。依赖 `russh-sftp 3.0.1`，`serde` pin 至 `1.0.229`。macOS 本机单元测试 30 passed/1 ignored、SSH 集成 10/10；前端文件面板、真实 OpenSSH SFTP、取消/断线、大目录内存预算和跨平台运行时仍待验收。
 
@@ -22,7 +35,7 @@
 | 本轮原生 GUI | arm64 debug 构建成功；WKWebView 完成实际指纹、本次信任、中文/emoji 输出、尺寸变化、输出中 Ctrl-C、exit 7、关闭和夹具清理 | 主任务 CUA 实测，详见下节；默认 readiness 关闭。仅为有限 russh 命令状态机的真实网络/native 链路，不代表 OS shell/OpenSSH、IME 或性能验收 |
 | 本轮三平台 CI | `9dbf8ac` 的 [run 38116705227](https://github.com/mofyer/new-windterm/actions/runs/38116705227) **success**：三端前端/fmt/check/test/clippy/link 通过；Mac/Linux 默认及 readiness PTY 通过，Windows 两种 PTY 均 skipped | 三端各 10 项 SSH target 为 9 协议 + 1 helper；Windows-only `ChildKiller` 预备钩子通过条件编译，ConPTY 仍未实现，test/link 的非阻塞 PDB 同名 warning 保留。[最终成功及前两次失败](CROSS_PLATFORM_VALIDATION.zh-CN.md)；Windows 保持拒绝策略的原因与门槛见[ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)；不代表三端 GUI、OpenSSH 交互或性能验收 |
 
-普通「新建连接」和 SFTP 文件界面仍是演示。交互 SSH 不支持长期信任、完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
+普通「新建连接」仍是演示；只读 SFTP 见本页顶部。交互 SSH 不支持长期信任、完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
 
 ## 当前轮三平台结果（`8ee49a4`）
 

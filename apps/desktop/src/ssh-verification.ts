@@ -11,10 +11,14 @@ type Challenge = {
 type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number };
 
 export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string };
+type Purpose = "verification" | "terminal" | "files";
 
-// Trust is always explicit. The terminal callback synchronously reserves a tab
-// before consuming the one-use challenge; verification remains a separate flow.
-export function createSshVerification(openTerminal: (request: SshTerminalRequest) => boolean) {
+// Trust is always explicit. The terminal and file callbacks synchronously reserve
+// their surface before consuming the one-use challenge; verification remains separate.
+export function createSshVerification(
+  openTerminal: (request: SshTerminalRequest) => boolean,
+  openFiles: (request: SshTerminalRequest) => boolean,
+) {
   const dialog = document.createElement("dialog");
   dialog.id = "ssh-verification-dialog";
   dialog.setAttribute("aria-labelledby", "ssh-verification-title");
@@ -51,7 +55,7 @@ export function createSshVerification(openTerminal: (request: SshTerminalRequest
   const status = get("ssh-status");
   const error = get("ssh-error");
   const desktop = isTauri();
-  let purpose: "verification" | "terminal" = "verification";
+  let purpose: Purpose = "verification";
   let revision = 0;
   let scopeToken: string | undefined;
   let operationId: string | undefined;
@@ -177,16 +181,19 @@ export function createSshVerification(openTerminal: (request: SshTerminalRequest
     if (!scopeToken || !challenge || operationId || !dialog.open) return;
     if (Date.now() >= expiresAt) { expire(); return; }
     const token = challenge.challengeToken;
-    if (purpose === "terminal") {
-      const started = openTerminal({
+    if (purpose !== "verification") {
+      const handoff = {
         challengeToken: token, scopeToken, operationId: crypto.randomUUID(),
         name: `${challenge.host}:${challenge.port}`,
-      });
+      };
+      const started = purpose === "terminal" ? openTerminal(handoff) : openFiles(handoff);
       if (!started) {
-        error.textContent = "P0 最多同时打开 8 个会话。请先关闭一个会话，再信任并连接。";
+        error.textContent = purpose === "terminal"
+          ? "P0 最多同时打开 8 个会话。请先关闭一个会话，再信任并连接。"
+          : "已有真实文件浏览正在进行。请先在文件面板断开，再信任并连接。";
         return;
       }
-      challenge = undefined; // Ownership moves to the terminal tab, including cancellation.
+      challenge = undefined; // Ownership moves to the tab or file panel, including cancellation.
       close();
       return;
     }
@@ -246,14 +253,16 @@ export function createSshVerification(openTerminal: (request: SshTerminalRequest
   });
   window.addEventListener("beforeunload", () => { release(); clear(); });
   return {
-    open(mode: "verification" | "terminal" = "verification") {
+    open(mode: Purpose = "verification") {
       if (dialog.open) return;
       purpose = mode;
-      get("ssh-verification-title").textContent = mode === "terminal" ? "连接 SSH 终端" : "验证真实连接";
-      get("ssh-description").textContent = mode === "terminal"
-        ? "核对真实主机指纹后，建立交互式远端终端。输入会在服务器实际执行；文件面板与 SFTP 仍为演示。"
-        : "连接受控测试服务器，核对主机指纹后执行固定命令 fixture-check。此入口不提供交互终端或 SFTP。";
-      accept.textContent = mode === "terminal" ? "仅本次信任并打开终端" : "仅本次信任并验证";
+      get("ssh-verification-title").textContent = { verification: "验证真实连接", terminal: "连接 SSH 终端", files: "只读浏览远端文件" }[mode];
+      get("ssh-description").textContent = {
+        verification: "连接受控测试服务器，核对主机指纹后执行固定命令 fixture-check。此入口不提供交互终端或 SFTP。",
+        terminal: "核对真实主机指纹后，建立交互式远端终端。输入会在服务器实际执行；文件浏览请使用文件面板的只读 SFTP 入口。",
+        files: "核对真实主机指纹后，通过 SFTP 只读浏览远端目录、查看属性并预览不超过 64 KiB 的文件。不上传、删除或改名；信任仅在本窗口内存中保留，空闲 5 分钟失效。",
+      }[mode];
+      accept.textContent = { verification: "仅本次信任并验证", terminal: "仅本次信任并打开终端", files: "仅本次信任并浏览文件" }[mode];
       clear();
       resetView();
       get("ssh-browser-note").hidden = desktop;

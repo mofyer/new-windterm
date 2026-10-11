@@ -33,9 +33,9 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本机已生成的 debug 应用位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，属于本地构建产物，不随 Git 分发，也不是签名公证后的发行包。
 
-本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。普通「新建连接」与 SFTP 文件界面仍是演示；Rust 已暴露受限的只读 SFTP IPC 命令（目录、元数据、64 KiB 读取），前端尚未接入文件面板，不代表应用 SFTP 完成。当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [只读 SFTP 切片](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
+本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。文件面板新增只读 SFTP 入口：核对真实指纹后可列目录、查看属性、解析符号链接并预览不超过 64 KiB 的文件；信任只在窗口内存中短时保留，没有上传、下载落盘、删除或改名，不代表应用 SFTP 完成。普通「新建连接」仍是演示。当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [只读 SFTP 切片](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
 
-独立浏览器回归 **98/98**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。另有独立系统 OpenSSH 交互夹具完成随机 loopback sshd、PTY/UTF-8/中断/退出和清理回归，但尚未接入 Rust `ssh_open`。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
+独立浏览器回归 **108/108**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。另有独立系统 OpenSSH 交互夹具完成随机 loopback sshd、PTY/UTF-8/中断/退出和清理回归，但尚未接入 Rust `ssh_open`。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
 
 PTY 新增默认关闭的 `pty-readiness` 实验：本机三组配对均通过精确 2 MiB 与回收检查，负载中位数从 6898.175 ms 降为 342.195 ms（含 300 ms 人工 ACK 暂停）。这是直接调用 Rust PTY 的 CLI 实验，不代表默认应用或 WebView 性能达标；默认仍使用原读取策略。[实验方法与限制](docs/p0/PTY_READINESS.zh-CN.md)
 
@@ -56,7 +56,7 @@ Rust 负责协议、PTY、文件传输和状态管理，Tauri 2 提供桌面集�
 - [界面与交互设计方向](docs/DESIGN.zh-CN.md)
 - [现状核查与技术依据](docs/RESEARCH.zh-CN.md)
 - [P0 本轮结果与未完成项](docs/p0/RESULTS.zh-CN.md)
-- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为固定命令 Rust SSH 验证提供 OpenSSH 受控对端；[OpenSSH 交互终端夹具](docs/p0/OPENSSH_INTERACTIVE.zh-CN.md)用于独立系统 PTY 回归，应用 SFTP 尚未实现。
+- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为固定命令 Rust SSH 验证提供 OpenSSH 受控对端；[OpenSSH 交互终端夹具](docs/p0/OPENSSH_INTERACTIVE.zh-CN.md)用于独立系统 PTY 回归；同一夹具也用于只读 SFTP 的 Rust 验收，SFTP 写操作尚未实现。
 
 完整工期需在功能盘点、原型验证和人力确定后估算，当前不承诺全项目交付日期。
 

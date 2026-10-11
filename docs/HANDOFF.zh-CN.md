@@ -24,12 +24,9 @@
 
 1. Rust + Tauri 2 + xterm.js 原型可运行，已形成真实本地 PTY、交互 SSH 和苹果风界面原型。
 2. 交互 SSH 已接入 xterm 标签页，覆盖有限范围的输入、输出、resize、取消和关闭。
-3. 新增受限只读 SFTP Rust 抽象和 Tauri IPC：
-   - `ssh_sftp_list`
-   - `ssh_sftp_metadata`
-   - `ssh_sftp_read`
-4. SFTP IPC 当前每次操作都重新建立连接，消费当前窗口 scope、唯一 operation ID 和一次性 host-key challenge；使用明确指定的未加密 Ed25519 测试密钥；操作完成后断开；不保存长期凭据。
-5. 没有 SFTP 写入、删除、重命名、权限修改接口；前端文件面板尚未接入这些 IPC。
+3. 只读 SFTP 已接入文件面板：`ssh_sftp_open` 消费一次性 challenge 并签发窗口内、仅内存的短时授权；`ssh_sftp_list/metadata/read` 使用授权，每次操作仍重新连接、固定校验主机密钥并重新读取私钥；`ssh_sftp_close` 吊销。五个命令已登记到 `build.rs` 与 capability。
+4. 目录用 raw SFTP 逐页读取，4,096 项或 1 MiB 文件名即停止并标记截断；预览最多 64 KiB 且须与 `stat` 长度一致。真实 OpenSSH 夹具 3/3、浏览器 108/108、Rust 单元 40 passed / 2 ignored。
+5. 没有 SFTP 写入、删除、重命名、权限修改或下载落盘；面板尚未在原生 WKWebView 实测，三平台 CI 尚未覆盖本轮。
 6. 本地检查已通过：
    - `cargo fmt -- --check`
    - `cargo check --locked --all-targets --all-features`
@@ -45,8 +42,8 @@
 ## 绝对不能误报的边界
 
 - 不能说 WindTerm 功能已经完整对齐。
-- 不能说 SFTP 已完成：目前没有前端文件面板、真实 OpenSSH SFTP 网络验收、持久连接、写操作、取消/断线验收。
-- `russh-sftp 3.0.1` 的 `read_dir` 会先由依赖收集远端目录结果，再由 wrapper 限制返回最多 4096 项；当前上限不是完整的恶意超大目录内存预算。
+- 不能说 SFTP 已完成：只有只读浏览；没有写操作、下载落盘、持久连接、断线恢复和原生面板验收。
+- 目录预算只约束保留部分；每页 `readdir` 会先完整解码（瞬时为 256 KiB 包的若干倍），russh 通道缓冲另计，不能写成完整的恶意服务端内存保证。非 UTF-8 文件名会导致整页报错。
 - Windows 的 ConPTY 同步 reader 取消、idle close、reader join、进程树回收和真实 PTY 探针仍未完成；`platform::ensure_supported()` 继续拒绝 Windows PTY。
 - macOS arm64 CI 或本地 debug 构建不等于真机 IME、高输出性能、签名、公证或完整发行验收。
 - 浏览器 E2E 使用 IPC stub，不能外推 Rust 网络或原生 GUI 成功。
@@ -54,13 +51,10 @@
 
 ## 推荐下一步顺序
 
-### 第一优先级：完成只读 SFTP 的可验收闭环
+### 第一优先级：只读 SFTP 收尾验收
 
-1. 先阅读 `apps/desktop/src/ssh-verification.ts`、`apps/desktop/src/main.ts`、`apps/desktop/src/style.css` 和 `apps/desktop/src-tauri/src/ssh.rs`，复用现有 host trust、scope、operation 和取消语义。
-2. 将只读 SFTP IPC 接入一个真实的前端文件面板：目录列表、元数据显示、64 KiB 读取预览、加载/错误/取消状态；不要添加未经设计的写操作。
-3. 为前端面板补浏览器契约测试；浏览器测试必须标明 IPC stub 边界。
-4. 使用现有 OpenSSH 夹具或新增受控 fixture，补 Rust wrapper 的真实 subsystem 网络验收；保存原始日志、退出状态和清理证据。
-5. 处理大目录边界：优先研究分页/可中止的 raw SFTP 读取；如果暂时无法修复，保留显式失败和文档门槛，不得把 `take(4097)` 写成内存安全保证。
+1. 在原生 WKWebView 中用 `tests/fixtures/ssh-sftp/fixture.mjs --serve` 实测文件面板，记录截图与清理证据。
+2. 推送后取得三平台 CI 回执，记录各端 Rust 单元计数。
 
 ### 第二优先级：完善 P0 连接安全和跨平台门槛
 

@@ -33,7 +33,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 ## 推荐候选的职责边界
 
 以下以已确认的 Tauri 路线展开；核心业务接口应避免绑定某个 UI 框架。
-当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。`ssh.rs` 管理一次性主机信任与固定命令验证，`ssh_terminal.rs` 将 SSH PTY/shell channel 接入同一终端字节流；SFTP、长期凭据与完整持久化层仍为计划，普通连接及文件界面仍是演示。`pty-readiness` 为默认关闭的 Unix poll/ACK 通知实验，不改变默认构建的 5 ms 轮询策略。
+当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。`ssh.rs` 管理一次性主机信任与固定命令验证，`ssh_terminal.rs` 将 SSH PTY/shell channel 接入同一终端字节流；`sftp.rs` 提供只读、有界的 raw SFTP 浏览，由 `ssh.rs` 的窗口内短时授权驱动；SFTP 写操作、长期凭据与完整持久化层仍为计划，普通连接及文件界面仍是演示。`pty-readiness` 为默认关闭的 Unix poll/ACK 通知实验，不改变默认构建的 5 ms 轮询策略。
 
 | 模块 | 职责 | 不承担的职责 |
 | --- | --- | --- |
@@ -45,7 +45,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 | Rust 本地 PTY 层 | P0 已采用 portable-pty 0.9.0，支持受限本地 shell；完整平台支持待验证 | SSH 协议或终端模拟 |
 | Rust 存储层 | 会话元数据、设置、迁移与凭据引用 | 在普通配置、日志和仓库中写入明文秘密 |
 
-russh 0.64.1（ring 后端）已锁定用于受限 SSH 验证，依赖 tokio 1.50.0 与 zeroize 1.9.1；不代表覆盖 WindTerm 的全部 SSH/OpenSSH 行为。SFTP 库尚未接入，差距必须逐项验证。[9]
+russh 0.64.1（ring 后端）已锁定用于受限 SSH 验证，依赖 tokio 1.50.0 与 zeroize 1.9.1；不代表覆盖 WindTerm 的全部 SSH/OpenSSH 行为。`russh-sftp 3.0.1` 仅用于只读浏览切片，差距必须逐项验证。[9]
 portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 会话元数据可采用 SQLite 或版本化配置文件，P0 根据迁移、并发和备份需求选定。
 凭据计划使用系统安全存储；具体 Rust 适配库、访问策略与失败行为待验证。
@@ -56,7 +56,7 @@ portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 
 `ssh_open` 请求 PTY/shell 后返回会话 ID，复用 `PtyEvent` 和 xterm 的原始字节写入/顺序 ACK 路径；输入、尺寸、ACK、关闭分别使用 `ssh_write/resize/ack/close`。输入与输出独立驱动，关闭和取消不排在输入队列后面；归属、scope 失效、晚到打开结果、超时、窗口/应用退出均有清理路径。前端远程标签禁用演示样本与压力命令，不自动向远端发送它们。
 
-真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。当前不支持持久化 known_hosts、密码、加密私钥、agent、代理/跳板、转发或 SFTP。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
+真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。当前不支持持久化 known_hosts、密码、加密私钥、agent、代理/跳板、转发或 SFTP 写操作；只读 SFTP 浏览见[受控夹具与 IPC](p0/SSH_SFTP_FIXTURE.zh-CN.md)。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
 
 ## 终端状态只保留一份
 

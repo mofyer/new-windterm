@@ -16,6 +16,11 @@ fn main() {
             "ssh_resize",
             "ssh_ack",
             "ssh_close",
+            "ssh_sftp_open",
+            "ssh_sftp_list",
+            "ssh_sftp_metadata",
+            "ssh_sftp_read",
+            "ssh_sftp_close",
         ]));
     tauri_build::try_build(attributes).expect("Tauri build configuration failed");
 }

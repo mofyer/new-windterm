@@ -4,13 +4,30 @@
 
 ## 当前 Rust SFTP 只读切片
 
-本轮已把 `russh-sftp 3.0.1` 接入 Rust 依赖，并新增 [`src/sftp.rs`](../../apps/desktop/src-tauri/src/sftp.rs) 的 `ReadOnlySftp` 抽象。它接收**已经完成主机指纹确认和公钥认证的 `russh` channel**，显式请求 `sftp` subsystem 后只开放三类操作：
+[`src/sftp.rs`](../../apps/desktop/src-tauri/src/sftp.rs) 的 `ReadOnlySftp` 接收**已经完成主机指纹确认和公钥认证的 `russh` channel**，显式请求 `sftp` subsystem 后直接驱动 `russh-sftp 3.0.1` 的 raw 协议会话，只开放四类操作：
 
-- `list(path)`：目录列表及文件名、POSIX 风格路径、类型、大小、权限/模式和修改时间；单次最多保留 4,096 项，超出即报错；
-- `metadata(path)`：单路径元数据；
-- `read(path)`：仅打开普通文件，最多读取 64 KiB；路径长度与控制字符在请求前拒绝。
+- `canonicalize(path)`：解析登录目录等路径；
+- `list(path)`：逐页 `readdir`，返回文件名、类型、大小、权限/模式和修改时间（路径只在列表头出现一次）。保留条目达到 4,096 项或文件名累计达到 1 MiB 时**立即停止读取**、关闭目录句柄并返回 `truncated: true`；含 `/`、NUL 或为空的文件名视为服务端协议错误；
+- `metadata(path)`：单路径 `stat`，跟随符号链接；
+- `read(path)`：仅打开普通文件，按 32 KiB 分块读取，最多 64 KiB；读取中文件增长超过上限即报错。路径长度与控制字符在请求前拒绝。
 
-当前 Rust 切片已通过 Tauri 暴露三个受限命令：`ssh_sftp_list`、`ssh_sftp_metadata`、`ssh_sftp_read`。每次命令都必须携带当前窗口 scope、唯一 operation ID 和一次性主机信任 challenge；命令复用现有未加密 Ed25519 认证，操作结束即断开，不保存连接句柄或私钥。前端尚未调用这些命令，尚未形成文件面板工作流。
+内存边界：保留部分为最多 4,096 条元数据加 1 MiB 文件名；另有一个正在检查的协议包（russh-sftp 默认包上限 256 KiB）。russh 通道自身的接收缓冲不在该预算内，不能把它写成完整的恶意服务端内存保证。
+
+### Tauri IPC 与浏览授权
+
+前端通过五个命令访问，均在 `build.rs` 和 `capabilities/main.json` 登记，仅 `main` 窗口可调用：
+
+| 命令 | 输入 | 行为 |
+| --- | --- | --- |
+| `ssh_sftp_open` | 一次性 challenge、scope、operation ID | 消费已确认的 challenge，重新连接并固定校验主机密钥，认证后列出登录目录；成功后才签发浏览授权 |
+| `ssh_sftp_list` / `ssh_sftp_metadata` / `ssh_sftp_read` | 授权、scope、operation ID、路径 | 每次重新连接、固定校验同一主机密钥并重新读取所选私钥文件，操作后断开 |
+| `ssh_sftp_close` | 授权 | 吊销授权；重复调用无副作用 |
+
+浏览授权只存在于 Rust 内存，绑定窗口与页面 scope，空闲 5 分钟或签发 30 分钟后失效，全应用最多 4 个；页面刷新、窗口关闭和应用退出时清除，不写入 known_hosts、配置或日志。连接阶段失败（传输、握手、主机密钥变化、私钥读取、认证、rekey）会立即吊销授权，并在错误末尾附加 `reconnect and verify the host again`，前端据此回到重新核对指纹；文件级错误、超时和用户取消保留授权。没有写入、删除、重命名或权限修改接口，也不保持长连接。
+
+### 真实 OpenSSH 验收
+
+`node --test tests/fixtures/ssh-sftp/rust-client.test.mjs` 的第三个用例在独立夹具实例的远端目录写入小文本、符号链接、子目录和含 4,097 个文件的目录，然后显式运行 ignored 测试 `real_fixture_sftp_read_only_browse`。它通过 Rust `Ssh` 服务（不经过 WebView）对系统 OpenSSH `sftp-server` 验证：一次性 challenge 被消费；登录目录解析与列表；符号链接 `stat` 跟随到文件；小文件逐字节一致；夹具自检留下的 1 MiB+ 文件被 64 KiB 上限拒绝；目录读取与不存在路径报错且授权保留；子目录列表；4,097 项目录截断为 4,096 项；关闭授权后再操作返回过期。结束时 Rust 侧无残留操作、授权或 challenge，夹具删除全部临时文件。
 
 它没有写入、删除、重命名、权限修改或持久化凭据，也没有把认证绕过为独立 SFTP 登录。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
 

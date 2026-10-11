@@ -50,19 +50,37 @@ async fn ssh_accept(
 }
 
 #[tauri::command]
-async fn ssh_sftp_list(
+async fn ssh_sftp_open(
     window: WebviewWindow,
     service: State<'_, Arc<ssh::Ssh>>,
     challenge_token: String,
     operation_id: String,
     scope_token: String,
+) -> Result<ssh::SftpOpened, String> {
+    service
+        .sftp_open(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+        )
+        .await
+}
+
+#[tauri::command]
+async fn ssh_sftp_list(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    grant_token: String,
+    operation_id: String,
+    scope_token: String,
     path: String,
-) -> Result<Vec<sftp::RemoteEntry>, String> {
+) -> Result<sftp::RemoteListing, String> {
     service
         .sftp_list(
             window.label(),
             &operation_id,
-            &challenge_token,
+            &grant_token,
             &scope_token,
             path,
         )
@@ -73,7 +91,7 @@ async fn ssh_sftp_list(
 async fn ssh_sftp_metadata(
     window: WebviewWindow,
     service: State<'_, Arc<ssh::Ssh>>,
-    challenge_token: String,
+    grant_token: String,
     operation_id: String,
     scope_token: String,
     path: String,
@@ -82,7 +100,7 @@ async fn ssh_sftp_metadata(
         .sftp_metadata(
             window.label(),
             &operation_id,
-            &challenge_token,
+            &grant_token,
             &scope_token,
             path,
         )
@@ -93,7 +111,7 @@ async fn ssh_sftp_metadata(
 async fn ssh_sftp_read(
     window: WebviewWindow,
     service: State<'_, Arc<ssh::Ssh>>,
-    challenge_token: String,
+    grant_token: String,
     operation_id: String,
     scope_token: String,
     path: String,
@@ -102,11 +120,20 @@ async fn ssh_sftp_read(
         .sftp_read(
             window.label(),
             &operation_id,
-            &challenge_token,
+            &grant_token,
             &scope_token,
             path,
         )
         .await
+}
+
+#[tauri::command]
+fn ssh_sftp_close(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    grant_token: String,
+) -> Result<(), String> {
+    service.sftp_close(window.label(), &grant_token)
 }
 
 #[tauri::command]
@@ -274,9 +301,11 @@ pub fn run() {
             pty_close,
             ssh_probe,
             ssh_accept,
+            ssh_sftp_open,
             ssh_sftp_list,
             ssh_sftp_metadata,
             ssh_sftp_read,
+            ssh_sftp_close,
             ssh_reject,
             ssh_cancel
         ])

@@ -2,7 +2,11 @@
 
 日期：2026-10-11。此报告是独立测试通道的实测结果，范围为浏览器原型；不代表原生 WKWebView、Rust PTY、真实 SSH/SFTP 或 130 项功能完成。
 
-## 本轮交互 SSH 界面回归
+## 本轮只读 SFTP 面板回归
+
+全套执行 **108 passed，0 failed**，新增 10 项位于 `apps/desktop/tests/e2e/sftp-panel.spec.ts`，全部使用 IPC stub。覆盖：浏览器中入口禁用；明确信任后一次性 challenge 只交给面板、SFTP 调用不含私钥路径；导航、符号链接解析和预览只使用授权令牌；取消后忽略晚到结果；授权失效回到重新核对指纹；文件级错误保留授权；断开释放授权并恢复演示面板；打开失败与取消后晚到授权被释放；同一时间只允许一个文件浏览；截断提示与 1000px 布局。不代表 Rust 网络、OpenSSH 或原生 WKWebView 验收。
+
+## 上一轮交互 SSH 界面回归
 
 独立全套执行 **98 passed，0 failed，0 skipped，0 flaky；27.95 秒**，严格 TypeScript 检查与 Vite build 通过。新增 14 项位于 `apps/desktop/tests/e2e/ssh-terminal-contract.spec.ts`；全部使用 IPC stub，不启动 Rust、SSH 网络或 WKWebView。原有终端缺口与旧 Unicode 反例继续保留，不能把 green 总数当作功能完成数。
 

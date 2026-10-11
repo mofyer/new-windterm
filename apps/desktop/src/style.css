@@ -267,3 +267,21 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 #ssh-result pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; padding: 12px; margin: 0 0 8px; border-radius: 12px; background: var(--surface); font-size: 12px; line-height: 1.6; user-select: text; }
 #ssh-result summary { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 8px; }
 #ssh-result summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#sftp-view [hidden], #file-demo [hidden] { display: none; }
+#sftp-connect { margin-top: 8px; font-size: 11px; }
+.sftp-host { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px; overflow-wrap: anywhere; }
+.sftp-host button, .sftp-toolbar button, .sftp-status button, .sftp-actions button { font-size: 11px; min-height: 26px; padding: 3px 8px; }
+.sftp-toolbar, .sftp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#sftp-path { display: block; font-size: 10px; color: var(--muted); margin-bottom: 8px; overflow-wrap: anywhere; line-height: 1.5; }
+.sftp-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 18px; font-size: 11px; color: var(--muted); }
+#sftp-error { font-size: 11px; color: #ad3f46; margin: 4px 0; overflow-wrap: anywhere; }
+[data-theme="dark"] #sftp-error { color: #e7aaaa; }
+#sftp-error:empty { display: none; }
+#sftp-list { max-height: 220px; overflow: auto; }
+#sftp-list .file-row > span { min-width: 0; overflow: hidden; }
+#sftp-list .file-row > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sftp-detail { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+#sftp-properties { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; margin: 0 0 8px; font-size: 11px; }
+#sftp-properties dt { color: var(--muted); }
+#sftp-properties dd { margin: 0; overflow-wrap: anywhere; }
+#sftp-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; padding: 8px; margin: 0 0 8px; border-radius: 10px; background: var(--surface); font-size: 11px; line-height: 1.5; user-select: text; }

@@ -1,7 +1,7 @@
 //! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
-use crate::sftp::{ReadOnlySftp, RemoteEntry};
+use crate::sftp::{ReadOnlySftp, RemoteEntry, RemoteListing};
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate},
@@ -25,6 +25,13 @@ const MAX_BYTES: usize = 64 * 1024;
 const MAX_ACTIVE: usize = 4;
 const MAX_CHALLENGES: usize = 8;
 const MAX_CANCELLED: usize = 128;
+const SFTP_IDLE: Duration = Duration::from_secs(5 * 60);
+const SFTP_LIFETIME: Duration = Duration::from_secs(30 * 60);
+const MAX_SFTP_GRANTS: usize = 4;
+// Both messages end with the same phrase so the UI can return to reconnect.
+const SFTP_EXPIRED: &str = "SFTP session expired; reconnect and verify the host again";
+const SFTP_REVOKED: &str = "SFTP session closed; reconnect and verify the host again";
+const SFTP_CAPACITY: &str = "SFTP session capacity reached; disconnect another file browser";
 static KEY_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(MAX_ACTIVE);
 
 #[derive(Clone, Deserialize)]
@@ -67,6 +74,32 @@ struct Active {
     cancel: watch::Sender<bool>,
 }
 
+/// Short-lived, in-memory permission to repeat read-only SFTP operations after
+/// one explicit host-key confirmation. Every operation still reconnects and
+/// pins the confirmed key; nothing is persisted or shared across windows.
+struct Grant {
+    owner: String,
+    scope: String,
+    request: Request,
+    key: Vec<u8>,
+    idle_until: Instant,
+    expires: Instant,
+}
+
+impl Grant {
+    fn alive(&self, now: Instant) -> bool {
+        now < self.idle_until && now < self.expires
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SftpOpened {
+    pub grant_token: String,
+    pub idle_seconds: u64,
+    pub listing: RemoteListing,
+}
+
 struct AuthenticatedSftp {
     _socket: SocketGuard,
     session: client::Handle<KeyCheck>,
@@ -75,15 +108,32 @@ struct AuthenticatedSftp {
 }
 
 enum SftpRequest {
+    Open,
     List(String),
     Metadata(String),
     Read(String),
 }
 
 enum SftpResult {
-    List(Vec<RemoteEntry>),
+    List(RemoteListing),
     Metadata(RemoteEntry),
     Read(Vec<u8>),
+}
+
+/// Failures carrying evidence against the confirmed trust (host key changed,
+/// rekey, public key now rejected) revoke a grant. Transport, local resource,
+/// file-level, timeout and cancellation failures keep it.
+enum SftpFailure {
+    Revoke(String),
+    Keep(String),
+}
+
+impl SftpFailure {
+    fn message(self) -> String {
+        match self {
+            Self::Revoke(message) | Self::Keep(message) => message,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -97,6 +147,7 @@ struct Registry {
     completed: VecDeque<(String, String)>,
     shutdown: bool,
     terminals: HashMap<String, Arc<terminal::Terminal>>,
+    grants: HashMap<String, Grant>,
 }
 
 #[derive(Default)]
@@ -230,6 +281,7 @@ impl Ssh {
         registry
             .challenges
             .retain(|_, pending| pending.owner != owner);
+        registry.grants.retain(|_, grant| grant.owner != owner);
     }
 
     pub fn shutdown(&self) {
@@ -239,6 +291,7 @@ impl Ssh {
             active.cancel.send_replace(true);
         }
         registry.challenges.clear();
+        registry.grants.clear();
     }
 
     pub fn reject(&self, owner: &str, token: &str) -> Result<(), String> {
@@ -358,19 +411,49 @@ impl Ssh {
         Ok(output)
     }
 
-    pub async fn sftp_list(
+    /// Consumes a confirmed challenge, lists the login directory, and only then
+    /// issues a grant for further read-only operations against the same key.
+    pub async fn sftp_open(
         &self,
         owner: &str,
         id: &str,
         token: &str,
         scope: &str,
+    ) -> Result<SftpOpened, String> {
+        let operation = self.start(owner, id, scope)?;
+        // Fail before any network work when no grant could be issued anyway.
+        self.grant_capacity()?;
+        let pending = self.consume(owner, token)?;
+        let (request, key) = (pending.request, pending.key);
+        let listing = match self
+            .run_sftp(&operation, request.clone(), key.clone(), SftpRequest::Open)
+            .await
+            .map_err(SftpFailure::message)?
+        {
+            SftpResult::List(listing) => listing,
+            _ => return Err("Unexpected SFTP result".into()),
+        };
+        let grant_token = self.issue_grant(&operation, scope, request, key)?;
+        Ok(SftpOpened {
+            grant_token,
+            idle_seconds: SFTP_IDLE.as_secs(),
+            listing,
+        })
+    }
+
+    pub async fn sftp_list(
+        &self,
+        owner: &str,
+        id: &str,
+        grant: &str,
+        scope: &str,
         path: String,
-    ) -> Result<Vec<RemoteEntry>, String> {
+    ) -> Result<RemoteListing, String> {
         match self
-            .sftp_request(owner, id, token, scope, SftpRequest::List(path))
+            .sftp_request(owner, id, grant, scope, SftpRequest::List(path))
             .await?
         {
-            SftpResult::List(entries) => Ok(entries),
+            SftpResult::List(listing) => Ok(listing),
             _ => Err("Unexpected SFTP result".into()),
         }
     }
@@ -379,12 +462,12 @@ impl Ssh {
         &self,
         owner: &str,
         id: &str,
-        token: &str,
+        grant: &str,
         scope: &str,
         path: String,
     ) -> Result<RemoteEntry, String> {
         match self
-            .sftp_request(owner, id, token, scope, SftpRequest::Metadata(path))
+            .sftp_request(owner, id, grant, scope, SftpRequest::Metadata(path))
             .await?
         {
             SftpResult::Metadata(entry) => Ok(entry),
@@ -396,12 +479,12 @@ impl Ssh {
         &self,
         owner: &str,
         id: &str,
-        token: &str,
+        grant: &str,
         scope: &str,
         path: String,
     ) -> Result<Vec<u8>, String> {
         match self
-            .sftp_request(owner, id, token, scope, SftpRequest::Read(path))
+            .sftp_request(owner, id, grant, scope, SftpRequest::Read(path))
             .await?
         {
             SftpResult::Read(bytes) => Ok(bytes),
@@ -409,22 +492,132 @@ impl Ssh {
         }
     }
 
+    /// Revokes a grant. Idempotent. An operation that already passed
+    /// `use_grant` may still finish within its deadline; the UI cancels it.
+    pub fn sftp_close(&self, owner: &str, grant: &str) -> Result<(), String> {
+        let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+        if registry
+            .grants
+            .get(grant)
+            .is_some_and(|grant| grant.owner != owner)
+        {
+            return Err("SFTP session not owned by this window".into());
+        }
+        registry.grants.remove(grant);
+        Ok(())
+    }
+
     async fn sftp_request(
         &self,
         owner: &str,
         id: &str,
-        token: &str,
+        grant: &str,
         scope: &str,
         request: SftpRequest,
     ) -> Result<SftpResult, String> {
         let operation = self.start(owner, id, scope)?;
-        let pending = self.consume(owner, token)?;
+        let (target, key) = self.use_grant(owner, grant, scope)?;
+        self.run_sftp(&operation, target, key, request)
+            .await
+            .map_err(|failure| match failure {
+                SftpFailure::Revoke(message) => {
+                    self.revoke_grant(owner, grant);
+                    format!("{message}; {SFTP_REVOKED}")
+                }
+                SftpFailure::Keep(message) => message,
+            })
+    }
+
+    async fn run_sftp(
+        &self,
+        operation: &Operation<'_>,
+        target: Request,
+        key: Vec<u8>,
+        request: SftpRequest,
+    ) -> Result<SftpResult, SftpFailure> {
         let mut cancel = operation.cancel.clone();
-        let work = execute_sftp(pending, cancel.clone(), request);
+        let work = execute_sftp(target, key, cancel.clone(), request);
         tokio::select! {
             biased;
-            _ = cancel.changed() => Err("SSH operation cancelled".into()),
-            result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SFTP operation timed out".to_string())?,
+            _ = cancel.changed() => Err(SftpFailure::Keep("SSH operation cancelled".into())),
+            result = tokio::time::timeout(DEADLINE, work) => result
+                .map_err(|_| SftpFailure::Keep("SFTP operation timed out".into()))?,
+        }
+    }
+
+    fn grant_capacity(&self) -> Result<(), String> {
+        let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+        let now = Instant::now();
+        registry.grants.retain(|_, grant| grant.alive(now));
+        if registry.grants.len() >= MAX_SFTP_GRANTS {
+            return Err(SFTP_CAPACITY.into());
+        }
+        Ok(())
+    }
+
+    fn issue_grant(
+        &self,
+        operation: &Operation<'_>,
+        scope: &str,
+        request: Request,
+        key: Vec<u8>,
+    ) -> Result<String, String> {
+        let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+        if *operation.cancel.borrow()
+            || registry.shutdown
+            || registry.scopes.get(&operation.owner).map(String::as_str) != Some(scope)
+        {
+            return Err("SSH operation cancelled".into());
+        }
+        let now = Instant::now();
+        registry.grants.retain(|_, grant| grant.alive(now));
+        if registry.grants.len() >= MAX_SFTP_GRANTS {
+            return Err(SFTP_CAPACITY.into());
+        }
+        let token = uuid::Uuid::new_v4().to_string();
+        registry.grants.insert(
+            token.clone(),
+            Grant {
+                owner: operation.owner.clone(),
+                scope: scope.into(),
+                request,
+                key,
+                idle_until: now + SFTP_IDLE,
+                expires: now + SFTP_LIFETIME,
+            },
+        );
+        Ok(token)
+    }
+
+    fn use_grant(
+        &self,
+        owner: &str,
+        token: &str,
+        scope: &str,
+    ) -> Result<(Request, Vec<u8>), String> {
+        let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+        let now = Instant::now();
+        registry.grants.retain(|_, grant| grant.alive(now));
+        let grant = registry.grants.get_mut(token).ok_or(SFTP_EXPIRED)?;
+        if grant.owner != owner {
+            return Err("SFTP session not owned by this window".into());
+        }
+        if grant.scope != scope {
+            registry.grants.remove(token);
+            return Err(SFTP_EXPIRED.into());
+        }
+        grant.idle_until = (now + SFTP_IDLE).min(grant.expires);
+        Ok((grant.request.clone(), grant.key.clone()))
+    }
+
+    fn revoke_grant(&self, owner: &str, token: &str) {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        if registry
+            .grants
+            .get(token)
+            .is_some_and(|grant| grant.owner == owner)
+        {
+            registry.grants.remove(token);
         }
     }
 }
@@ -642,11 +835,12 @@ async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Outp
 }
 
 async fn execute_sftp(
-    pending: Pending,
+    target: Request,
+    key: Vec<u8>,
     cancel: watch::Receiver<bool>,
     request: SftpRequest,
-) -> Result<SftpResult, String> {
-    let authenticated = connect_sftp(pending, cancel).await?;
+) -> Result<SftpResult, SftpFailure> {
+    let authenticated = connect_sftp(target, key, cancel).await?;
     let AuthenticatedSftp {
         _socket,
         session,
@@ -654,13 +848,17 @@ async fn execute_sftp(
         rekey_rejected,
     } = authenticated;
     let result = match request {
+        SftpRequest::Open => match sftp.canonicalize(".").await {
+            Ok(home) => sftp.list(&home).await.map(SftpResult::List),
+            Err(error) => Err(error),
+        },
         SftpRequest::List(path) => sftp.list(&path).await.map(SftpResult::List),
         SftpRequest::Metadata(path) => sftp.metadata(&path).await.map(SftpResult::Metadata),
         SftpRequest::Read(path) => sftp.read(&path).await.map(SftpResult::Read),
     };
     let _ = sftp.close().await;
     if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err(REKEY_ERROR.into());
+        return Err(SftpFailure::Revoke(REKEY_ERROR.into()));
     }
     let _ = session
         .disconnect(
@@ -670,18 +868,19 @@ async fn execute_sftp(
         )
         .await;
     let _ = tokio::time::timeout(Duration::from_millis(250), session).await;
-    result
+    result.map_err(SftpFailure::Keep)
 }
 
 async fn connect_sftp(
-    pending: Pending,
+    target: Request,
+    key: Vec<u8>,
     cancel: watch::Receiver<bool>,
-) -> Result<AuthenticatedSftp, String> {
-    let (socket, stream) = transport(&pending.request).await?;
+) -> Result<AuthenticatedSftp, SftpFailure> {
+    let (socket, stream) = transport(&target).await.map_err(SftpFailure::Keep)?;
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
-        expected: Some(pending.key),
+        expected: Some(key),
         observed: Arc::default(),
         mismatch: mismatch.clone(),
         kex_seen: false,
@@ -691,28 +890,34 @@ async fn connect_sftp(
         .await
         .map_err(|_| {
             if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
-                "SSH host key changed; authentication was not attempted"
+                SftpFailure::Revoke("SSH host key changed; authentication was not attempted".into())
             } else {
-                "SSH handshake failed"
+                SftpFailure::Keep("SSH handshake failed".into())
             }
         })?;
-    let path = pending.request.private_key_path;
-    let key = read_key_bounded(cancel, move || private_key(&path)).await?;
-    if !session
-        .authenticate_publickey(pending.request.username, key)
+    let path = target.private_key_path;
+    let key = read_key_bounded(cancel, move || private_key(&path))
         .await
-        .map_err(|_| "SSH authentication failed")?
+        .map_err(SftpFailure::Keep)?;
+    if !session
+        .authenticate_publickey(target.username, key)
+        .await
+        .map_err(|_| SftpFailure::Keep("SSH authentication failed".into()))?
         .success()
     {
-        return Err("SSH public key authentication rejected".into());
+        return Err(SftpFailure::Revoke(
+            "SSH public key authentication rejected".into(),
+        ));
     }
     let channel = session
         .channel_open_session()
         .await
-        .map_err(|_| "SSH channel open failed")?;
-    let sftp = ReadOnlySftp::from_channel(channel).await?;
+        .map_err(|_| SftpFailure::Keep("SSH channel open failed".into()))?;
+    let sftp = ReadOnlySftp::from_channel(channel)
+        .await
+        .map_err(SftpFailure::Keep)?;
     if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err(REKEY_ERROR.into());
+        return Err(SftpFailure::Revoke(REKEY_ERROR.into()));
     }
     Ok(AuthenticatedSftp {
         _socket: socket,
@@ -1022,6 +1227,330 @@ mod tests {
         };
         assert!(!handler.check_server_key(&public).await.unwrap());
         assert!(mismatch.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    fn grant(service: &Ssh, owner: &str, request: Request) -> String {
+        let scope = service.context(owner).unwrap();
+        let operation = service.start(owner, &id(), &scope).unwrap();
+        service
+            .issue_grant(&operation, &scope, request, vec![1, 2, 3])
+            .unwrap()
+    }
+
+    #[test]
+    fn sftp_grants_are_owner_scope_bound_and_refresh_idle_time() {
+        let service = Ssh::default();
+        let token = grant(&service, "main", request());
+        let scope = service.context("main").unwrap();
+        assert_eq!(
+            service.use_grant("other", &token, &scope).err().unwrap(),
+            "SFTP session not owned by this window"
+        );
+        assert!(service.sftp_close("other", &token).is_err());
+        let before = service.registry.lock().unwrap().grants[&token].idle_until;
+        std::thread::sleep(Duration::from_millis(5));
+        let (target, key) = service.use_grant("main", &token, &scope).unwrap();
+        assert_eq!((target.port, key), (2222, vec![1, 2, 3]));
+        assert!(service.registry.lock().unwrap().grants[&token].idle_until > before);
+        assert_eq!(
+            service
+                .use_grant("main", &token, "stale-scope")
+                .err()
+                .unwrap(),
+            SFTP_EXPIRED
+        );
+        assert!(service.registry.lock().unwrap().grants.is_empty());
+    }
+
+    #[test]
+    fn sftp_grants_expire_by_idle_time_and_absolute_lifetime() {
+        let service = Ssh::default();
+        let scope = service.context("main").unwrap();
+        for expired in [true, false] {
+            let token = grant(&service, "main", request());
+            let past = Instant::now() - Duration::from_secs(1);
+            let mut registry = service.registry.lock().unwrap();
+            let entry = registry.grants.get_mut(&token).unwrap();
+            if expired {
+                entry.expires = past;
+            } else {
+                entry.idle_until = past;
+            }
+            drop(registry);
+            assert_eq!(
+                service.use_grant("main", &token, &scope).err().unwrap(),
+                SFTP_EXPIRED
+            );
+        }
+        assert!(service.registry.lock().unwrap().grants.is_empty());
+    }
+
+    #[test]
+    fn sftp_grants_are_capped_and_revoked_by_close_reload_and_shutdown() {
+        let service = Ssh::default();
+        let tokens: Vec<_> = (0..MAX_SFTP_GRANTS)
+            .map(|_| grant(&service, "main", request()))
+            .collect();
+        let scope = service.context("main").unwrap();
+        let operation = service.start("main", &id(), &scope).unwrap();
+        assert!(service
+            .issue_grant(&operation, &scope, request(), vec![1])
+            .is_err());
+        service.sftp_close("main", &tokens[0]).unwrap();
+        service.sftp_close("main", &tokens[0]).unwrap();
+        assert!(service.use_grant("main", &tokens[0], &scope).is_err());
+        service.close_owner("main");
+        assert!(service.registry.lock().unwrap().grants.is_empty());
+        assert!(service
+            .issue_grant(&operation, &scope, request(), vec![1])
+            .is_err());
+        let _ = grant(&service, "main", request());
+        service.shutdown();
+        assert!(service.registry.lock().unwrap().grants.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sftp_transport_failures_and_cancellation_keep_the_grant() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service = Arc::new(Ssh::default());
+        let mut input = request();
+        input.port = listener.local_addr().unwrap().port();
+        let token = grant(&service, "main", input);
+        let scope = service.context("main").unwrap();
+
+        // A stalled handshake cancelled by the user keeps the grant usable.
+        let operation_id = id();
+        let task = {
+            let (service, token, scope, operation_id) = (
+                service.clone(),
+                token.clone(),
+                scope.clone(),
+                operation_id.clone(),
+            );
+            tokio::spawn(async move {
+                service
+                    .sftp_list("main", &operation_id, &token, &scope, "/".into())
+                    .await
+            })
+        };
+        let (stalled, _) = listener.accept().await.unwrap();
+        service.cancel("main", &operation_id).unwrap();
+        assert_eq!(
+            task.await.unwrap().err().unwrap(),
+            "SSH operation cancelled"
+        );
+        drop(stalled);
+        assert!(service.registry.lock().unwrap().grants.contains_key(&token));
+
+        // A peer that drops the connection carries no evidence against trust.
+        let task = {
+            let (service, token, scope) = (service.clone(), token.clone(), scope.clone());
+            tokio::spawn(async move {
+                service
+                    .sftp_metadata("main", &id(), &token, &scope, "/".into())
+                    .await
+            })
+        };
+        drop(listener.accept().await.unwrap());
+        assert_eq!(task.await.unwrap().err().unwrap(), "SSH handshake failed");
+        assert!(service.registry.lock().unwrap().grants.contains_key(&token));
+        assert!(service.registry.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn evidence_failures_revoke_and_mark_the_grant_closed() {
+        let service = Ssh::default();
+        let token = grant(&service, "main", request());
+        service.revoke_grant("other", &token);
+        assert!(service.registry.lock().unwrap().grants.contains_key(&token));
+        let message = match SftpFailure::Revoke("SSH public key authentication rejected".into()) {
+            SftpFailure::Revoke(message) => {
+                service.revoke_grant("main", &token);
+                format!("{message}; {SFTP_REVOKED}")
+            }
+            SftpFailure::Keep(message) => message,
+        };
+        assert!(message.ends_with("reconnect and verify the host again"));
+        assert!(SFTP_EXPIRED.ends_with("reconnect and verify the host again"));
+        assert!(service.registry.lock().unwrap().grants.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reload_during_sftp_open_leaves_no_grant() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service = Arc::new(Ssh::default());
+        let mut input = request();
+        input.port = listener.local_addr().unwrap().port();
+        let token = id();
+        service.registry.lock().unwrap().challenges.insert(
+            token.clone(),
+            Pending {
+                owner: "main".into(),
+                request: input,
+                key: vec![1],
+                expires: Instant::now() + TRUST_TTL,
+            },
+        );
+        let scope = service.context("main").unwrap();
+        let task = {
+            let service = service.clone();
+            tokio::spawn(async move { service.sftp_open("main", &id(), &token, &scope).await })
+        };
+        let (_stalled, _) = listener.accept().await.unwrap();
+        service.close_owner("main");
+        assert_eq!(
+            task.await.unwrap().err().unwrap(),
+            "SSH operation cancelled"
+        );
+        let registry = service.registry.lock().unwrap();
+        assert!(registry.grants.is_empty() && registry.active.is_empty());
+        assert!(registry.challenges.is_empty());
+    }
+
+    #[test]
+    fn sftp_open_capacity_fails_before_consuming_the_challenge() {
+        let service = Ssh::default();
+        for _ in 0..MAX_SFTP_GRANTS {
+            let _ = grant(&service, "main", request());
+        }
+        let token = pending(&service, Instant::now() + TRUST_TTL);
+        let scope = service.context("main").unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = runtime
+            .block_on(service.sftp_open("main", &id(), &token, &scope))
+            .err()
+            .unwrap();
+        assert_eq!(error, SFTP_CAPACITY);
+        assert!(service
+            .registry
+            .lock()
+            .unwrap()
+            .challenges
+            .contains_key(&token));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires the isolated fixture; run tests/fixtures/ssh-sftp/rust-client.test.mjs"]
+    async fn real_fixture_sftp_read_only_browse() {
+        use crate::sftp::{RemoteKind, MAX_DIRECTORY_ENTRIES};
+        let env = |name: &str| std::env::var(name).unwrap();
+        let remote = env("P0_SSH_FIXTURE_REMOTE");
+        let service = Ssh::default();
+        let scope = service.context("main").unwrap();
+        let input_again = || Request {
+            host: env("P0_SSH_FIXTURE_HOST"),
+            port: env("P0_SSH_FIXTURE_PORT").parse().unwrap(),
+            username: env("P0_SSH_FIXTURE_USER"),
+            private_key_path: env("P0_SSH_FIXTURE_KEY"),
+        };
+        let challenge = service
+            .probe("main", &id(), input_again(), &scope)
+            .await
+            .unwrap();
+        let opened = service
+            .sftp_open("main", &id(), &challenge.challenge_token, &scope)
+            .await
+            .unwrap();
+        assert!(service.consume("main", &challenge.challenge_token).is_err());
+        let grant = opened.grant_token;
+        assert_eq!(opened.listing.path, remote);
+        assert!(!opened.listing.truncated);
+        let kind = |name: &str| {
+            opened
+                .listing
+                .entries
+                .iter()
+                .find(|entry| entry.name == name)
+                .map(|entry| entry.kind)
+        };
+        assert_eq!(kind("small-中文.txt"), Some(RemoteKind::File));
+        assert_eq!(kind("中文-🌏.bin"), Some(RemoteKind::File));
+        assert_eq!(kind("nested"), Some(RemoteKind::Directory));
+        assert_eq!(kind("link-to-small"), Some(RemoteKind::Symlink));
+
+        let path = |name: &str| format!("{remote}/{name}");
+        let small = b"P0 SFTP read-only \xe4\xb8\xad\xe6\x96\x87 \xf0\x9f\x8c\x8f\n".to_vec();
+        let followed = service
+            .sftp_metadata("main", &id(), &grant, &scope, path("link-to-small"))
+            .await
+            .unwrap();
+        assert_eq!(
+            (followed.kind, followed.size),
+            (RemoteKind::File, small.len() as u64)
+        );
+        let bytes = service
+            .sftp_read("main", &id(), &grant, &scope, path("small-中文.txt"))
+            .await
+            .unwrap();
+        assert_eq!(bytes, small);
+        for (name, expected) in [
+            ("中文-🌏.bin", "SFTP file exceeds the 64 KiB read limit"),
+            ("nested", "SFTP read requires a regular file"),
+            ("missing", "SFTP metadata request failed"),
+        ] {
+            let error = service
+                .sftp_read("main", &id(), &grant, &scope, path(name))
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(error, expected);
+        }
+        let nested = service
+            .sftp_list("main", &id(), &grant, &scope, path("nested"))
+            .await
+            .unwrap();
+        assert_eq!(nested.entries.len(), 1);
+        assert_eq!(nested.entries[0].name, "inner.txt");
+        let many = service
+            .sftp_list("main", &id(), &grant, &scope, path("many"))
+            .await
+            .unwrap();
+        assert!(many.truncated);
+        assert_eq!(many.entries.len(), MAX_DIRECTORY_ENTRIES);
+
+        service.sftp_close("main", &grant).unwrap();
+        assert_eq!(
+            service
+                .sftp_list("main", &id(), &grant, &scope, remote.clone())
+                .await
+                .err()
+                .unwrap(),
+            SFTP_EXPIRED
+        );
+
+        // A grant whose pinned host key no longer matches is revoked before the
+        // private key is read. Done last: it is an intentional pre-auth abort.
+        let challenge = service
+            .probe("main", &id(), input_again(), &scope)
+            .await
+            .unwrap();
+        let grant = service
+            .sftp_open("main", &id(), &challenge.challenge_token, &scope)
+            .await
+            .unwrap()
+            .grant_token;
+        service
+            .registry
+            .lock()
+            .unwrap()
+            .grants
+            .get_mut(&grant)
+            .unwrap()
+            .key[0] ^= 1;
+        assert_eq!(
+            service
+                .sftp_list("main", &id(), &grant, &scope, remote.clone())
+                .await
+                .err()
+                .unwrap(),
+            format!("SSH host key changed; authentication was not attempted; {SFTP_REVOKED}")
+        );
+        let registry = service.registry.lock().unwrap();
+        assert!(registry.active.is_empty() && registry.grants.is_empty());
+        assert!(registry.challenges.is_empty());
     }
 
     #[tokio::test]

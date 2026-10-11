@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-pty",
-  "description": "Only the bundled main window may control its own PTY and SSH sessions.",
+  "description": "Only the bundled main window may control its own PTY, SSH and read-only SFTP sessions.",
   "windows": [
     "main"
   ],
@@ -21,6 +21,11 @@
     "allow-ssh-write",
     "allow-ssh-resize",
     "allow-ssh-ack",
-    "allow-ssh-close"
+    "allow-ssh-close",
+    "allow-ssh-sftp-open",
+    "allow-ssh-sftp-list",
+    "allow-ssh-sftp-metadata",
+    "allow-ssh-sftp-read",
+    "allow-ssh-sftp-close"
   ]
 }

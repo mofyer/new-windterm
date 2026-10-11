@@ -213,7 +213,7 @@ test('simulation actions produce no external HTTP requests', async ({ page }) =>
   await page.locator('#transfer-list').getByRole('button', { name: '模拟失败' }).click();
   await page.locator('#about-open').click();
   await expect(page.locator('#about-dialog')).toContainText('真实 SSH 终端');
-  await expect(page.locator('#about-dialog')).toContainText('演示会话、SFTP 与文件传输仍为模拟');
+  await expect(page.locator('#about-dialog')).toContainText('演示会话与传输队列仍为模拟');
   await page.getByRole('button', { name: '返回工作台' }).click();
   expect(external).toEqual([]);
 });
