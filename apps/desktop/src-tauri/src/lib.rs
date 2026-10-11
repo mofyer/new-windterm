@@ -1,4 +1,5 @@
 mod known_hosts;
+pub mod net_terminal;
 mod platform;
 pub mod pty;
 pub mod sftp;
@@ -310,9 +311,70 @@ async fn pty_close(
     sessions.close(window.label(), &id)
 }
 
+#[tauri::command]
+async fn net_open(
+    window: WebviewWindow,
+    service: State<'_, Arc<net_terminal::NetTerminals>>,
+    target: net_terminal::Target,
+    id: String,
+    cols: u16,
+    rows: u16,
+    on_event: Channel<PtyEvent>,
+) -> Result<Opened, String> {
+    service
+        .inner()
+        .open(
+            window.label(),
+            &id,
+            target,
+            cols,
+            rows,
+            Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
+        )
+        .await
+        .map(|id| Opened { id })
+}
+#[tauri::command]
+async fn net_write(
+    window: WebviewWindow,
+    service: State<'_, Arc<net_terminal::NetTerminals>>,
+    id: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    service.write(window.label(), &id, data).await
+}
+#[tauri::command]
+fn net_resize(
+    window: WebviewWindow,
+    service: State<'_, Arc<net_terminal::NetTerminals>>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    service.resize(window.label(), &id, cols, rows)
+}
+#[tauri::command]
+fn net_ack(
+    window: WebviewWindow,
+    service: State<'_, Arc<net_terminal::NetTerminals>>,
+    id: String,
+    sequence: u64,
+) -> Result<(), String> {
+    service.ack(window.label(), &id, sequence)
+}
+#[tauri::command]
+fn net_close(
+    window: WebviewWindow,
+    service: State<'_, Arc<net_terminal::NetTerminals>>,
+    id: String,
+) -> Result<(), String> {
+    service.close(window.label(), &id)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(Sessions::default()))
+        .manage(Arc::new(net_terminal::NetTerminals::default()))
         .setup(|app| {
             // Saved host trust lives with application data, never in the repo
             // or the WebView. The file is created on the first explicit save.
@@ -342,7 +404,12 @@ pub fn run() {
             ssh_trust_save,
             ssh_trust_replace,
             ssh_reject,
-            ssh_cancel
+            ssh_cancel,
+            net_open,
+            net_write,
+            net_resize,
+            net_ack,
+            net_close
         ])
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
@@ -352,12 +419,18 @@ pub fn run() {
                 webview
                     .state::<Arc<ssh::Ssh>>()
                     .close_owner(webview.label());
+                webview
+                    .state::<Arc<net_terminal::NetTerminals>>()
+                    .close_owner(webview.label());
             }
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_owner(window.label());
                 window.state::<Arc<ssh::Ssh>>().close_owner(window.label());
+                window
+                    .state::<Arc<net_terminal::NetTerminals>>()
+                    .close_owner(window.label());
             }
         })
         .build(tauri::generate_context!())
@@ -366,6 +439,7 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::Exit) {
                 app.state::<Arc<Sessions>>().shutdown();
                 app.state::<Arc<ssh::Ssh>>().shutdown();
+                app.state::<Arc<net_terminal::NetTerminals>>().shutdown();
             }
         });
 }

@@ -23,6 +23,11 @@ fn main() {
             "ssh_sftp_close",
             "ssh_trust_save",
             "ssh_trust_replace",
+            "net_open",
+            "net_write",
+            "net_resize",
+            "net_ack",
+            "net_close",
         ]));
     tauri_build::try_build(attributes).expect("Tauri build configuration failed");
 }
