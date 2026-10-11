@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "checked_on": "2026-10-11",
   "upstream_commit": "a8336c1d1e3dd1a981500dae8ef9eb42066de95f",
   "target_release": "2.7.0",
@@ -20,8 +20,32 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "会话类型入口可见；实际会话行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D I R L B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_TERMINAL.zh-CN.md#验证与未验收项",
+          "result": "loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作",
+          "result": "loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#持久化主机信任",
+          "result": "loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -45,8 +69,27 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "会话类型入口可见；实际会话行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D S R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NET_TERMINAL.zh-CN.md#证据",
+          "result": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/TRANSPORTS.zh-CN.md#telnetc02",
+          "result": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -70,8 +113,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "会话类型入口可见；实际会话行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NET_TERMINAL.zh-CN.md#证据",
+          "result": "Raw TCP 终端标签的字节完整性与背压，仅 loopback；无真实服务互操作"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "Raw TCP 终端标签的字节完整性与背压，仅 loopback；无真实服务互操作",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -95,8 +152,21 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "会话类型入口可见；实际会话行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_decision_record",
+          "source": "docs/p0/TRANSPORTS.zh-CN.md#串口c04",
+          "result": "仅验证计划，需要 USB 串口设备；无代码"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "仅验证计划，需要 USB 串口设备；无代码",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -120,8 +190,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -140,8 +217,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C06)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "部分；证据类型 D B R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/CONTROLMASTER_ADR.zh-CN.md#证据",
+          "result": "单连接多 PTY 通道探针（russh 夹具）与提议 ADR；无外部 ControlPath"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "单连接多 PTY 通道探针（russh 夹具）与提议 ADR；无外部 ControlPath",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -160,8 +251,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C07)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B R L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
+          "result": "不经 shell 的 ProxyCommand 探针（依赖 /usr/bin/nc）；无界面与配置"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "不经 shell 的 ProxyCommand 探针（依赖 /usr/bin/nc）；无界面与配置",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -180,8 +285,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C08)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
+          "result": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -200,8 +319,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C09)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#ssh-认证方式",
+          "result": "临时 ssh-agent 认证（russh 集成，仅 macOS 本机）；Windows 命名管道只经交叉编译"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "临时 ssh-agent 认证（russh 集成，仅 macOS 本机）；Windows 命名管道只经交叉编译",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -220,8 +353,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C10)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10",
+          "result": "agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -245,8 +392,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#ssh-认证方式",
+          "result": "密码正确/错误（russh 集成）；无保存与自动登录"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "密码正确/错误（russh 集成）；无保存与自动登录",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -270,8 +431,27 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#ssh-认证方式",
+          "result": "Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作",
+          "result": "Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -295,8 +475,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_KBDINT.zh-CN.md#证据macos-arm64本地",
+          "result": "多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -330,8 +524,22 @@
           "type": "upstream_source_configuration",
           "source": "https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/ConfigureChecks.cmake#L463",
           "result": "GSSAPI依赖探测失败可关闭编译选项；不能推导发布二进制实际构建或应用调用"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R L I B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_decision_record",
+          "source": "docs/p0/X11_GSSAPI_ADR.zh-CN.md#gssapigssapi-with-micc14",
+          "result": "仅决策记录；无实现与 KDC 实验"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "仅决策记录；无实现与 KDC 实验",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a4-c14gssapi-已随发布包链接",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -350,8 +558,21 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C15)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D R B I；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_decision_record",
+          "source": "docs/p0/X11_GSSAPI_ADR.zh-CN.md#x11-转发c15",
+          "result": "仅决策记录；无实现，需要 XQuartz 或 Xvfb"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "仅决策记录；无实现，需要 XQuartz 或 Xvfb",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -370,8 +591,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C16)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B I L R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
+          "result": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -390,8 +625,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C17)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B I L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10",
+          "result": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -410,8 +659,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C18)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
+          "result": "SOCKS5 动态转发 CONNECT（russh 夹具）；无认证、无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "SOCKS5 动态转发 CONNECT（russh 夹具）；无认证、无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -430,8 +693,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C19)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B R L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
+          "result": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -450,8 +727,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C20)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
+          "result": "SOCKS5 代理含用户名/密码（本机测试代理）；无界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "SOCKS5 代理含用户名/密码（本机测试代理）；无界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -470,8 +761,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C21)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发",
+          "result": "支持；证据类型 D L B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
+          "result": "仅协议层跳板（与 C08 共用探针）；无已保存会话复用"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "仅协议层跳板（与 C08 共用探针）；无已保存会话复用",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -495,8 +800,27 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "会话类型入口可见；实际会话行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D B S L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/PTY_PROBE.zh-CN.md#已执行检查",
+          "result": "macOS zsh 真实 PTY 探针与 WKWebView 冒烟；bash、PowerShell Core 未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#当前轮原生-pty-数据路径冒烟",
+          "result": "macOS zsh 真实 PTY 探针与 WKWebView 冒烟；bash、PowerShell Core 未测"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "macOS zsh 真实 PTY 探针与 WKWebView 冒烟；bash、PowerShell Core 未测",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -515,8 +839,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T02)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D S R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界",
+          "result": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -535,8 +873,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T03)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D S R L P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新",
+          "result": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过",
+          "result": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -555,8 +912,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T04)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D R P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -575,8 +939,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -595,8 +966,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T06)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -625,8 +1003,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
+          "result": "xterm.js 6.0.0 原样行为探针：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "xterm.js 6.0.0 原样行为探针：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -655,8 +1047,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
+          "result": "原样行为探针：部分；SS2/SS3、S8C1T、DECSCL 等缺口"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：部分；SS2/SS3、S8C1T、DECSCL 等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -685,8 +1091,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#图形",
+          "result": "原样行为探针：SIXEL 被吞掉（不支持）；ReGIS 未测"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：SIXEL 被吞掉（不支持）；ReGIS 未测",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -715,8 +1135,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
+          "result": "原样行为探针：DECIC/DECDC 可用；左右边距与矩形操作缺口"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：DECIC/DECDC 可用；左右边距与矩形操作缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -745,8 +1179,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
+          "result": "原样行为探针：部分；DECST8C、DECSCL 缺口"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：部分；DECST8C、DECSCL 缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -775,8 +1223,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
+          "result": "原样行为探针：大部分可用；OSC 52、1005/1015 等缺口"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：大部分可用；OSC 52、1005/1015 等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -805,8 +1267,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "终端下拉选项可见；模式行为未测试"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#sgr-与颜色",
+          "result": "原样行为探针：16/256 色可用"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：16/256 色可用",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -825,8 +1301,23 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T14)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "沉默；除 README 声明外无静态证据"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查",
+          "result": "生产终端工厂的 Unicode 11 宽度回归（浏览器）；不是 Unicode 13"
         }
       ],
+      "static_review_conclusion": "silent",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "生产终端工厂的 Unicode 11 宽度回归（浏览器）；不是 Unicode 13",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#c1-t14-unicode-13-与宽字符",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -845,8 +1336,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T15)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查",
+          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作",
+          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -865,8 +1375,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T16)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D B P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#sgr-与颜色",
+          "result": "原样行为探针：24 位色可用"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：24 位色可用",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -885,8 +1409,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T17)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R L B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#鼠标与焦点",
+          "result": "原样行为探针：1000/1002/1003/1006 可用；1005/1015 不支持"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：1000/1002/1003/1006 可用；1005/1015 不支持",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -910,8 +1448,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#自动换行与反向换行",
+          "result": "原样行为探针：部分；待换行列号与反向换行差异"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：部分；待换行列号与反向换行差异",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -930,8 +1482,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T19)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -950,8 +1509,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T20)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#适配钩子可行性公开-api",
+          "result": "身份回复可经公开 parser 钩子补齐（H02）；自定义终端类型未实现"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "身份回复可经公开 parser 钩子补齐（H02）；自定义终端类型未实现",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -970,8 +1543,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T21)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#阻断-windterm-对齐的缺口",
+          "result": "63 项 vttest 相关序列样本；vttest 未运行"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "63 项 vttest 相关序列样本；vttest 未运行",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -995,8 +1582,22 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/global/wind.actions:2144",
           "result": "Tmux.AttachSession/DetachClient/SelectLayout 等入口"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/TMUX_CONTROL.zh-CN.md#实测",
+          "result": "control-mode 解析器对真实 tmux 3.6b；无界面映射"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "control-mode 解析器对真实 tmux 3.6b；无界面映射",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1015,8 +1616,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T23)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D R P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1035,8 +1643,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T24)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "部分；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1055,8 +1670,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F01)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_SFTP_FIXTURE.zh-CN.md#真实-openssh-验收",
+          "result": "只读浏览（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#只读-sftp-文件面板闭环",
+          "result": "只读浏览（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "只读浏览（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1075,8 +1709,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F02)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I R B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型下载与传输队列是模拟状态机，明确不落盘（WEB_QA），不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1095,8 +1737,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F03)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型传输队列是模拟状态机，没有真实上传（WEB_QA），不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1115,8 +1765,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F04)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1135,8 +1792,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1155,8 +1819,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F06)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R I；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1175,8 +1846,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F07)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1195,8 +1873,23 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F08)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "矛盾；证据类型 D I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09",
+          "result": "scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面"
         }
       ],
+      "static_review_conclusion": "contradicting",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1215,8 +1908,23 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F09)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "矛盾；证据类型 D I B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09",
+          "result": "scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面"
         }
       ],
+      "static_review_conclusion": "contradicting",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1235,8 +1943,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F10)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/MODEM.zh-CN.md#已验证",
+          "result": "sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1255,8 +1977,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F11)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/MODEM.zh-CN.md#已验证",
+          "result": "sans-IO 状态机自发自收（批量）；无 lrzsz 互操作，未接任何链路"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "loopback_fixture",
+      "p0_evidence_note": "sans-IO 状态机自发自收（批量）；无 lrzsz 互操作，未接任何链路",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1275,8 +2011,21 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F12)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_decision_record",
+          "source": "docs/p0/MODEM.zh-CN.md#adrzmodemf12",
+          "result": "仅 ADR；无代码"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "仅 ADR；无代码",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1295,8 +2044,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F13)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型文件面板是固定演示数据，不读本机目录（WEB_QA），不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1315,8 +2072,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F14)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1335,8 +2099,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F15)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1355,8 +2126,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F16)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1375,8 +2153,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F17)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "部分；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1395,8 +2180,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F18)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1415,8 +2207,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F19)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1435,8 +2234,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F20)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 D B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1455,8 +2261,17 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row F21)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
+          "result": "支持；证据类型 R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型传输队列的取消、失败与 8 项上限只是模拟状态机（WEB_QA），不计为运行证据",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a6-其他需要同步决定的措辞",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1480,8 +2295,15 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/global/locales/",
           "result": "34个.locale文件；不是34种语言完整质量验收"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1500,8 +2322,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G02)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a5-g02自动补全已有完整资源",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1525,8 +2355,22 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/global/wind.keymaps:310",
           "result": "isFreeTypeMode/cancelFreeTypeMode 入口"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "部分；证据类型 D B R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/FREE_TYPE.zh-CN.md#实测headless-chrome真实键盘事件",
+          "result": "隔离草稿编辑 PoC（浏览器）；未接生产终端"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "隔离草稿编辑 PoC（浏览器）；未接生产终端",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1550,8 +2394,16 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "紧凑布局原型只缩小间距与侧栏，UI_MAP 注明不是上游 Focus 模式，不计为运行证据",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1570,8 +2422,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R L B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1590,8 +2449,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G06)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D B L R S；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1610,8 +2476,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G07)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#原有控件与状态覆盖保留历史范围",
+          "result": "命令面板界面原型（浏览器）；未与上游命令集对照"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "命令面板界面原型（浏览器）；未与上游命令集对照",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1630,8 +2510,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G08)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1650,8 +2537,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G09)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型文件面板是演示数据，侧栏折叠不是 Explorer 树的展开折叠，不计为运行证据；只读 SFTP 面板的目录导航计入 F01",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1670,8 +2565,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G10)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型只有“本地终端”按钮，没有 Shell 面板，不计为运行证据；本地 PTY 证据计入 T01",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1690,8 +2593,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G11)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1710,8 +2620,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G12)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1735,8 +2652,16 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "矛盾；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "contradicting",
+      "p0_evidence_group": "static_only",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a1-g13本地远程模式快捷键",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1755,8 +2680,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G14)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1775,8 +2707,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G15)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1800,8 +2739,22 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/global/wind.keymaps:173",
           "result": "Text.ToggleFold 及 Fold/Unfold 动作"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/FOLDING.zh-CN.md#实测headless-chrome",
+          "result": "只读历史视图折叠 PoC；实时屏幕不能折叠"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "只读历史视图折叠 PoC；实时屏幕不能折叠",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1820,8 +2773,23 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G17)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "部分；证据类型 D R L P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/FOLDING.zh-CN.md#实测headless-chrome",
+          "result": "按提示符生成大纲 PoC；上游语义待对照"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "按提示符生成大纲 PoC；上游语义待对照",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a6-其他需要同步决定的措辞",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1840,8 +2808,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G18)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#原有控件与状态覆盖保留历史范围",
+          "result": "两面板分屏界面原型（浏览器）；无任意嵌套"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "两面板分屏界面原型（浏览器）；无任意嵌套",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1860,8 +2842,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G19)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型的外观选择属于 UI 主题（计入 G24），不是输出语法配色方案，不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1880,8 +2870,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G20)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机",
+          "result": "仅历史归档与折叠视图的搜索 PoC；无终端搜索界面"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/FOLDING.zh-CN.md#实测headless-chrome",
+          "result": "仅历史归档与折叠视图的搜索 PoC；无终端搜索界面"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "仅历史归档与折叠视图的搜索 PoC；无终端搜索界面",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1900,8 +2909,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G21)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "部分；证据类型 D B R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1920,8 +2936,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G22)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1940,8 +2963,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G23)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "部分；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1960,8 +2990,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G24)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#最终白银浮层配色与正文对比度",
+          "result": "浅色/深色/跟随系统外观原型与对比度测量；未与上游主题对照"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "浅色/深色/跟随系统外观原型与对比度测量；未与上游主题对照",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1980,8 +3024,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G25)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2000,8 +3051,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G26)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型标签只能切换和逐个关闭，没有已打开标签搜索，不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2020,8 +3079,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G27)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型标签只能逐个关闭，没有关闭右侧标签，不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2040,8 +3107,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G28)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2060,8 +3134,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G29)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2080,8 +3161,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G30)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2100,8 +3188,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G31)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "部分；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2120,8 +3215,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G32)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2140,8 +3242,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G33)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a6-其他需要同步决定的措辞",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2165,8 +3275,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 D R L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2190,8 +3307,27 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
           "result": "入口或选项已观察；尚未验证功能行为"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#原有控件与状态覆盖保留历史范围",
+          "result": "连接表单与校验原型（浏览器）；无会话保存与编辑"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/UI_MAP.zh-CN.md#已实现的原型行为",
+          "result": "连接表单与校验原型（浏览器）；无会话保存与编辑"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "连接表单与校验原型（浏览器）；无会话保存与编辑",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2210,8 +3346,16 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S02)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R B P；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "原型侧栏只列当前打开的演示会话，点击切换活动标签；没有分组层级、持久化与批量操作，不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2230,8 +3374,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S03)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2250,8 +3401,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S04)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2270,8 +3428,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2290,8 +3455,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S06)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2310,8 +3482,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S07)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2330,8 +3509,17 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S08)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "沉默；除 README 声明外无静态证据"
         }
       ],
+      "static_review_conclusion": "silent",
+      "p0_evidence_group": "neither",
+      "p0_evidence_note": "UI_MAP 把标签和 SSH 终端入口列到本行，但原型明确不持久化分屏、标签、文件面板与连接配置，不计为运行证据",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#c2-s08-重启恢复布局",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2350,8 +3538,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S09)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2370,8 +3565,15 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S10)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2390,8 +3592,23 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S11)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D R B P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WEB_QA.zh-CN.md#原有控件与状态覆盖保留历史范围",
+          "result": "会话侧栏名称筛选原型（浏览器）；跨会话搜索未做"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "会话侧栏名称筛选原型（浏览器）；跨会话搜索未做",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a6-其他需要同步决定的措辞",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2410,8 +3627,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row Q01)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 D M；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包",
+          "result": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟",
+          "result": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2430,8 +3666,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row Q02)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D S L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过",
+          "result": "Windows CI 构建与 cmd.exe ConPTY；无原生 GUI"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "Windows CI 构建与 cmd.exe ConPTY；无原生 GUI",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2450,8 +3700,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row Q03)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D S R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界",
+          "result": "Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2470,8 +3734,22 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row Q04)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机",
+          "result": "压缩冷历史 PoC（约 7.4 倍）；未接生产终端"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "压缩冷历史 PoC（约 7.4 倍）；未接生产终端",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2490,8 +3768,27 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row Q05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "部分；证据类型 D S；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/PERFORMANCE_BASELINE.zh-CN.md#1-rust-pty-吞吐与-ctrl-c-延迟",
+          "result": "本机嘈杂环境基线；无 GUI 全链路，无 WindTerm 对比"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/PTY_READINESS.zh-CN.md#本机配对结果",
+          "result": "本机嘈杂环境基线；无 GUI 全链路，无 WindTerm 对比"
         }
       ],
+      "static_review_conclusion": "partial",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_platform",
+      "p0_evidence_note": "本机嘈杂环境基线；无 GUI 全链路，无 WindTerm 对比",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2515,8 +3812,23 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:77",
           "result": "window.scrollbackLimit=999999；不是实际容量/内存上限"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "矛盾（弱）；证据类型 D R B S；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机",
+          "result": "有界热窗口加压缩冷历史与缺口上报 PoC；未接生产终端"
         }
       ],
+      "static_review_conclusion": "contradicting_weak",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "有界热窗口加压缩冷历史与缺口上报 PoC；未接生产终端",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a3-q06unlimited与默认-999999-行",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2540,8 +3852,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/TERMINAL_COMPAT.zh-CN.md#验证",
+          "result": "隔离 VT52 字节适配 PoC（浏览器）；未接生产终端"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "隔离 VT52 字节适配 PoC（浏览器）；未接生产终端",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2567,8 +3893,22 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#插入删除重复与-vt220vt420-编辑",
+          "result": "原样行为探针：IL/DL/ICH/DCH/IRM 可用；DA 不能报告 VT102"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "browser",
+      "p0_evidence_note": "原样行为探针：IL/DL/ICH/DCH/IRM 可用；DA 不能报告 VT102",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2594,8 +3934,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 R B L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2616,8 +3963,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 B R L；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2638,8 +3992,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux",
+          "result": "支持；证据类型 B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2660,8 +4021,15 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:37",
           "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2682,8 +4050,15 @@
           "type": "bundle_static_resource",
           "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:47",
           "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2709,8 +4084,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2736,8 +4118,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2763,8 +4152,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2790,8 +4186,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2817,8 +4220,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2844,8 +4254,15 @@
           "type": "upstream_ui_observation",
           "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
           "result": "2.7隔离副本中入口可见；行为未执行"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流",
+          "result": "支持；证据类型 R B；静态证据不等于行为已验证"
         }
       ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "upstream_behavior": "not_tested",
@@ -2886,5 +4303,70 @@
       "Other charset options beyond Big5/EUC-JP require complete UI inventory; do not infer support from a charset name alone.",
       "Sysmon metrics, supported systems, and local/remote UI mapping require separate observations."
     ]
+  },
+  "evidence_refresh": {
+    "checked_on": "2026-10-11",
+    "purpose": "Evidence index only: links each ID to the upstream static review and to current P0 prototype/probe records; status fields are unchanged.",
+    "static_review": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md",
+    "static_review_counts": {
+      "supported": 101,
+      "partial": 23,
+      "contradicting": 3,
+      "contradicting_weak": 1,
+      "silent": 2
+    },
+    "p0_evidence_counts": {
+      "prototype_or_probe": 57,
+      "static_only": 72,
+      "neither": 1
+    },
+    "p0_evidence_group_meaning": {
+      "prototype_or_probe": "A P0 prototype, isolated PoC or probe exercises at least one acceptance point and has recorded run evidence; this is not parity.",
+      "static_only": "Upstream static evidence exists (supporting, partial or contradicting) but no P0 run evidence; plan/ADR-only rows are included here.",
+      "neither": "No upstream static evidence beyond the README claim and no P0 prototype or probe."
+    },
+    "p0_evidence_level_counts": {
+      "real_peer": 6,
+      "real_platform": 7,
+      "loopback_fixture": 17,
+      "browser": 27
+    },
+    "p0_evidence_level_meaning": {
+      "real_peer": "Run against a real external program such as system OpenSSH or tmux.",
+      "real_platform": "Real PTY, native build or smoke run on CI or this Mac.",
+      "loopback_fixture": "russh test server, in-test TCP server or self-to-self loop.",
+      "browser": "Headless Chrome probe, isolated PoC or IPC-stub UI prototype."
+    },
+    "ui_prototype_not_counted": [
+      "F02",
+      "F03",
+      "F13",
+      "F21",
+      "G04",
+      "G09",
+      "G10",
+      "G19",
+      "G26",
+      "G27",
+      "S02",
+      "S08"
+    ],
+    "freeze_proposal": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md",
+    "open_decisions": [
+      "G13",
+      "F08",
+      "F09",
+      "Q06",
+      "C14",
+      "G02",
+      "S11",
+      "G17",
+      "G33",
+      "F21",
+      "T14",
+      "S08"
+    ],
+    "static_candidates_outside_ids": 36,
+    "candidate_ids_assigned": 0
   }
 }

@@ -66,11 +66,13 @@ SHA-256：
 
 第三方libssh的[DefineOptions.cmake](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/DefineOptions.cmake#L1)默认请求GSSAPI构建，但[ConfigureChecks.cmake](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/ConfigureChecks.cmake#L463)在依赖探测失败时可以关闭该选项。**构建选项存在既不能证明发布包启用GSSAPI，也不能证明上层调用或端到端认证成功**；当前无发布构建日志或受控KDC运行证据，冲突保留。
 
+2026-10-11 的[上游静态复核](UPSTREAM_STATIC_REVIEW.zh-CN.md#最重要的矛盾与张力)补充了链接层证据：主程序导入 `_ssh_userauth_gssapi`，随包 libssh 链接 Kerberos.framework。这说明发布构建启用了 GSSAPI，但仍不能证明端到端认证成功。措辞选项见[冻结提议](BASELINE_FREEZE_PROPOSAL.zh-CN.md#a4-c14gssapi-已随发布包链接)。
+
 C14关闭问题所需最小实验：建立隔离KDC/sshd、客户端测试票据和专用测试用户；服务端限制为目标认证方式或通过日志明确最终使用的方式，防止密码/公钥回退掩盖失败；分别测试有效、过期、缺失票据与错误服务主体，记录最终认证方法/结果及错误反馈。日志脱敏；不复用生产票据。当前台账没有声称任何一个案例已运行。
 
 ## 结构验证
 
-在仓库根目录运行以下只读命令，验证130项唯一ID、117个原ID与名称保留、三份台账一致、13项新增证据分级及未通过状态：
+在仓库根目录运行以下两段只读命令。第一段验证130项唯一ID、117个原ID与名称保留、三份台账一致、13项新增证据分级及未通过状态：
 
 ```sh
 python3 - <<'PY'
@@ -103,4 +105,94 @@ print('PASS: 130 unique IDs; 117 preserved IDs; 13 additions (11 entry / 2 stati
 PY
 ```
 
-上述命令验证当前结构与名称一致性；原始117行名称是否被更名，另与本轮修改前的Git HEAD作只读比对。结构通过不代表任何功能行为通过。
+第二段核对 2026-10-11 新增的证据索引，范围如下：
+
+- 每个 ID 在 baseline.json、两份 Markdown 台账和[冻结提议](BASELINE_FREEZE_PROPOSAL.zh-CN.md)(d) 节中，静态复核结论、P0 分组、证据链接、待决链接与说明一致；
+- 所有证据链接指向的文件和标题锚点存在；
+- 分组与 `p0_evidence_level` 自洽，`evidence_refresh` 中的计数和冻结提议 (d) 节的分系列计数可以复算；
+- `scope_frozen` 仍为 `false`，没有为候选分配 ID。
+
+```sh
+python3 - <<'PY'
+from pathlib import Path
+import json, os, re, unicodedata
+root = Path('.')
+data = json.loads((root / 'docs/p0/baseline.json').read_text())
+features, refresh = data['features'], data['evidence_refresh']
+LABEL = {'supported': '支持', 'partial': '部分', 'contradicting': '矛盾', 'contradicting_weak': '矛盾（弱）', 'silent': '沉默'}
+GROUP = {'prototype_or_probe': '原型/探针', 'static_only': '仅静态', 'neither': '皆无'}
+LEVEL = {'real_peer': '真实对端', 'real_platform': '真实平台', 'loopback_fixture': 'loopback 夹具', 'browser': '浏览器'}
+LINK = re.compile(r'\[([^\]]+)\]\(([^)\s]+)\)')
+cache = {}
+
+def anchors(path):
+    if path not in cache:
+        cache[path], seen, fence = set(), {}, False
+        for line in path.read_text().splitlines():
+            fence ^= line.startswith('`' * 3)
+            m = None if fence else re.match(r'#{1,6} (.+)', line)
+            if m:
+                text = LINK.sub(r'\1', m.group(1)).replace('`', '').lower()
+                s = ''.join(c for c in text if unicodedata.category(c)[0] in 'LNM' or c in '-_ ').replace(' ', '-')
+                seen[s] = seen.get(s, -1) + 1
+                cache[path].add(s if seen[s] == 0 else f'{s}-{seen[s]}')
+    return cache[path]
+
+def resolve(base, target):
+    name, _, frag = target.partition('#')
+    path = Path(os.path.normpath(base / name))
+    assert path.is_file() and (not frag or frag in anchors(path)), (base, target)
+    return f'{path.as_posix()}#{frag}'
+
+expected = {}
+for f in features:
+    refs = {t: [resolve(root, e['source']) for e in f['evidence'] if e['type'] == t]
+            for t in ('upstream_static_review', 'p0_prototype_probe', 'p0_decision_record')}
+    group, level = f['p0_evidence_group'], f.get('p0_evidence_level')
+    assert len(refs['upstream_static_review']) == 1 and group in GROUP, f['id']
+    assert (group == 'prototype_or_probe') == bool(refs['p0_prototype_probe']) == (level in LEVEL), f['id']
+    assert (group == 'neither') == (f['static_review_conclusion'] == 'silent' and not refs['p0_prototype_probe']), f['id']
+    decision = f.get('freeze_decision_ref')
+    expected[f['id']] = dict(static=(LABEL[f['static_review_conclusion']], refs['upstream_static_review'][0]),
+                             group=GROUP[group], p0=refs['p0_prototype_probe'] + refs['p0_decision_record'],
+                             decision=decision and resolve(root, decision), note=f.get('p0_evidence_note'),
+                             level=LEVEL.get(level, '—'))
+CELL = re.compile(r'静态：\[(.+?)\]\((\S+?)\)；P0：(原型/探针|仅静态|皆无)(.*?)(?:；待决：\[冻结提议\]\((\S+?)\))?(?:。说明：(.+))?')
+for name, with_note in [('docs/FEATURE_PARITY.zh-CN.md', False), ('docs/p0/BASELINE.zh-CN.md', True)]:
+    doc = root / name
+    rows = {m[1]: m[2] for m in re.finditer(r'^\| ([CTFGSQ]\d\d) \|.* \| (静态：.+) \|$', doc.read_text(), re.M)}
+    assert rows.keys() == expected.keys(), name
+    for fid, cell in rows.items():
+        label, static, group, rest, decision, note = CELL.fullmatch(cell).groups()
+        got = dict(static=(label, resolve(doc.parent, static)), group=group,
+                   p0=[resolve(doc.parent, t) for _, t in LINK.findall(rest)],
+                   decision=decision and resolve(doc.parent, decision), note=note if with_note else expected[fid]['note'])
+        assert got == {k: expected[fid][k] for k in got}, (name, fid)
+doc = root / 'docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md'
+text = doc.read_text()
+section = text.split('## (d) ', 1)[1].split('\n## ', 1)[0]
+rows = [[c.strip() for c in line.strip('|').split(' | ')] for line in section.splitlines() if re.match(r'\| [CTFGSQ]\d\d \|', line)]
+assert sorted(r[0] for r in rows) == sorted(expected), 'proposal (d) rows'
+for fid, _, static, group, level, links, note in rows:
+    want = expected[fid]
+    (label, target), = LINK.findall(static)
+    assert (label, resolve(doc.parent, target)) == want['static'] and group == want['group'] and level == want['level'], fid
+    assert [resolve(doc.parent, t) for _, t in LINK.findall(links)] == want['p0'], fid
+    assert note.removesuffix('（不计为运行证据）') == (want['note'] or '无 P0 原型或探针'), fid
+count = lambda key, value: sum(1 for f in features if f.get(key) == value)
+groups = {g: count('p0_evidence_group', g) for g in GROUP}
+assert refresh['p0_evidence_counts'] == groups and refresh['p0_evidence_level_counts'] == {k: count('p0_evidence_level', k) for k in LEVEL}
+assert refresh['static_review_counts'] == {k: count('static_review_conclusion', k) for k in LABEL}
+assert set(refresh['open_decisions']) == {f['id'] for f in features if f.get('freeze_decision_ref')}
+assert all(f['p0_evidence_group'] != 'prototype_or_probe' and f.get('p0_evidence_note') for f in features if f['id'] in refresh['ui_prototype_not_counted'])
+for prefix in 'CTFGSQ':
+    row = [sum(1 for f in features if f['id'][0] == prefix)] + [sum(1 for f in features if f['id'][0] == prefix and f['p0_evidence_group'] == g) for g in GROUP]
+    assert f'| {prefix} | ' + ' | '.join(map(str, row)) + ' |' in section, prefix
+assert f'| 合计 | 130 | ' + ' | '.join(str(groups[g]) for g in GROUP) + ' |' in section
+assert all(resolve(doc.parent, doc.name + t if t[0] == '#' else t) for _, t in LINK.findall(text) if not t.startswith('http'))
+assert data['scope_frozen'] is False and refresh['candidate_ids_assigned'] == 0
+print(f"PASS: evidence index consistent in 3 ledgers + proposal; groups {groups}; levels {refresh['p0_evidence_level_counts']}")
+PY
+```
+
+上述两段命令只验证当前结构、名称与证据索引的一致性；原始117行名称是否被更名，另与本轮修改前的Git HEAD作只读比对。结构通过不代表任何功能行为通过；索引里的“原型/探针”也不代表对齐或验收通过。
