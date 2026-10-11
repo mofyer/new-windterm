@@ -13,6 +13,20 @@
 - **终止 Job 失败时**：`TerminateJobObject` 失败会回退为直接终止 shell 进程，因此等待线程仍会醒来。为此 `ProcessTree` 额外持有一份复制的 shell 句柄。
 - **Ctrl+C 恢复**：`SetConsoleCtrlHandler(None, FALSE)` 是进程级设置，进程内只执行一次。
 - **句柄泄漏循环**：原来的 12 轮循环测试改为复用同一个 `Sessions`，先跑 4 轮预热，再跑 24 轮测量，断言句柄增长不超过 8。每次测量都等待片刻、取 10 个样本中的最小值。即使每个会话只泄漏 1 个句柄，24 轮也会累积到 24 个，足以触发断言。句柄数是按整个进程统计的，同一测试二进制里并行运行的 SSH 测试会让它产生波动，所以这项测试在常规测试中标为 ignored，由 CI 的 Windows 作业单独运行，并把句柄序列打印到日志中。第一版只取第一轮之后的数值，没有预热和稳定采样，在 [run 38136357458](https://github.com/mofyer/new-windterm/actions/runs/38136357458) 中第 9 轮从 120 增长到 129 而失败，尚不能区分是真实泄漏还是惰性分配。
+
+改为预热加稳定采样后，[run 38137592323](https://github.com/mofyer/new-windterm/actions/runs/38137592323) 的序列是 123、124、……、147：每轮正好增加 1 个句柄，严格线性。由此确认，**每个会话泄漏 1 个句柄**。
+
+整个 Session 泄漏的话，至少会同时多出 Job 句柄和 shell 句柄共 2 个，所以泄漏的是单独一个句柄。已排除的来源：
+- portable-pty 的主线程句柄与进程句柄都已转为 owned 释放；
+- conhost 端的管道在 `PsuedoCon::new` 中释放；
+- 本项目的 `close` / `release_console` / readiness 桩不创建句柄。
+
+下一步加入分步诊断测试 `windows_diag::handle_growth_by_lifecycle_step`。它分别测量以下五种情形，并按对象类型统计新增句柄，用来定位来源：
+- 空闲（测量噪声）
+- 仅 openpty
+- 裸 shell
+- 裸 shell 加 Job
+- 完整 Session
 - **脱离 shell 的后代进程**：例如 `start /B` 启动的进程，现在会在 shell 退出时随 Job 一并终止，之后不再输出。
 - **前端早期输入暂存**：只作用于本地 PTY，不作用于 SSH。会话退出、PTY 启动失败或关闭时会清空暂存。
 

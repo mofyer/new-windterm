@@ -32,6 +32,10 @@ libc = "=0.2.180"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
+# Handle-type diagnostics in Windows lifecycle tests only.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "=0.61.2", features = ["Wdk_Foundation"] }
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 pty-diagnostics = []

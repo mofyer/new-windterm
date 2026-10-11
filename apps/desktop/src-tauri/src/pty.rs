@@ -1065,6 +1065,11 @@ mod tests {
     }
 }
 
+/// Per-step handle growth diagnostics for the Windows lifecycle.
+#[cfg(all(test, windows))]
+#[path = "pty_windows_diag.rs"]
+mod windows_diag;
+
 /// Windows ConPTY lifecycle acceptance, run on the `windows-2022` CI runner.
 /// Markers are typed as `P0_^NAME`; cmd drops the caret, so only command output
 /// (not the echoed input line) contains `P0_NAME`. The shell environment is
@@ -1080,10 +1085,10 @@ mod windows_tests {
     /// Windows lifecycle tests run one at a time so handle counts are stable.
     static SERIAL: Mutex<()> = Mutex::new(());
 
-    struct Probe {
+    pub(super) struct Probe {
         _serial: Option<std::sync::MutexGuard<'static, ()>>,
         sessions: Arc<Sessions>,
-        session: Arc<Session>,
+        pub(super) session: Arc<Session>,
         events: Receiver<PtyEvent>,
         output: Vec<u8>,
         exit: Option<Option<u32>>,
@@ -1101,7 +1106,7 @@ mod windows_tests {
         }
 
         /// Opens in a shared registry; the caller holds `SERIAL`.
-        fn open_in(sessions: Arc<Sessions>) -> Self {
+        pub(super) fn open_in(sessions: Arc<Sessions>) -> Self {
             let (sender, events) = channel();
             let id = sessions
                 .open(
@@ -1174,7 +1179,7 @@ mod windows_tests {
             assert!(found, "missing {marker:?}; output tail: {}", self.tail());
         }
 
-        fn ready(&mut self) {
+        pub(super) fn ready(&mut self) {
             // ConPTY (PSEUDOCONSOLE_INHERIT_CURSOR) asks for the cursor position
             // and waits for the reply before rendering; xterm.js answers this
             // in the app, so the probe answers as a terminal would.
@@ -1185,7 +1190,7 @@ mod windows_tests {
         }
 
         /// Reader returned, writer joined, child waited, job empty, within 2 s.
-        fn assert_reaped(&mut self) {
+        pub(super) fn assert_reaped(&mut self) {
             assert!(
                 self.session.wait_closed(Duration::from_secs(2)),
                 "session not reaped within 2 s; errors: {:?}",

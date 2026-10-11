@@ -130,6 +130,60 @@ pub(crate) fn handle_count() -> u32 {
     count
 }
 
+/// Open handles of this process counted by object type (pipes and other
+/// files split by `GetFileType`), for leak diagnostics in Windows tests.
+#[cfg(test)]
+pub(crate) fn handle_types() -> std::collections::BTreeMap<String, u32> {
+    use windows_sys::Wdk::Foundation::{NtQueryObject, ObjectTypeInformation};
+    use windows_sys::Win32::Foundation::{GetHandleInformation, UNICODE_STRING};
+    let mut types = std::collections::BTreeMap::new();
+    for value in (4..0x10000usize).step_by(4) {
+        let handle = value as HANDLE;
+        let mut flags = 0;
+        // SAFETY: probing a handle value only reads its flags.
+        if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+            continue;
+        }
+        // 8-byte aligned buffer for PUBLIC_OBJECT_TYPE_INFORMATION.
+        let mut buffer = [0u64; 128];
+        let mut length = 0;
+        // SAFETY: the buffer is writable for its full size and suitably aligned.
+        let status = unsafe {
+            NtQueryObject(
+                handle,
+                ObjectTypeInformation,
+                buffer.as_mut_ptr().cast(),
+                std::mem::size_of_val(&buffer) as u32,
+                &mut length,
+            )
+        };
+        let mut name = if status >= 0 {
+            // SAFETY: on success the buffer starts with a UNICODE_STRING whose
+            // characters lie inside the buffer.
+            unsafe {
+                let text = &*(buffer.as_ptr() as *const UNICODE_STRING);
+                String::from_utf16_lossy(std::slice::from_raw_parts(
+                    text.Buffer,
+                    text.Length as usize / 2,
+                ))
+            }
+        } else {
+            format!("status {status:#x}")
+        };
+        if name == "File" {
+            // SAFETY: the handle was just validated; GetFileType does not block.
+            name = match unsafe { GetFileType(handle) } {
+                FILE_TYPE_DISK => "File/disk".into(),
+                windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE => "File/pipe".into(),
+                windows_sys::Win32::Storage::FileSystem::FILE_TYPE_CHAR => "File/char".into(),
+                _ => "File/other".into(),
+            };
+        }
+        *types.entry(name).or_insert(0) += 1;
+    }
+    types
+}
+
 /// True only for on-disk files. `std` reports pipes, consoles and character
 /// devices as "files" on Windows, and a blocking read from one would hold a
 /// private-key reader permit indefinitely.

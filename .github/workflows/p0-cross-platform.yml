@@ -104,10 +104,10 @@ jobs:
         id: rust_tests
         run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
 
-      - name: Run Windows ConPTY handle-leak cycles alone
+      - name: Run Windows ConPTY handle diagnostics and leak cycles alone
         id: conpty_cycles
         if: runner.os == 'Windows'
-        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib pty::windows_tests::open_output_close_reap_cycles_do_not_leak_handles -- --ignored --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/p0-logs/conpty-cycles.log"
+        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --ignored --exact --nocapture --test-threads=1 pty::windows_diag::handle_growth_by_lifecycle_step pty::windows_tests::open_output_close_reap_cycles_do_not_leak_handles 2>&1 | tee "$RUNNER_TEMP/p0-logs/conpty-cycles.log"
 
       - name: Run Clippy
         id: clippy
