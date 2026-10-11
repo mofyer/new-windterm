@@ -218,7 +218,7 @@ load1 为 7.8–15.8。耗时是整测试墙钟，包含进程内 loopback 服�
 - **嘈杂环境**：其他代理并行编译与浏览器测试，1 分钟 load 在 5.9–74.9 间波动；每组记录了 load，但未做安静机器复测、未做显著性检验，n=3/4 只能看量级与离散程度。
 - **启动**：非严格冷启动（未清文件缓存）；只测到窗口出现和 AX 可见按钮，未测首帧绘制或首次可交互输入。
 - **资源**：RSS 为相加上界；未测 phys_footprint、能耗、长时间运行、大量 scrollback 后的内存或多会话；窗口前后台/遮挡状态未受控。
-- **平台**：仅本机 macOS arm64；Linux/Windows 未测（Windows PTY 仍未实现）。release 包为 ad-hoc 签名、未公证，不代表发行验收。
+- **平台**：仅本机 macOS arm64；Linux/Windows 未测（Windows ConPTY 只在 CI 上验证了 cmd.exe 的生命周期，没有做性能测量）。release 包为 ad-hoc 签名、未公证，不代表发行验收。
 - 本文只新增测量脚本与文档，未改生产代码；readiness 仍默认关闭。
 
 ## 原始数据位置（本地、已被 `.gitignore` 忽略，不随 Git 发布）

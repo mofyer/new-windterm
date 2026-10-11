@@ -14,6 +14,50 @@
 
 本机浏览器全套 134/134 通过。下文的评审修复在此次运行之后提交，需要以新的 CI 运行为准。
 
+## Telnet 与 Raw TCP 终端标签（C02/C03）
+
+桌面端现在可以从「新建连接」或命令面板打开 Telnet / Raw TCP 终端标签，见[说明](NET_TERMINAL.zh-CN.md)：
+- **后端**：新增 `net_open/write/resize/ack/close` 五个命令，三处都已登记。输出与 PTY、SSH 共用同一套有界 ACK 字节流。
+- **Telnet**：使用已有的 `telnet.rs` 编解码器。
+- **输入**：经有界队列发送，队列满时等待，不会让大段粘贴失败。
+- **连接中关闭**：可以直接取消连接。
+
+在集成分支上的检查结果：
+
+| 检查 | 结果 |
+| --- | --- |
+| Rust 单元 | 73 passed / 4 ignored |
+| `net_terminal` 集成 | 7/7 |
+| 浏览器全套 | 144/144，新增 10 项 |
+| Windows 交叉类型检查 | 通过 |
+
+边界与限制：
+- 测试服务端都是测试内的 loopback TCP 服务器，没有与真实 telnetd 或网络设备互操作。
+- 浏览器测试使用 IPC stub。
+- 只处理 UTF-8。没有 Linemode，没有本地回显，没有保存会话。
+- 真实内核连接卡住时的取消测试在 macOS 上会自行跳过，要等 Linux CI 才有结果。
+
+## 性能基线（macOS arm64）
+
+本机测得的基线见[记录](PERFORMANCE_BASELINE.zh-CN.md)。测量期间有其他代理并行运行，环境嘈杂；数字不代表性能关卡通过，也没有与 WindTerm 对比。
+
+| 项目 | 结果 |
+| --- | --- |
+| PTY 2 MiB（debug） | 默认 5 ms 轮询 6.9 s，readiness 0.34 s（readiness 受测试内置的 300 ms 停顿限制） |
+| Ctrl-C | 默认 18 ms，readiness 0.8 ms |
+| xterm 解析（headless Chrome） | 38–76 MiB/s |
+| 经应用路径（IPC stub） | 约 10 MiB/s，约为直接写入 xterm 的 1/4，原因未查 |
+| `.app` | 21.7 MiB，仅 arm64，ad-hoc 签名 |
+| 启动 | 到窗口出现约 268 ms，到界面就绪约 487 ms（中位数，非严格冷启动） |
+| 空闲 RSS | 进程合计约 266 MiB（上界） |
+
+发现的问题：release 包里混入了 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture` 三个测试二进制，约 8 MB，发行前需要排除。
+
+未测：
+- WKWebView 内的数字。
+- GUI 全链路高输出测试。
+- Linux 和 Windows。
+
 ## 上游静态证据复核
 
 对 130 个 ID 逐条检查了上游 WindTerm 2.7.0 发布包与 README 的静态材料，只读取，没有运行、挂载或复制任何内容，见[复核记录](UPSTREAM_STATIC_REVIEW.zh-CN.md)。分类结果：
