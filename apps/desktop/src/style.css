@@ -306,3 +306,13 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 #net-error { margin: 10px 0 0; color: #ad3f46; overflow-wrap: anywhere; }
 #net-error:empty { display: none; }
 [data-theme="dark"] #net-error { color: #e7aaaa; }
+#ssh-kbdint-dialog { width: min(480px, calc(100% - 32px)); }
+#ssh-kbdint-dialog [hidden] { display: none; }
+#ssh-kbdint-dialog .dialog-heading h2 { margin-bottom: 0; }
+#ssh-kbdint-name { display: block; font-size: 13px; margin-bottom: 8px; overflow-wrap: anywhere; }
+#ssh-kbdint-instructions, .ssh-kbdint-prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
+#ssh-kbdint-instructions { max-height: 160px; overflow: auto; }
+#ssh-kbdint-status, #ssh-kbdint-error { margin: 10px 0 0; overflow-wrap: anywhere; }
+#ssh-kbdint-status:empty, #ssh-kbdint-error:empty { display: none; }
+#ssh-kbdint-error { color: #ad3f46; }
+[data-theme="dark"] #ssh-kbdint-error { color: #e7aaaa; }

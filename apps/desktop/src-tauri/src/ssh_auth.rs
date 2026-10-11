@@ -1,7 +1,10 @@
 //! Client authentication after the host key matched the confirmed pin.
 //! Secrets arrive from the WebView only when a connection is consumed, are
 //! zeroized on drop, and are never logged, persisted or echoed in errors.
-use super::{private_key, read_key_bounded, KeyCheck, Request};
+use super::{
+    kbdint::{Prompter, NO_CHANNEL},
+    private_key, read_key_bounded, KeyCheck, Request,
+};
 use russh::{
     client,
     keys::{agent::client::AgentClient, agent::AgentIdentity, HashAlg},
@@ -10,9 +13,9 @@ use serde::Deserialize;
 use tokio::sync::watch;
 use zeroize::Zeroizing;
 
-const MAX_SECRET_BYTES: usize = 1024;
-const MAX_ROUNDS: usize = 8;
-const MAX_PROMPTS: usize = 16;
+pub(super) const MAX_SECRET_BYTES: usize = 1024;
+const MAX_ROUNDS: u32 = 8;
+pub(super) const MAX_PROMPTS: usize = 16;
 /// Servers commonly allow six attempts; never exhaust them on agent keys.
 const MAX_AGENT_KEYS: usize = 4;
 #[cfg(windows)]
@@ -35,6 +38,9 @@ pub enum Credential {
     KeyboardInteractive {
         responses: Vec<Zeroizing<String>>,
     },
+    /// Answers typed while connecting, one dialog per server round. The
+    /// answer channel travels with the command, never inside the credential.
+    KeyboardInteractivePrompted {},
 }
 
 impl Default for Credential {
@@ -53,7 +59,7 @@ impl Credential {
                 passphrase.as_deref()
             }
             Self::Password { password } => Some(&**password),
-            Self::Agent {} => None,
+            Self::Agent {} | Self::KeyboardInteractivePrompted {} => None,
             Self::KeyboardInteractive { responses } => {
                 if responses.len() > MAX_PROMPTS
                     || responses
@@ -72,10 +78,16 @@ impl Credential {
         }
         Ok(())
     }
+
+    /// Whether authentication needs the user to answer server prompts.
+    pub(crate) fn is_prompted(&self) -> bool {
+        matches!(self, Self::KeyboardInteractivePrompted {})
+    }
 }
 
 /// `Rejected` is evidence the server refused these credentials (an SFTP
 /// grant is revoked); `Failed` is local, transport or availability trouble.
+#[cfg_attr(test, derive(Debug))]
 pub(super) enum AuthFailure {
     Rejected(String),
     Failed(String),
@@ -94,6 +106,7 @@ pub(super) async fn authenticate(
     request: &Request,
     credential: &Credential,
     cancel: watch::Receiver<bool>,
+    prompter: Option<&Prompter>,
 ) -> Result<(), AuthFailure> {
     let user = request.username.clone();
     let (accepted, rejected) = match credential {
@@ -121,9 +134,18 @@ pub(super) async fn authenticate(
         Credential::Agent {} => return agent(session, user).await,
         Credential::KeyboardInteractive { responses } => {
             let mut queue = responses.iter().cloned();
-            return keyboard_interactive(session, user, |round: Round| {
+            return keyboard_interactive(session, user, |_, round: Round| {
                 let answers: Option<Vec<_>> = round.prompts.iter().map(|_| queue.next()).collect();
-                std::future::ready(answers)
+                std::future::ready(answers.ok_or_else(|| {
+                    AuthFailure::Failed("SSH keyboard-interactive needs more answers".into())
+                }))
+            })
+            .await;
+        }
+        Credential::KeyboardInteractivePrompted {} => {
+            let prompter = prompter.ok_or_else(|| AuthFailure::Failed(NO_CHANNEL.into()))?;
+            return keyboard_interactive(session, user, move |number, round| {
+                prompter.ask(number, round, cancel.clone())
             })
             .await;
         }
@@ -186,15 +208,15 @@ pub struct Round {
 }
 
 /// Runs keyboard-interactive (RFC 4256) rounds, asking `answer` for each
-/// non-empty round. `answer` returning `None` cancels authentication.
+/// non-empty round with its 1-based number. An `answer` error ends authentication.
 pub(super) async fn keyboard_interactive<F, Fut>(
     session: &mut client::Handle<KeyCheck>,
     user: String,
     mut answer: F,
 ) -> Result<(), AuthFailure>
 where
-    F: FnMut(Round) -> Fut,
-    Fut: std::future::Future<Output = Option<Vec<Zeroizing<String>>>>,
+    F: FnMut(u32, Round) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Zeroizing<String>>, AuthFailure>>,
 {
     use russh::client::KeyboardInteractiveAuthResponse as Reply;
     let failed = || AuthFailure::Failed("SSH authentication failed".into());
@@ -202,7 +224,7 @@ where
         .authenticate_keyboard_interactive_start(user, None)
         .await
         .map_err(|_| failed())?;
-    for _ in 0..MAX_ROUNDS {
+    for number in 1..=MAX_ROUNDS {
         let (name, instructions, prompts) = match reply {
             Reply::Success => return Ok(()),
             Reply::Failure { .. } => {
@@ -231,9 +253,7 @@ where
                 instructions,
                 prompts: prompts.into_iter().map(|p| (p.prompt, p.echo)).collect(),
             };
-            answer(round).await.ok_or_else(|| {
-                AuthFailure::Failed("SSH keyboard-interactive needs more answers".into())
-            })?
+            answer(number, round).await?
         };
         if responses.len() != count {
             return Err(AuthFailure::Failed(
@@ -293,6 +313,11 @@ mod tests {
             parse(r#"{"method":"keyboardInteractive","responses":["a","b"]}"#).unwrap(),
             Credential::KeyboardInteractive { responses } if responses.len() == 2
         ));
+        let prompted = parse(r#"{"method":"keyboardInteractivePrompted"}"#).unwrap();
+        assert!(prompted.is_prompted() && prompted.validate(&request("")).is_ok());
+        // Answers and channels never travel inside the prompted credential.
+        assert!(parse(r#"{"method":"keyboardInteractivePrompted","responses":[]}"#).is_err());
+        assert!(parse(r#"{"method":"keyboardInteractivePrompted","onAuth":"x"}"#).is_err());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { Terminal, ITheme } from "@xterm/xterm";
 import { createWorkspaceTerminal } from "./terminal";
-import { createSshVerification, type SshTerminalRequest } from "./ssh-verification";
+import { authPromptsFor, createSshVerification, type SshTerminalRequest } from "./ssh-verification";
 import { createSftpPanel } from "./sftp-panel";
 import { createNetTerminalDialog, netLabel, type NetTerminalRequest } from "./net-terminal";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
@@ -552,12 +552,18 @@ function startSshTerminal(request: SshTerminalRequest): boolean {
   return true;
 }
 async function openSsh(s: Session, request: SshTerminalRequest) {
+  // Prompted keyboard-interactive asks in a dialog; closing the tab cancels it.
+  const prompts = authPromptsFor(request.credential, request.operationId, request.name);
+  if (prompts) {
+    s.status = "正在连接；请在弹出的对话框中回答服务器提示…";
+    updateStatus();
+  }
   try {
     const { id } = await invoke<{ id: string }>("ssh_open", {
       challengeToken: request.challengeToken, operationId: request.operationId,
       scopeToken: request.scopeToken, credential: request.credential, onEvent: terminalChannel(s),
-      cols: s.terminal.cols, rows: s.terminal.rows,
-    });
+      cols: s.terminal.cols, rows: s.terminal.rows, onAuth: prompts?.channel,
+    }).finally(() => prompts?.finish());
     if (s.disposed || s.ended) {
       await invoke("ssh_close", { id });
       return;

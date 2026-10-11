@@ -3,6 +3,8 @@
 pub mod auth;
 #[path = "ssh_forward.rs"]
 pub mod forward;
+#[path = "ssh_kbdint.rs"]
+pub mod kbdint;
 #[path = "ssh_proxy.rs"]
 pub mod proxy;
 #[path = "ssh_scp.rs"]
@@ -13,6 +15,8 @@ use crate::known_hosts::{KnownHosts, Saved};
 use crate::sftp::{ReadOnlySftp, RemoteEntry, RemoteListing};
 use auth::AuthFailure;
 pub use auth::Credential;
+pub use kbdint::{AuthPrompt, PromptField, PromptSink, ROUND_DEADLINE};
+use kbdint::{Clock, Prompter, Prompts};
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate},
@@ -80,6 +84,31 @@ pub struct Challenge {
     pub expires_in_seconds: u64,
     pub trust: Trust,
     pub saved_fingerprint: Option<String>,
+}
+
+/// A credential plus, for prompted keyboard-interactive, where to show the
+/// server's rounds. The sink belongs to one command and is never stored.
+pub struct Login {
+    pub credential: Credential,
+    pub prompts: Option<PromptSink>,
+}
+
+impl From<Credential> for Login {
+    fn from(credential: Credential) -> Self {
+        Self {
+            credential,
+            prompts: None,
+        }
+    }
+}
+
+/// Prompted authentication without a way to ask the user fails before any
+/// challenge is consumed or connection made.
+fn check_prompts(credential: &Credential, prompts: Option<&PromptSink>) -> Result<(), String> {
+    if credential.is_prompted() && prompts.is_none() {
+        return Err(kbdint::NO_CHANNEL.into());
+    }
+    Ok(())
 }
 
 #[derive(Default, Serialize)]
@@ -193,6 +222,7 @@ struct Registry {
 pub struct Ssh {
     registry: Mutex<Registry>,
     known_hosts: Option<KnownHosts>,
+    prompts: Arc<Prompts>,
 }
 
 struct Operation<'a> {
@@ -232,6 +262,41 @@ impl Ssh {
             known_hosts: Some(KnownHosts::new(path)),
             ..Self::default()
         }
+    }
+
+    /// Shortens how long one keyboard-interactive round waits for an answer
+    /// (tests). It never exceeds [`ROUND_DEADLINE`].
+    pub fn with_prompt_deadline(mut self, deadline: Duration) -> Self {
+        self.prompts = Arc::new(Prompts::with_deadline(deadline));
+        self
+    }
+
+    /// Answers round `round` of operation `id`, which must be waiting and
+    /// must have been started by `owner`.
+    pub fn auth_respond(
+        &self,
+        owner: &str,
+        id: &str,
+        round: u32,
+        answers: Vec<zeroize::Zeroizing<String>>,
+    ) -> Result<(), String> {
+        uuid::Uuid::parse_str(id).map_err(|_| "Invalid operation ID")?;
+        self.prompts.respond(owner, id, round, answers)
+    }
+
+    fn prompter(
+        &self,
+        operation: &Operation<'_>,
+        sink: Option<PromptSink>,
+        clock: &Clock,
+    ) -> Option<Prompter> {
+        sink.map(|sink| Prompter {
+            prompts: self.prompts.clone(),
+            owner: operation.owner.clone(),
+            id: operation.id.clone(),
+            sink,
+            clock: clock.clone(),
+        })
     }
 
     pub fn context(&self, owner: &str) -> Result<String, String> {
@@ -330,6 +395,8 @@ impl Ssh {
             .challenges
             .retain(|_, pending| pending.owner != owner);
         registry.grants.retain(|_, grant| grant.owner != owner);
+        drop(registry);
+        self.prompts.close_owner(owner);
     }
 
     pub fn shutdown(&self) {
@@ -340,6 +407,8 @@ impl Ssh {
         }
         registry.challenges.clear();
         registry.grants.clear();
+        drop(registry);
+        self.prompts.clear();
     }
 
     pub fn reject(&self, owner: &str, token: &str) -> Result<(), String> {
@@ -531,16 +600,29 @@ impl Ssh {
         id: &str,
         token: &str,
         scope: &str,
-        credential: Credential,
+        login: impl Into<Login>,
     ) -> Result<Output, String> {
+        let Login {
+            credential,
+            prompts,
+        } = login.into();
         let mut operation = self.start(owner, id, scope)?;
+        check_prompts(&credential, prompts.as_ref())?;
         let pending = self.consume(owner, token)?;
         credential.validate(&pending.request)?;
-        let work = execute(pending, credential, operation.cancel.clone());
+        let clock = Clock::new(DEADLINE);
+        let prompter = self.prompter(&operation, prompts, &clock);
+        let work = execute(
+            pending,
+            credential,
+            operation.cancel.clone(),
+            prompter.as_ref(),
+        );
         let output = tokio::select! {
             biased;
             _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
-            result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SSH operation timed out")??,
+            _ = clock.expired() => return Err("SSH operation timed out".into()),
+            result = work => result?,
         };
         if *operation.cancel.borrow() {
             return Err("SSH operation cancelled".into());
@@ -567,9 +649,14 @@ impl Ssh {
         id: &str,
         token: &str,
         scope: &str,
-        credential: Credential,
+        login: impl Into<Login>,
     ) -> Result<SftpOpened, String> {
+        let Login {
+            credential,
+            prompts,
+        } = login.into();
         let operation = self.start(owner, id, scope)?;
+        check_prompts(&credential, prompts.as_ref())?;
         // Fail before any network work when no grant could be issued anyway.
         self.grant_capacity()?;
         let pending = self.consume(owner, token)?;
@@ -580,8 +667,9 @@ impl Ssh {
             key: key.clone(),
             credential: credential.clone(),
         };
+        // A prompted grant keeps no answers: every later operation asks again.
         let listing = match self
-            .run_sftp(&operation, target, SftpRequest::Open)
+            .run_sftp(&operation, target, SftpRequest::Open, prompts)
             .await
             .map_err(SftpFailure::message)?
         {
@@ -596,6 +684,8 @@ impl Ssh {
         })
     }
 
+    /// `prompts` is required when the grant came from prompted
+    /// keyboard-interactive: each reconnect asks the user again.
     pub async fn sftp_list(
         &self,
         owner: &str,
@@ -603,9 +693,10 @@ impl Ssh {
         grant: &str,
         scope: &str,
         path: String,
+        prompts: Option<PromptSink>,
     ) -> Result<RemoteListing, String> {
         match self
-            .sftp_request(owner, id, grant, scope, SftpRequest::List(path))
+            .sftp_request(owner, id, grant, scope, SftpRequest::List(path), prompts)
             .await?
         {
             SftpResult::List(listing) => Ok(listing),
@@ -620,9 +711,11 @@ impl Ssh {
         grant: &str,
         scope: &str,
         path: String,
+        prompts: Option<PromptSink>,
     ) -> Result<RemoteEntry, String> {
+        let request = SftpRequest::Metadata(path);
         match self
-            .sftp_request(owner, id, grant, scope, SftpRequest::Metadata(path))
+            .sftp_request(owner, id, grant, scope, request, prompts)
             .await?
         {
             SftpResult::Metadata(entry) => Ok(entry),
@@ -637,9 +730,10 @@ impl Ssh {
         grant: &str,
         scope: &str,
         path: String,
+        prompts: Option<PromptSink>,
     ) -> Result<Vec<u8>, String> {
         match self
-            .sftp_request(owner, id, grant, scope, SftpRequest::Read(path))
+            .sftp_request(owner, id, grant, scope, SftpRequest::Read(path), prompts)
             .await?
         {
             SftpResult::Read(bytes) => Ok(bytes),
@@ -669,10 +763,12 @@ impl Ssh {
         grant: &str,
         scope: &str,
         request: SftpRequest,
+        prompts: Option<PromptSink>,
     ) -> Result<SftpResult, String> {
         let operation = self.start(owner, id, scope)?;
         let target = self.use_grant(owner, grant, scope)?;
-        self.run_sftp(&operation, target, request)
+        check_prompts(&target.credential, prompts.as_ref())?;
+        self.run_sftp(&operation, target, request, prompts)
             .await
             .map_err(|failure| match failure {
                 SftpFailure::Revoke(message) => {
@@ -688,14 +784,17 @@ impl Ssh {
         operation: &Operation<'_>,
         target: Target,
         request: SftpRequest,
+        prompts: Option<PromptSink>,
     ) -> Result<SftpResult, SftpFailure> {
         let mut cancel = operation.cancel.clone();
-        let work = execute_sftp(target, cancel.clone(), request);
+        let clock = Clock::new(DEADLINE);
+        let prompter = self.prompter(operation, prompts, &clock);
+        let work = execute_sftp(target, cancel.clone(), request, prompter.as_ref());
         tokio::select! {
             biased;
             _ = cancel.changed() => Err(SftpFailure::Keep("SSH operation cancelled".into())),
-            result = tokio::time::timeout(DEADLINE, work) => result
-                .map_err(|_| SftpFailure::Keep("SFTP operation timed out".into()))?,
+            _ = clock.expired() => Err(SftpFailure::Keep("SFTP operation timed out".into())),
+            result = work => result,
         }
     }
 
@@ -827,11 +926,27 @@ async fn transport(request: &Request) -> Result<(SocketGuard, TcpStream), String
     Ok((guard, stream))
 }
 
-fn config() -> Arc<client::Config> {
-    Arc::new(client::Config {
+/// Every connection starts from this; variants change only what differs.
+fn base_config() -> client::Config {
+    client::Config {
         inactivity_timeout: Some(DEADLINE),
         ..Default::default()
-    })
+    }
+}
+
+fn config() -> Arc<client::Config> {
+    Arc::new(base_config())
+}
+
+/// Prompted authentication leaves the connection silent while the user
+/// types, so its transport idles longer; the operation clock still bounds
+/// the network time outside of those waits.
+fn config_for(credential: &Credential) -> Arc<client::Config> {
+    let mut config = base_config();
+    if credential.is_prompted() {
+        config.inactivity_timeout = Some(ROUND_DEADLINE + DEADLINE);
+    }
+    Arc::new(config)
 }
 
 type Observed = Arc<Mutex<Option<PublicKey>>>;
@@ -1074,6 +1189,7 @@ async fn execute(
     pending: Pending,
     credential: Credential,
     cancel: watch::Receiver<bool>,
+    prompter: Option<&Prompter>,
 ) -> Result<Output, String> {
     let (_socket, stream) = transport(&pending.request).await?;
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1086,7 +1202,7 @@ async fn execute(
         rekey_rejected: rekey_rejected.clone(),
         routes: Arc::default(),
     };
-    let mut session = client::connect_stream(config(), stream, handler)
+    let mut session = client::connect_stream(config_for(&credential), stream, handler)
         .await
         .map_err(|_| {
             if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
@@ -1096,9 +1212,15 @@ async fn execute(
             }
         })?;
     // Credentials are used only after the new handshake matched the pin.
-    auth::authenticate(&mut session, &pending.request, &credential, cancel)
-        .await
-        .map_err(AuthFailure::message)?;
+    auth::authenticate(
+        &mut session,
+        &pending.request,
+        &credential,
+        cancel,
+        prompter,
+    )
+    .await
+    .map_err(AuthFailure::message)?;
     let mut channel = session
         .channel_open_session()
         .await
@@ -1143,8 +1265,9 @@ async fn execute_sftp(
     target: Target,
     cancel: watch::Receiver<bool>,
     request: SftpRequest,
+    prompter: Option<&Prompter>,
 ) -> Result<SftpResult, SftpFailure> {
-    let authenticated = connect_sftp(target, cancel).await?;
+    let authenticated = connect_sftp(target, cancel, prompter).await?;
     let AuthenticatedSftp {
         _socket,
         session,
@@ -1178,6 +1301,7 @@ async fn execute_sftp(
 async fn connect_sftp(
     target: Target,
     cancel: watch::Receiver<bool>,
+    prompter: Option<&Prompter>,
 ) -> Result<AuthenticatedSftp, SftpFailure> {
     let Target {
         request: target,
@@ -1195,7 +1319,7 @@ async fn connect_sftp(
         rekey_rejected: rekey_rejected.clone(),
         routes: Arc::default(),
     };
-    let mut session = client::connect_stream(config(), stream, handler)
+    let mut session = client::connect_stream(config_for(&credential), stream, handler)
         .await
         .map_err(|_| {
             if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
@@ -1204,7 +1328,7 @@ async fn connect_sftp(
                 SftpFailure::Keep("SSH handshake failed".into())
             }
         })?;
-    auth::authenticate(&mut session, &target, &credential, cancel)
+    auth::authenticate(&mut session, &target, &credential, cancel, prompter)
         .await
         .map_err(|failure| match failure {
             AuthFailure::Rejected(message) => SftpFailure::Revoke(message),
@@ -1276,7 +1400,8 @@ where
                 "SSH handshake failed"
             }
         })?;
-    auth::authenticate(&mut session, request, credential, cancel)
+    // Forwarding probes have no window to ask: prompted credentials fail closed.
+    auth::authenticate(&mut session, request, credential, cancel, None)
         .await
         .map_err(AuthFailure::message)?;
     Ok(session)
@@ -1747,7 +1872,7 @@ mod tests {
             );
             tokio::spawn(async move {
                 service
-                    .sftp_list("main", &operation_id, &token, &scope, "/".into())
+                    .sftp_list("main", &operation_id, &token, &scope, "/".into(), None)
                     .await
             })
         };
@@ -1765,7 +1890,7 @@ mod tests {
             let (service, token, scope) = (service.clone(), token.clone(), scope.clone());
             tokio::spawn(async move {
                 service
-                    .sftp_metadata("main", &id(), &token, &scope, "/".into())
+                    .sftp_metadata("main", &id(), &token, &scope, "/".into(), None)
                     .await
             })
         };
@@ -1853,6 +1978,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prompted_sftp_grants_hold_no_answers_and_ask_again_each_time() {
+        let service = Ssh::default();
+        let scope = service.context("main").unwrap();
+        let operation = service.start("main", &id(), &scope).unwrap();
+        let prompted = Credential::KeyboardInteractivePrompted {};
+        let token = service
+            .issue_grant(&operation, &scope, request(), vec![1], prompted)
+            .unwrap();
+        drop(operation);
+        // A later operation without a way to ask the window fails before
+        // connecting, and keeps the grant for a retry that can ask.
+        let error = service
+            .sftp_list("main", &id(), &token, &scope, "/".into(), None)
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error, kbdint::NO_CHANNEL);
+        let registry = service.registry.lock().unwrap();
+        assert!(registry.grants.contains_key(&token) && registry.active.is_empty());
+    }
+
+    #[tokio::test]
     #[ignore = "requires the isolated fixture; run tests/fixtures/ssh-sftp/rust-client.test.mjs"]
     async fn real_fixture_sftp_read_only_browse() {
         use crate::sftp::{RemoteKind, MAX_DIRECTORY_ENTRIES};
@@ -1894,7 +2041,7 @@ mod tests {
         let path = |name: &str| format!("{remote}/{name}");
         let small = b"P0 SFTP read-only \xe4\xb8\xad\xe6\x96\x87 \xf0\x9f\x8c\x8f\n".to_vec();
         let followed = service
-            .sftp_metadata("main", &id(), &grant, &scope, path("link-to-small"))
+            .sftp_metadata("main", &id(), &grant, &scope, path("link-to-small"), None)
             .await
             .unwrap();
         assert_eq!(
@@ -1902,7 +2049,7 @@ mod tests {
             (RemoteKind::File, small.len() as u64)
         );
         let bytes = service
-            .sftp_read("main", &id(), &grant, &scope, path("small-中文.txt"))
+            .sftp_read("main", &id(), &grant, &scope, path("small-中文.txt"), None)
             .await
             .unwrap();
         assert_eq!(bytes, small);
@@ -1912,20 +2059,20 @@ mod tests {
             ("missing", "SFTP metadata request failed"),
         ] {
             let error = service
-                .sftp_read("main", &id(), &grant, &scope, path(name))
+                .sftp_read("main", &id(), &grant, &scope, path(name), None)
                 .await
                 .err()
                 .unwrap();
             assert_eq!(error, expected);
         }
         let nested = service
-            .sftp_list("main", &id(), &grant, &scope, path("nested"))
+            .sftp_list("main", &id(), &grant, &scope, path("nested"), None)
             .await
             .unwrap();
         assert_eq!(nested.entries.len(), 1);
         assert_eq!(nested.entries[0].name, "inner.txt");
         let many = service
-            .sftp_list("main", &id(), &grant, &scope, path("many"))
+            .sftp_list("main", &id(), &grant, &scope, path("many"), None)
             .await
             .unwrap();
         assert!(many.truncated);
@@ -1934,7 +2081,7 @@ mod tests {
         service.sftp_close("main", &grant).unwrap();
         assert_eq!(
             service
-                .sftp_list("main", &id(), &grant, &scope, remote.clone())
+                .sftp_list("main", &id(), &grant, &scope, remote.clone(), None)
                 .await
                 .err()
                 .unwrap(),
@@ -1962,7 +2109,7 @@ mod tests {
             .key[0] ^= 1;
         assert_eq!(
             service
-                .sftp_list("main", &id(), &grant, &scope, remote.clone())
+                .sftp_list("main", &id(), &grant, &scope, remote.clone(), None)
                 .await
                 .err()
                 .unwrap(),
