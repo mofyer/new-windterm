@@ -21,6 +21,8 @@ fn main() {
             "ssh_sftp_metadata",
             "ssh_sftp_read",
             "ssh_sftp_close",
+            "ssh_trust_save",
+            "ssh_trust_replace",
         ]));
     tauri_build::try_build(attributes).expect("Tauri build configuration failed");
 }

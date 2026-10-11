@@ -1,10 +1,11 @@
 //! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
+use crate::known_hosts::{KnownHosts, Saved};
 use crate::sftp::{ReadOnlySftp, RemoteEntry, RemoteListing};
 use russh::{
     client,
-    keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate},
+    keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate},
     ChannelMsg,
 };
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,8 @@ use std::{
 };
 use tokio::{net::TcpStream, sync::watch};
 
+const HOST_CHANGED: &str =
+    "SSH host key differs from the saved key; verify it and replace the saved key first";
 const REKEY_ERROR: &str =
     "SSH rekey is not supported in P0; reconnect to verify the host key again";
 const DEADLINE: Duration = Duration::from_secs(15);
@@ -43,6 +46,18 @@ pub struct Request {
     pub private_key_path: String,
 }
 
+/// How the presented host key relates to saved trust.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Trust {
+    /// Not saved: the user must compare the fingerprint before continuing.
+    New,
+    /// Matches a saved key for this host and port.
+    Known,
+    /// Differs from the saved key. Blocked until the user separately replaces it.
+    Changed,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Challenge {
@@ -52,6 +67,8 @@ pub struct Challenge {
     pub algorithm: String,
     pub fingerprint: String,
     pub expires_in_seconds: u64,
+    pub trust: Trust,
+    pub saved_fingerprint: Option<String>,
 }
 
 #[derive(Default, Serialize)]
@@ -67,6 +84,8 @@ struct Pending {
     request: Request,
     key: Vec<u8>,
     expires: Instant,
+    public: Option<PublicKey>,
+    trust: Trust,
 }
 
 struct Active {
@@ -153,6 +172,7 @@ struct Registry {
 #[derive(Default)]
 pub struct Ssh {
     registry: Mutex<Registry>,
+    known_hosts: Option<KnownHosts>,
 }
 
 struct Operation<'a> {
@@ -186,6 +206,14 @@ impl Drop for Operation<'_> {
 }
 
 impl Ssh {
+    /// A service whose confirmed host keys may be saved to `path`.
+    pub fn with_known_hosts(path: std::path::PathBuf) -> Self {
+        Self {
+            known_hosts: Some(KnownHosts::new(path)),
+            ..Self::default()
+        }
+    }
+
     pub fn context(&self, owner: &str) -> Result<String, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         if registry.shutdown {
@@ -316,14 +344,72 @@ impl Ssh {
         if pending.owner != owner {
             return Err("SSH challenge not owned by this window".into());
         }
+        // A changed key stays pending so the user can still replace it explicitly.
+        if pending.trust == Trust::Changed && pending.expires > Instant::now() {
+            return Err(HOST_CHANGED.into());
+        }
         let pending = registry
             .challenges
             .remove(token)
             .ok_or("SSH challenge expired or already used")?;
-        if pending.expires <= Instant::now() {
+        if pending.expires <= Instant::now() || pending.trust == Trust::Changed {
             return Err("SSH challenge expired or already used".into());
         }
         Ok(pending)
+    }
+
+    /// Saves the confirmed key of a new host. Never overwrites a changed key.
+    pub fn trust_save(&self, owner: &str, token: &str) -> Result<(), String> {
+        self.update_trust(owner, token, Trust::New)
+    }
+
+    /// Replaces a saved key that changed. A separate, explicit user action.
+    pub fn trust_replace(&self, owner: &str, token: &str) -> Result<(), String> {
+        self.update_trust(owner, token, Trust::Changed)
+    }
+
+    fn update_trust(&self, owner: &str, token: &str, from: Trust) -> Result<(), String> {
+        let store = self
+            .known_hosts
+            .as_ref()
+            .ok_or("Saving host keys is unavailable")?;
+        let (host, port, public, trust) = {
+            let registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+            let pending = registry
+                .challenges
+                .get(token)
+                .filter(|pending| pending.expires > Instant::now())
+                .ok_or("SSH challenge expired or already used")?;
+            if pending.owner != owner {
+                return Err("SSH challenge not owned by this window".into());
+            }
+            let public = pending.public.clone().ok_or("Host key unavailable")?;
+            (
+                pending.request.host.clone(),
+                pending.request.port,
+                public,
+                pending.trust,
+            )
+        };
+        if trust == Trust::Known {
+            return Ok(());
+        }
+        if trust != from {
+            return Err(match trust {
+                Trust::Changed => HOST_CHANGED,
+                _ => "Only a changed host key can be replaced",
+            }
+            .into());
+        }
+        // File I/O happens outside the registry lock.
+        store.remember(&host, port, &public)?;
+        let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
+        let pending = registry
+            .challenges
+            .get_mut(token)
+            .ok_or("SSH challenge expired or already used")?;
+        pending.trust = Trust::Known;
+        Ok(())
     }
 
     pub async fn probe(
@@ -354,10 +440,23 @@ impl Ssh {
                 .ok_or("SSH handshake failed or host key is not Ed25519")?;
             Ok::<_, String>(key)
         };
-        let (key, fingerprint) = tokio::select! {
+        let public: PublicKey = tokio::select! {
             biased;
             _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
             result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SSH operation timed out")??,
+        };
+        let key = public
+            .to_bytes()
+            .map_err(|_| "Host key cannot be encoded")?;
+        let fingerprint = public.fingerprint(HashAlg::Sha256).to_string();
+        // An unreadable store fails closed instead of downgrading to "new".
+        let (trust, saved_fingerprint) = match &self.known_hosts {
+            None => (Trust::New, None),
+            Some(store) => match store.check(&request.host, request.port, &public)? {
+                Saved::Unknown => (Trust::New, None),
+                Saved::Match => (Trust::Known, None),
+                Saved::Changed(saved) => (Trust::Changed, Some(saved)),
+            },
         };
         let token = uuid::Uuid::new_v4().to_string();
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
@@ -377,6 +476,8 @@ impl Ssh {
             algorithm: "ssh-ed25519".into(),
             fingerprint,
             expires_in_seconds: TRUST_TTL.as_secs(),
+            trust,
+            saved_fingerprint,
         };
         registry.challenges.insert(
             token,
@@ -385,6 +486,8 @@ impl Ssh {
                 request,
                 key,
                 expires: Instant::now() + TRUST_TTL,
+                public: Some(public),
+                trust,
             },
         );
         Ok(challenge)
@@ -674,7 +777,7 @@ fn config() -> Arc<client::Config> {
     })
 }
 
-type Observed = Arc<Mutex<Option<(Vec<u8>, String)>>>;
+type Observed = Arc<Mutex<Option<PublicKey>>>;
 struct KeyCheck {
     expected: Option<Vec<u8>>,
     observed: Observed,
@@ -720,8 +823,7 @@ impl client::Handler for KeyCheck {
             self.mismatch.store(!matches, Ordering::Relaxed);
             Ok(matches)
         } else {
-            *self.observed.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some((bytes, key.fingerprint(HashAlg::Sha256).to_string()));
+            *self.observed.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
             Ok(false)
         }
     }
@@ -982,6 +1084,8 @@ mod tests {
                 request: request(),
                 key: vec![1, 2, 3],
                 expires,
+                public: None,
+                trust: Trust::New,
             },
         );
         token
@@ -1389,6 +1493,8 @@ mod tests {
                 request: input,
                 key: vec![1],
                 expires: Instant::now() + TRUST_TTL,
+                public: None,
+                trust: Trust::New,
             },
         );
         let scope = service.context("main").unwrap();

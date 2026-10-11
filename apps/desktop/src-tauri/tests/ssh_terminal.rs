@@ -2,7 +2,7 @@
 mod fixture;
 use new_windterm_desktop::{
     pty::{EventSink, PtyEvent},
-    ssh::{Request, Ssh},
+    ssh::{Challenge, Request, Ssh, Trust},
 };
 use std::{
     sync::{atomic::Ordering, Arc},
@@ -462,4 +462,110 @@ fn incremental_marker_scan_preserves_boundaries_and_linear_work() {
     compared += work;
     assert_eq!(found, Some(2 * 1024 * 1024 + 2));
     assert_eq!(compared, 2 * 1024 * 1024 + 3);
+}
+
+async fn probe(server: &fixture::Fixture, service: &Ssh, scope: &str) -> Challenge {
+    service
+        .probe("main", &id(), request(server), scope)
+        .await
+        .unwrap()
+}
+
+async fn open_and_exit(server: &fixture::Fixture, service: &Arc<Ssh>, scope: &str, token: &str) {
+    let (sender, mut events) = mpsc::channel(128);
+    let sink: EventSink = Arc::new(move |event| {
+        sender
+            .try_send(event)
+            .map_err(|_| "test event queue full".into())
+    });
+    let session = service
+        .open("main", &id(), token, scope, 80, 24, sink)
+        .await
+        .unwrap();
+    until(service, &session, &mut events, b"> ").await;
+    service.write("main", &session, b"exit\n".to_vec()).unwrap();
+    assert!(matches!(
+        closed(&mut events, service, &session).await,
+        PtyEvent::Exit { code: Some(7), .. }
+    ));
+    drained(server).await;
+}
+
+#[tokio::test]
+async fn saved_trust_is_reused_and_a_changed_key_needs_explicit_replacement() {
+    let _serial = TEST_LOCK.lock().await;
+    let mut server = fixture::Fixture::start().await;
+    let directory = std::env::temp_dir().join(format!("p0-trust-{}", id()));
+    let store = directory.join("known_hosts");
+    let service = Arc::new(Ssh::with_known_hosts(store.clone()));
+    let scope = service.context("main").unwrap();
+
+    let first = probe(&server, &service, &scope).await;
+    assert_eq!(
+        (first.trust, first.saved_fingerprint.as_deref()),
+        (Trust::New, None)
+    );
+    assert!(service
+        .trust_replace("main", &first.challenge_token)
+        .is_err());
+    assert!(service.trust_save("other", &first.challenge_token).is_err());
+    assert!(
+        !store.exists(),
+        "nothing is saved before explicit confirmation"
+    );
+    service.trust_save("main", &first.challenge_token).unwrap();
+    let original = server.fingerprint();
+
+    let known = probe(&server, &service, &scope).await;
+    assert_eq!(
+        (known.trust, known.fingerprint.as_str()),
+        (Trust::Known, original.as_str())
+    );
+    open_and_exit(&server, &service, &scope, &known.challenge_token).await;
+
+    // The server now presents a different key: blocked before authentication.
+    *server.host.lock().unwrap() = fixture::key();
+    let changed = probe(&server, &service, &scope).await;
+    assert_eq!(changed.trust, Trust::Changed);
+    assert_eq!(
+        changed.saved_fingerprint.as_deref(),
+        Some(original.as_str())
+    );
+    assert_ne!(changed.fingerprint, original);
+    let before = server.authentications.load(Ordering::SeqCst);
+    let sink: EventSink = Arc::new(|_| Ok(()));
+    let refused = service
+        .open(
+            "main",
+            &id(),
+            &changed.challenge_token,
+            &scope,
+            80,
+            24,
+            sink,
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(refused.contains("differs from the saved key"), "{refused}");
+    assert!(service
+        .trust_save("main", &changed.challenge_token)
+        .is_err());
+    assert_eq!(server.authentications.load(Ordering::SeqCst), before);
+
+    // Only the separate replace action updates trust; the same challenge then proceeds.
+    service
+        .trust_replace("main", &changed.challenge_token)
+        .unwrap();
+    open_and_exit(&server, &service, &scope, &changed.challenge_token).await;
+    assert_eq!(probe(&server, &service, &scope).await.trust, Trust::Known);
+    let text = std::fs::read_to_string(&store).unwrap();
+    assert_eq!(
+        text.lines().count(),
+        1,
+        "replacement must not accumulate keys"
+    );
+
+    server.stop().await;
+    std::fs::remove_dir_all(directory).unwrap();
 }

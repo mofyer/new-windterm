@@ -26,6 +26,8 @@
     "allow-ssh-sftp-list",
     "allow-ssh-sftp-metadata",
     "allow-ssh-sftp-read",
-    "allow-ssh-sftp-close"
+    "allow-ssh-sftp-close",
+    "allow-ssh-trust-save",
+    "allow-ssh-trust-replace"
   ]
 }

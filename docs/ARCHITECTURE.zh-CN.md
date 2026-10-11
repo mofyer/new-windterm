@@ -40,7 +40,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 | 桌面 UI | 会话树、标签、连接表单、传输队列、用户操作 | 私钥文件读取和长期凭据持久化 |
 | xterm.js | 终端解析、屏幕状态、选择、滚动、输入事件 | 建立 SSH 连接或启动本地 shell |
 | Rust 会话层 | 状态机、取消、超时、资源释放、会话 ID 与所属窗口校验 | 绘制终端字符 |
-| Rust SSH 层 | russh 0.64.1 用于指纹、本次信任、测试密钥、固定命令及交互 PTY/shell channel；完整认证与互操作待验证 | 把远端输出当作可信 UI 内容 |
+| Rust SSH 层 | russh 0.64.1 用于指纹、本次或持久化主机信任（`known_hosts.rs`）、测试密钥、固定命令及交互 PTY/shell channel；完整认证与互操作待验证 | 把远端输出当作可信 UI 内容 |
 | Rust SFTP 层 | 基于 russh-sftp 候选实现列目录、上传下载、进度、取消与失败反馈 | 默认静默覆盖或删除远端文件 |
 | Rust 本地 PTY 层 | P0 已采用 portable-pty 0.9.0，支持受限本地 shell；完整平台支持待验证 | SSH 协议或终端模拟 |
 | Rust 存储层 | 会话元数据、设置、迁移与凭据引用 | 在普通配置、日志和仓库中写入明文秘密 |
@@ -56,7 +56,7 @@ portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 
 `ssh_open` 请求 PTY/shell 后返回会话 ID，复用 `PtyEvent` 和 xterm 的原始字节写入/顺序 ACK 路径；输入、尺寸、ACK、关闭分别使用 `ssh_write/resize/ack/close`。输入与输出独立驱动，关闭和取消不排在输入队列后面；归属、scope 失效、晚到打开结果、超时、窗口/应用退出均有清理路径。前端远程标签禁用演示样本与压力命令，不自动向远端发送它们。
 
-真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。当前不支持持久化 known_hosts、密码、加密私钥、agent、代理/跳板、转发或 SFTP 写操作；只读 SFTP 浏览见[受控夹具与 IPC](p0/SSH_SFTP_FIXTURE.zh-CN.md)。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
+真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。主机信任可在明确确认后保存（变化即阻断、需独立替换）；当前不支持密码、加密私钥、agent、代理/跳板、转发或 SFTP 写操作；只读 SFTP 浏览见[受控夹具与 IPC](p0/SSH_SFTP_FIXTURE.zh-CN.md)。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
 
 ## 终端状态只保留一份
 

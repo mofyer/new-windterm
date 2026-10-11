@@ -1,3 +1,4 @@
+mod known_hosts;
 mod platform;
 pub mod pty;
 pub mod sftp;
@@ -134,6 +135,24 @@ fn ssh_sftp_close(
     grant_token: String,
 ) -> Result<(), String> {
     service.sftp_close(window.label(), &grant_token)
+}
+
+#[tauri::command]
+fn ssh_trust_save(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+) -> Result<(), String> {
+    service.trust_save(window.label(), &challenge_token)
+}
+
+#[tauri::command]
+fn ssh_trust_replace(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+) -> Result<(), String> {
+    service.trust_replace(window.label(), &challenge_token)
 }
 
 #[tauri::command]
@@ -286,7 +305,13 @@ async fn pty_close(
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(Sessions::default()))
-        .manage(Arc::new(ssh::Ssh::default()))
+        .setup(|app| {
+            // Saved host trust lives with application data, never in the repo
+            // or the WebView. The file is created on the first explicit save.
+            let store = app.path().app_data_dir()?.join("known_hosts");
+            app.manage(Arc::new(ssh::Ssh::with_known_hosts(store)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ssh_context,
             ssh_open,
@@ -306,6 +331,8 @@ pub fn run() {
             ssh_sftp_metadata,
             ssh_sftp_read,
             ssh_sftp_close,
+            ssh_trust_save,
+            ssh_trust_replace,
             ssh_reject,
             ssh_cancel
         ])

@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+type Trust = "new" | "known" | "changed";
 type Challenge = {
   challengeToken: string;
   host: string;
@@ -7,6 +8,8 @@ type Challenge = {
   algorithm: string;
   fingerprint: string;
   expiresInSeconds: number;
+  trust?: Trust;
+  savedFingerprint?: string | null;
 };
 type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number };
 
@@ -35,7 +38,15 @@ export function createSshVerification(
     </form>
     <section id="ssh-challenge" hidden aria-label="真实主机指纹">
       <div class="ssh-identity"><strong id="ssh-endpoint"></strong><span id="ssh-algorithm"></span><code id="ssh-fingerprint"></code></div>
-      <p>请通过可信渠道核对以上指纹。信任仅用于本次连接，不写入 known_hosts。</p>
+      <p id="ssh-trust-note"></p>
+      <label id="ssh-remember-row" class="ssh-check"><input type="checkbox" id="ssh-remember"/>保存此主机密钥，以后指纹一致时自动信任</label>
+      <section id="ssh-changed" class="ssh-changed" hidden aria-label="主机密钥已变化">
+        <strong>主机密钥与已保存的记录不一致</strong>
+        <span>已保存的指纹</span><code id="ssh-saved-fingerprint"></code>
+        <p>可能是服务器重装或密钥轮换，也可能是中间人攻击。连接已阻止；只有在通过可信渠道核实上方的新指纹后，才应替换保存的密钥。</p>
+        <label class="ssh-check"><input type="checkbox" id="ssh-replace-confirm"/>我已通过可信渠道核实新指纹</label>
+        <button type="button" id="ssh-replace" disabled>替换已保存的密钥</button>
+      </section>
       <p id="ssh-expiry"></p>
       <div class="dialog-actions"><button type="button" id="ssh-reject">拒绝并关闭</button><button type="button" id="ssh-accept" class="primary">仅本次信任并验证</button></div>
     </section>
@@ -55,6 +66,9 @@ export function createSshVerification(
   const status = get("ssh-status");
   const error = get("ssh-error");
   const desktop = isTauri();
+  const remember = get<HTMLInputElement>("ssh-remember");
+  const replace = get<HTMLButtonElement>("ssh-replace");
+  const replaceConfirm = get<HTMLInputElement>("ssh-replace-confirm");
   let purpose: Purpose = "verification";
   let revision = 0;
   let scopeToken: string | undefined;
@@ -78,7 +92,10 @@ export function createSshVerification(
     get<HTMLInputElement>("ssh-username").value = "";
     get<HTMLInputElement>("ssh-key-path").value = "";
     resultView.replaceChildren();
-    for (const id of ["ssh-endpoint", "ssh-algorithm", "ssh-fingerprint", "ssh-expiry"]) get(id).textContent = "";
+    for (const id of ["ssh-endpoint", "ssh-algorithm", "ssh-fingerprint", "ssh-expiry", "ssh-trust-note", "ssh-saved-fingerprint"]) get(id).textContent = "";
+    remember.checked = replaceConfirm.checked = false;
+    replace.disabled = true;
+    get("ssh-changed").hidden = true;
     error.textContent = status.textContent = "";
   };
   const close = () => {
@@ -165,8 +182,15 @@ export function createSshVerification(
       get("ssh-algorithm").textContent = response.algorithm;
       get("ssh-fingerprint").textContent = response.fingerprint;
       get("ssh-expiry").textContent = `请在 ${response.expiresInSeconds} 秒内确认，否则需要重新检查。`;
-      status.textContent = "尚未认证。核对指纹后再决定是否信任。";
-      get("ssh-reject").focus();
+      showTrust(response.trust ?? "new", response.savedFingerprint ?? "");
+      if ((response.trust ?? "new") === "known") {
+        // Same key as saved trust: continue without asking again.
+        status.textContent = "指纹与已保存的记录一致，正在继续…";
+        queueMicrotask(() => accept.click());
+      } else {
+        status.textContent = "尚未认证。核对指纹后再决定是否信任。";
+        get("ssh-reject").focus();
+      }
     } catch (reason) {
       if (current(version)) failed(reason);
     } finally {
@@ -177,10 +201,58 @@ export function createSshVerification(
     }
   });
 
+  function showTrust(trust: Trust, saved: string) {
+    const changed = trust === "changed";
+    get("ssh-changed").hidden = !changed;
+    get("ssh-remember-row").hidden = trust !== "new";
+    get("ssh-saved-fingerprint").textContent = saved;
+    accept.disabled = changed;
+    if (challenge) challenge.trust = trust;
+    get("ssh-trust-note").textContent = {
+      new: "首次连接此主机。请通过可信渠道核对以上指纹；未勾选保存时，信任只用于本次连接。",
+      known: "该主机密钥已保存，指纹一致。",
+      changed: "",
+    }[trust];
+    accept.textContent = trust === "known"
+      ? { verification: "验证", terminal: "打开终端", files: "浏览文件" }[purpose]
+      : { verification: "仅本次信任并验证", terminal: "仅本次信任并打开终端", files: "仅本次信任并浏览文件" }[purpose];
+  }
+  replaceConfirm.addEventListener("change", () => { replace.disabled = !replaceConfirm.checked; });
+  replace.addEventListener("click", async () => {
+    if (!challenge || challenge.trust !== "changed" || !replaceConfirm.checked) return;
+    const token = challenge.challengeToken;
+    replace.disabled = true;
+    error.textContent = "";
+    try {
+      await invoke("ssh_trust_replace", { challengeToken: token });
+      if (challenge?.challengeToken !== token) return;
+      showTrust("known", "");
+      status.textContent = "已替换保存的主机密钥。确认后继续连接。";
+      accept.focus();
+    } catch (reason) {
+      replace.disabled = !replaceConfirm.checked;
+      failed(reason);
+    }
+  });
+
   accept.addEventListener("click", async () => {
     if (!scopeToken || !challenge || operationId || !dialog.open) return;
+    if (challenge.trust === "changed") return;
     if (Date.now() >= expiresAt) { expire(); return; }
     const token = challenge.challengeToken;
+    if (challenge.trust !== "known" && remember.checked) {
+      accept.disabled = true;
+      try {
+        await invoke("ssh_trust_save", { challengeToken: token });
+      } catch (reason) {
+        accept.disabled = false;
+        failed(reason);
+        return;
+      }
+      accept.disabled = false;
+      if (challenge?.challengeToken !== token || !dialog.open) return;
+      challenge.trust = "known";
+    }
     if (purpose !== "verification") {
       const handoff = {
         challengeToken: token, scopeToken, operationId: crypto.randomUUID(),

@@ -546,16 +546,26 @@ mod tests {
     async fn real_openssh_interactive_shell() {
         let env = |name: &str| std::env::var(name).unwrap();
         let id = || uuid::Uuid::new_v4().to_string();
-        let service = Arc::new(Ssh::default());
+        // The saved store is handed back to the runner, which checks that
+        // system OpenSSH accepts it under StrictHostKeyChecking.
+        let store = std::path::PathBuf::from(env("P0_SSH_TRUST_STORE"));
+        let service = Arc::new(Ssh::with_known_hosts(store));
         let scope = service.context("main").unwrap();
-        let request = Request {
+        let request = || Request {
             host: env("P0_SSH_FIXTURE_HOST"),
             port: env("P0_SSH_FIXTURE_PORT").parse().unwrap(),
             username: env("P0_SSH_FIXTURE_USER"),
             private_key_path: env("P0_SSH_FIXTURE_KEY"),
         };
-        let challenge = service.probe("main", &id(), request, &scope).await.unwrap();
+        let challenge = service
+            .probe("main", &id(), request(), &scope)
+            .await
+            .unwrap();
         assert_eq!(challenge.fingerprint, env("P0_SSH_FIXTURE_FINGERPRINT"));
+        assert_eq!(challenge.trust, Trust::New);
+        service
+            .trust_save("main", &challenge.challenge_token)
+            .unwrap();
         let (sender, events) = tokio::sync::mpsc::unbounded_channel();
         let sink: EventSink = Arc::new(move |event| sender.send(event).map_err(|e| e.to_string()));
         let terminal = service
@@ -614,6 +624,12 @@ mod tests {
 
         write("exit\r");
         assert_eq!(screen.exit_code(&service, &terminal).await, Some(7));
+        let again = service
+            .probe("main", &id(), request(), &scope)
+            .await
+            .unwrap();
+        assert_eq!(again.trust, Trust::Known);
+        service.reject("main", &again.challenge_token).unwrap();
         let registry = service.registry.lock().unwrap();
         assert!(registry.terminals.is_empty() && registry.active.is_empty());
     }

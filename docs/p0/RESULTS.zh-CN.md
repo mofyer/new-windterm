@@ -2,7 +2,17 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
-## 最新本地轮：Rust `ssh_open` 与真实 OpenSSH 交互 shell
+## 持久化主机信任
+
+本轮实现 ROADMAP 安全验收中的 TOFU 主机信任：首次连接显示主机、端口、密钥类型与指纹，用户勾选「保存此主机密钥」并确认后才写入；之后指纹一致的主机直接继续；已保存密钥变化时阻止连接，并同时显示保存的与新出现的指纹，只有勾选「已通过可信渠道核实」后执行独立的「替换已保存的密钥」才能继续。
+
+- 存储：应用数据目录下的 `known_hosts`，OpenSSH 行格式（端口 22 为 `host`，其余为 `[host]:port`），先写临时文件再原子替换，Unix 权限 0600；上限 1 MiB / 4,096 条。哈希主机与 `@marker` 行不产生、不作为信任，但原样保留。存储不可读、过大或不是普通文件时拒绝连接（失败即关闭），不会降级成“未保存”。
+- 后端：`ssh_probe` 返回 `trust: new | known | changed` 与保存的指纹；`changed` 的 challenge 无法被 `ssh_accept/ssh_open/ssh_sftp_open` 消费；`ssh_trust_save` 只接受 `new`，`ssh_trust_replace` 只接受 `changed`。保存与替换都不改变“重新连接并固定校验确认字节”的既有路径。
+- 证据：`known_hosts` 单元 3 项；russh 集成测试 `saved_trust_is_reused_and_a_changed_key_needs_explicit_replacement`（服务端换钥后在认证前被拒、认证次数不变、替换后同一 challenge 可继续、文件不累积）；OpenSSH 用例中系统 `ssh` 以 `StrictHostKeyChecking=yes` 接受应用保存的文件；浏览器 6 项信任状态契约（IPC stub）。
+
+独立安全审查无 CRITICAL/HIGH；已修复其 TOCTOU（改为单次打开并基于句柄检查）与手工多主机行替换。边界：Windows 上文件继承 `%APPDATA%` 用户配置文件 ACL（本用户、SYSTEM、Administrators），未另行收紧 DACL；进程内互斥加原子替换，未做跨进程文件锁（应用按单实例运行）；只保存 Ed25519 主机密钥；没有导入用户 `~/.ssh/known_hosts`、证书主机密钥、`@revoked` 语义或管理界面（查看/删除已保存主机）。
+
+## Rust `ssh_open` 与真实 OpenSSH 交互 shell
 
 `node --test tests/fixtures/ssh-terminal/rust-client.test.mjs` 经 Rust `Ssh` 服务对系统 OpenSSH 10.3p1 的 PTY shell 包装完成指纹比对、一次性信任、`ssh_open`、输入、逐块 ACK、中文与 emoji、window-change（`stty size` 由强制的 `24 80` 变为 `40 120`）、输出中 Ctrl-C 与 exit 7。macOS arm64 本机连续 **4/4** 通过，0 残留。此前交互 SSH 只在有限命令 russh 服务端验证；本轮仍不涉及 WebView、vim/tmux、长期背压或 Linux/Windows 客户端。[夹具说明](OPENSSH_INTERACTIVE.zh-CN.md)
 
@@ -41,7 +51,7 @@
 | 本轮原生 GUI | arm64 debug 构建成功；WKWebView 完成实际指纹、本次信任、中文/emoji 输出、尺寸变化、输出中 Ctrl-C、exit 7、关闭和夹具清理 | 主任务 CUA 实测，详见下节；默认 readiness 关闭。仅为有限 russh 命令状态机的真实网络/native 链路，不代表 OS shell/OpenSSH、IME 或性能验收 |
 | 本轮三平台 CI | `9dbf8ac` 的 [run 38116705227](https://github.com/mofyer/new-windterm/actions/runs/38116705227) **success**：三端前端/fmt/check/test/clippy/link 通过；Mac/Linux 默认及 readiness PTY 通过，Windows 两种 PTY 均 skipped | 三端各 10 项 SSH target 为 9 协议 + 1 helper；Windows-only `ChildKiller` 预备钩子通过条件编译，ConPTY 仍未实现，test/link 的非阻塞 PDB 同名 warning 保留。[最终成功及前两次失败](CROSS_PLATFORM_VALIDATION.zh-CN.md)；Windows 保持拒绝策略的原因与门槛见[ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)；不代表三端 GUI、OpenSSH 交互或性能验收 |
 
-普通「新建连接」仍是演示；只读 SFTP 见本页顶部。交互 SSH 不支持长期信任、完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
+普通「新建连接」仍是演示；只读 SFTP 与持久化主机信任见本页顶部。交互 SSH 不支持完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
 
 ## 当前轮三平台结果（`8ee49a4`）
 
