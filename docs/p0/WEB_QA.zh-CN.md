@@ -1,8 +1,25 @@
 # P0 浏览器交互与终端探针验收
 
-日期：2026-10-11。此报告是独立测试通道的实测结果，范围为浏览器原型；不代表原生 WKWebView、Rust PTY、真实 SSH/SFTP 或 117 项功能完成。
+日期：2026-10-11。此报告是独立测试通道的实测结果，范围为浏览器原型；不代表原生 WKWebView、Rust PTY、真实 SSH/SFTP 或 130 项功能完成。
 
-## 结果
+## 本轮 SSH 界面回归
+
+独立全套执行 **84 passed，0 failed，0 skipped，0 flaky；24.6 秒**，严格 TypeScript 检查与 Vite build 通过。原有 70 项上新增 14 项 SSH 界面/IPC 契约测试；本轮共 81 项正向/契约及隔离 PoC，仍含 2 项终端缺口确认和 1 项旧 Unicode 反例，不能全部计为生产功能完成。
+
+新增测试位于 `apps/desktop/tests/e2e/ssh-verification.spec.ts`，通过 IPC stub 驱动真实界面模块，没有启动 Rust、SSH 网络连接或 WKWebView：
+
+| 覆盖组 | 本轮断言 |
+| --- | --- |
+| 浏览器限制 | 真实验证被禁用，无网络请求 |
+| 作用域与信任 | 桌面 context 失败不可检查；关闭后晚到 context 不恢复对话框；未知主机不自动认证，明确确认只提交一次准确 token 与 scopeToken |
+| 拒绝与取消 | 拒绝清除挑战与敏感字段；检查中 Esc 取消并拒绝晚到挑战；认证中取消后再打开也忽略旧输出 |
+| 错误与期限 | 检查/认证错误按安全文本显示，重试需重新输入；挑战过期不能认证 |
+| 输出与生命周期 | exit 7 为命令结果；任意字节按文本显示并可查看原始 hex；页面离开取消操作并清空私钥路径 |
+| 紧凑布局 | 浅/深色 1000×650 指纹页保持在窗口内，操作可触达 |
+
+本轮未采集代码覆盖率，也未将浏览器全套与 Rust/夹具数量相加。当前真实后端与原生验收状态见 [RESULTS](RESULTS.zh-CN.md)。下方保留第二轮 70 项的历史计数、测量值与边界，不把它们重新标为本轮独立数值。
+
+## 第二轮历史结果（70 项）
 
 - 命令：在 `apps/desktop` 下执行 `npx playwright test --config playwright.config.ts`。
 - 重设计后最终完整执行：**70 passed，0 failed，0 skipped，0 flaky；18.5 秒**，未配置重试。`npm run build`（TypeScript 严格检查与 Vite 打包）也通过。
@@ -13,7 +30,7 @@
 
 独立审查发现 8 会话上限时主机确认按钮误报已打开会话；新增测试先复现失败，界面作者修复后最终完整回归已通过。重设计删除了旧营销标题与页脚，布局测试更新为新标签栏、终端工具栏和文件面板区域。兼容探针得到两个明确缺口，见下表。
 
-## 可复现
+## 可复现（当前全套）
 
 先在独立终端启动开发服务器，再运行测试：
 
@@ -27,7 +44,7 @@ npx playwright test --config playwright.config.ts
 
 配置使用本机 Chrome channel；需要安装 Google Chrome。测试默认连接 `http://127.0.0.1:1420`，不会自动启动或停止已有服务。使用两个 worker，独立浏览器 context 隔离 localStorage。模拟传输使用 Playwright clock 驱动时间，不以延长 sleep 或失败重试掩盖不稳定。
 
-## 可见控件与状态覆盖
+## 原有控件与状态覆盖（保留历史范围）
 
 | 入口 | 已执行状态/断言 | 限制 |
 | --- | --- | --- |
@@ -118,10 +135,11 @@ VT52 独立 PoC 的 6 项和原始探针的 5 项随全套再次通过；PoC 没
 
 ## 证据与未验收范围
 
-- 测试源码：`apps/desktop/tests/e2e/workspace.spec.ts`、`terminal-probes.spec.ts`、`unicode-width.spec.ts`、`pty-ui-contract.spec.ts`、`contrast.spec.ts`、`responsiveness.spec.ts`、`dev-watch.spec.ts`、`vt52-compat.spec.ts`。
+- 本轮新增测试源码：`apps/desktop/tests/e2e/ssh-verification.spec.ts`。
+- 原有测试源码：`apps/desktop/tests/e2e/workspace.spec.ts`、`terminal-probes.spec.ts`、`unicode-width.spec.ts`、`pty-ui-contract.spec.ts`、`contrast.spec.ts`、`responsiveness.spec.ts`、`dev-watch.spec.ts`、`vt52-compat.spec.ts`。
 - 原始统计/探针 attachment：`apps/desktop/test-results/results.json`。
 - 布局截图：`apps/desktop/test-results/layout-1000.png`、`layout-1280.png`、`layout-1440.png`。
 - 最终深色工作台/弹窗预览：`docs/assets/p0-dark-workspace.png`、`docs/assets/p0-dark-connection.png`，1440×900，分屏与文件面板同时开启；均已查看。深色 1000×650 另核对全部主区域无越界，过程无 pageerror。
 - `test-results/` 被忽略；重跑会覆盖，父任务可归档到 `.artifacts/p0/`。未将机器截图或原始本地运行目录提交仓库。
 
-本轮独立原生通道已完成 WKWebView 中性灰主题下的真实 PTY 粘贴中文/emoji、尺寸与退出冒烟，见 [RESULTS](RESULTS.zh-CN.md)；CUA typeText 未送出 Unicode，不能将 paste 成功计作中文键盘或 IME 通过。仍需完整原生专项：输入法组合与候选窗、VoiceOver、Retina、全量 VT/ECMA 方言、高输出响应与资源、剪贴板安全、真实 SSH 信任与认证、SFTP 一致性及各平台发布签名。E2E headless 的通过不替代这些证据。
+历史 Carbon 版本的独立原生通道已完成 WKWebView 中性灰主题下的真实 PTY 粘贴中文/emoji、尺寸与退出冒烟，见 [RESULTS](RESULTS.zh-CN.md)；CUA typeText 未送出 Unicode，不能将 paste 成功计作中文键盘或 IME 通过。仍需完整原生专项：输入法组合与候选窗、VoiceOver、Retina、全量 VT/ECMA 方言、高输出响应与资源、剪贴板安全、完整 SSH 信任/认证矩阵、SFTP 一致性及各平台发布签名；本轮受限 SSH 真实验收独立记录。E2E headless 的通过不替代这些证据。

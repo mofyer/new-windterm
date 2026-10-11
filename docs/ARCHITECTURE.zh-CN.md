@@ -33,22 +33,28 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 ## 推荐候选的职责边界
 
 以下以已确认的 Tauri 路线展开；核心业务接口应避免绑定某个 UI 框架。
-当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。下表的 SSH/SFTP、长期凭据与完整持久化层仍为计划，演示界面不代表对应后端已经存在。
+当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。`ssh.rs` 已增加基于 russh 的独立固定命令验证；交互 SSH shell、SFTP、长期凭据与完整持久化层仍为计划，普通连接及文件界面仍是演示。
 
 | 模块 | 职责 | 不承担的职责 |
 | --- | --- | --- |
 | 桌面 UI | 会话树、标签、连接表单、传输队列、用户操作 | 私钥文件读取和长期凭据持久化 |
 | xterm.js | 终端解析、屏幕状态、选择、滚动、输入事件 | 建立 SSH 连接或启动本地 shell |
 | Rust 会话层 | 状态机、取消、超时、资源释放、会话 ID 与所属窗口校验 | 绘制终端字符 |
-| Rust SSH 层 | 基于 russh 候选实现认证、主机密钥验证、PTY 请求、SSH channel | 把远端输出当作可信 UI 内容 |
+| Rust SSH 层 | russh 0.64.1 已用于实际指纹、本次信任、测试密钥认证及固定命令；交互 shell/PTY 与完整认证待实现 | 把远端输出当作可信 UI 内容 |
 | Rust SFTP 层 | 基于 russh-sftp 候选实现列目录、上传下载、进度、取消与失败反馈 | 默认静默覆盖或删除远端文件 |
 | Rust 本地 PTY 层 | P0 已采用 portable-pty 0.9.0，支持受限本地 shell；完整平台支持待验证 | SSH 协议或终端模拟 |
 | Rust 存储层 | 会话元数据、设置、迁移与凭据引用 | 在普通配置、日志和仓库中写入明文秘密 |
 
-russh 是 SSH 协议库候选，不代表已覆盖 WindTerm 的全部 SSH/OpenSSH 行为；差距必须逐项验证。[9]
+russh 0.64.1（ring 后端）已锁定用于受限 SSH 验证，依赖 tokio 1.50.0 与 zeroize 1.9.1；不代表覆盖 WindTerm 的全部 SSH/OpenSSH 行为。SFTP 库尚未接入，差距必须逐项验证。[9]
 portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 会话元数据可采用 SQLite 或版本化配置文件，P0 根据迁移、并发和备份需求选定。
 凭据计划使用系统安全存储；具体 Rust 适配库、访问策略与失败行为待验证。
+
+## 本轮受限 SSH 验证边界
+
+`src/ssh-verification.ts` 通过 `ssh_context` 取得窗口代际的 `scopeToken`，再调用 `ssh_probe` 获取实际 Ed25519 主机指纹。用户确认一次性 challenge 后，`ssh_accept` 重新连接并固定校验相同主机密钥，认证后只执行 `fixture-check`。取消、拒绝、超时、页面代际与窗口/应用退出由 Rust 服务管理；前端丢弃关闭后晚到结果。私钥仅传文件路径，由 Rust 读取未加密 Ed25519 测试密钥，不写入日志或持久化配置。
+
+这不是通用 SSH 会话：没有交互 shell、SSH PTY、任意远程命令或 SFTP；没有 known_hosts 持久化、密码、带口令密钥、agent 或跳板支持。真实对端、状态边界与独立验收见 [SSH 客户端验证](p0/SSH_CLIENT.zh-CN.md)，浏览器 stub 仅验证界面/IPC 契约。
 
 ## 终端状态只保留一份
 
@@ -62,7 +68,7 @@ vt100 可用于受控场景的屏幕快照或测试辅助，不作为完整现�
 
 ## 字节流、顺序与背压
 
-当前 PTY 原型的数据路径：PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK；未来 SSH 路径仍需实现。原型具体预算、超时和清理证据见 [PTY 记录](p0/PTY_PROBE.zh-CN.md)，下列要求继续约束后续实现。
+当前 PTY 原型的数据路径：PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK；交互 SSH 字节流仍需实现。固定命令 SSH 验证返回有界 stdout/stderr 字节与退出状态，在独立对话框显示，不接 xterm 或 PTY ACK 链。原型具体预算、超时和清理证据见 [PTY 记录](p0/PTY_PROBE.zh-CN.md)，下列要求继续约束后续实现。
 终端输出保留字节语义，避免按网络块独立转 UTF-8 导致跨块字符损坏。
 每个会话独立维护序号、待确认字节数、上下水位及关闭状态。
 达到高水位时暂停读取或等待容量，将背压传到 PTY/SSH；不得无限缓存或静默丢字节。
@@ -124,7 +130,7 @@ P0 产出是证据及组件可行性决定，涵盖上述全量关卡；不能�
 
 ## 当前目录与后续拆分建议
 
-`apps/desktop` 已创建：`src` 包含前端原型，`src-tauri/src` 包含 Rust PTY 与 IPC，`tests/e2e` 包含浏览器验收。当前没有下列独立 `crates` 分层，按后续复杂度再拆分，不能从建议目录推断模块已实现。
+`apps/desktop` 已创建：`src` 包含前端原型，`src-tauri/src` 包含 Rust PTY、受限 SSH 验证与 IPC，`tests/e2e` 包含浏览器验收；`tests/fixtures/ssh-sftp` 提供本机受控对端与 Rust 客户端集成测试。当前没有下列独立 `crates` 分层，按后续复杂度再拆分，不能从建议目录推断模块已实现。
 
 ```text
 apps/desktop/             # 已有 P0 Tauri + TypeScript UI 与内置 Rust PTY
@@ -137,7 +143,7 @@ tests/fixtures/           # 终端、SSH、SFTP 验证样本
 benchmarks/               # 可复现压力和资源测量
 ```
 
-除已说明的 `apps/desktop` 外，以上为后续结构建议；通用 transport、SSH/SFTP、串口、调制解调传输与 tmux 模块尚待实现。
+除已说明的 `apps/desktop` 和 `tests/fixtures/ssh-sftp` 外，以上为后续结构建议；通用 transport、交互 SSH、SFTP、串口、调制解调传输与 tmux 模块尚待实现。
 
 ## 依赖版本与官方依据
 

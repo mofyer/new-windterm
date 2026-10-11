@@ -4,7 +4,7 @@
 
 An independent Rust-based reimplementation targeting full WindTerm feature parity, starting with Apple Silicon Macs.
 
-**当前状态：P0 进行中，本地交互原型与真实 PTY 可运行，尚未完成 P0 验收，也没有正式发行版。** 项目名称暂定，与 WindTerm 上游没有隶属关系。
+**当前状态：P0 进行中，已有本地交互、真实 PTY 与独立 SSH 固定命令验证入口；尚未完成 P0 验收，也没有正式发行版。** 项目名称暂定，与 WindTerm 上游没有隶属关系。
 
 ## 目标与范围
 
@@ -33,9 +33,11 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本机已生成的 debug 应用位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，属于本地构建产物，不随 Git 分发，也不是签名公证后的发行包。
 
-P0 第二轮已增加高输出状态合并、仅开发模式的 13 项聚合诊断数字、未接生产终端的 VT52 隔离实验，以及 Linux Bash/Unix PTY 适配和三平台 CI 工作流。Chrome 受控 512 块输出中，状态控件 DOM 写入从 2,560 次降至 4 次；这不证明原生 WKWebView 的 Ctrl-C 延迟已经解决。VT52 实验通过 6 项有限测试，DECSCL 改用 DECRQSS 前后查询确认缺口。
+本轮新增独立真实 SSH 验证入口：桌面程序从受控对端取得实际主机指纹，经本次信任后使用未加密 Ed25519 测试密钥执行固定命令 `fixture-check`。普通连接表单、交互 SSH shell、文件列表与 SFTP 传输仍是演示；不保存长期信任或凭据。入口、复核步骤与限制见 [SSH 客户端验证](docs/p0/SSH_CLIENT.zh-CN.md)。
 
-本轮 70 项浏览器测试通过（67 正向/契约，含 6 项隔离 VT52 PoC；2 项原始 VT 缺口；1 项旧 Unicode 反例）。修订后三平台 CI 任务均通过：Mac 12 项、Linux/Windows 各 11 项单测，Mac/Linux 真实 PTY 通过；Windows 真实 PTY 明确跳过，ConPTY 未实现。新版 arm64 原生应用仅验证中文/emoji **粘贴**、尺寸与 exit 7，未验证 IME 或本轮原生高输出响应。CI 探针耗时不是性能验收；原失败及成功回执见[平台报告](docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)。P0、全功能和发行验收仍未完成。[本轮结果与边界](docs/p0/RESULTS.zh-CN.md)
+浏览器本轮新增 SSH 界面契约回归；Rust 已通过独立复验，原生 SSH 成功路径完成实测，本轮三平台 CI 通过。各自范围及 Windows 构建警告统一记录在 [P0 结果](docs/p0/RESULTS.zh-CN.md)，不代表三端 GUI 或真实 SSH 全部通过。PTY 新增可公开复现的分支计量，默认读取与 ACK 策略未改，尚无性能达标结论。[性能诊断](docs/p0/PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)
+
+此前已完成状态 DOM 合并、开发模式聚合诊断、隔离 VT52 实验、Linux Bash/Unix PTY 适配与三平台 CI 验证；Windows ConPTY 仍未实现。原生 IME、高输出响应、完整功能和发行验收仍待完成。
 
 ## 为什么做
 
@@ -52,7 +54,7 @@ Rust 负责协议、PTY、文件传输和状态管理，Tauri 2 提供桌面集�
 - [界面与交互设计方向](docs/DESIGN.zh-CN.md)
 - [现状核查与技术依据](docs/RESEARCH.zh-CN.md)
 - [P0 本轮结果与未完成项](docs/p0/RESULTS.zh-CN.md)
-- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为后续 Rust 客户端提供测试对端，应用 SSH/SFTP 仍为演示。
+- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为独立 Rust SSH 验证提供受控对端，交互 SSH 与应用 SFTP 尚未实现。
 
 完整工期需在功能盘点、原型验证和人力确定后估算，当前不承诺全项目交付日期。
 

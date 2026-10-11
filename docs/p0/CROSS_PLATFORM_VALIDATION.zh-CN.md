@@ -2,7 +2,30 @@
 
 日期：2026-10-11。最终目标仍是三平台完整功能一致；交付顺序保持 macOS Apple Silicon 优先，Windows/Linux 后续。本文区分代码适配、编译、真实 PTY 和 GUI 验收，不能以 CI 绿色代替整个平台可用。
 
-## 当前状态
+## 本轮 SSH 与 PTY 诊断集成回执（2026-10-11）
+
+运行 [38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626)，被测 commit `84c24df697a6ee0858f4654368e35ec146746174`，整体 **success**。三端前端构建、Rust fmt/check/test/clippy 与桌面可执行文件链接成功；check/clippy 使用 `--all-targets --all-features`，test 使用 `--lib --all-features`，clippy 保留 `-D warnings`。默认桌面构建与真实 PTY 探针未启用诊断计时。
+
+| 实际 host / job | Rust 单测 | 真实 PTY | job outcome |
+| --- | --- | --- | --- |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38110885626/job/114386025521) | 24 passed、0 failed、1 ignored | 2 MiB 完整性、尺寸、UTF-8、归属、Ctrl-C、exit 7、12 轮关闭与 worker 回收通过 | success |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38110885626/job/114386025712) | 23 passed、0 failed、1 ignored | 同一生产 PTY 探针通过 | success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38110885626/job/114386025694) | 23 passed、0 failed、1 ignored | skipped；ConPTY 仍未实现 | success |
+
+三端 ignored 均为需要受控 OpenSSH 对端的 `real_fixture_reconnect_mismatch`。CI 未运行该真实 SSH 夹具，也未进行 GUI、SSH/SFTP 实际连接或输入法验收。本机 macOS 的 Node harness 2/2 与原生 SSH 成功路径另见 [SSH_CLIENT](SSH_CLIENT.zh-CN.md)，不能外推为三平台真实 SSH 已通过。
+
+| Unix 2 MiB 功能探针 | 完整性阶段耗时 | 观察速度 | 未确认字节峰值 |
+| --- | ---: | ---: | ---: |
+| macOS arm64 | 32.71 s | 62.6 KiB/s | 21,671 B |
+| Linux x64 | 0.56 s | 3,626.2 KiB/s | 64,511 B |
+
+两端均精确接收 2,097,152 字节，包含 300 ms 人工 ACK 暂停，峰值低于 65,536 B 预算；均完成 12 轮关闭与回收。这是不同 hosted runner 的单次功能检查，不是公平吞吐比较或性能达标结论，不以本轮与旧轮的耗时差宣称优化。
+
+Windows 桌面链接成功，但记录了非阻塞的 `output filename collision` warning：同名 bin/lib 的调试符号文件均为 `new_windterm_desktop.pdb`。这不是 clippy 失败，也不应描述为所有构建零 warning；后续需单独处理符号产物命名。
+
+原始 run 元数据、完整日志与三端 artifacts 已归档至本地忽略目录 `.artifacts/p0/ci/38110885626/`，公共日志入口为上方 run/job 链接。下方第二轮旧失败、取消与修订成功回执全部保留，只覆盖各自提交。P0、Windows 真实终端、三端 GUI 与完整 WindTerm 功能对齐仍未完成。
+
+## 第二轮历史状态（`a82770d`）
 
 | 平台 | 当前适配 | 已取得证据 | 尚缺证据 |
 | --- | --- | --- | --- |
