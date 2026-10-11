@@ -21,7 +21,9 @@
 
 ## 验收门槛
 
-解除拒绝策略前，必须在 `windows-2022` runner 实际执行：
+解除拒绝策略前，必须在 `windows-2022` runner 实际执行独立的 Windows 探针。现有 `pty_probe` 使用 `stty`、`head|tr`、`sleep` 和 Unix Ctrl-C，属于 macOS/Linux 探针，不能通过替换平台 gate 后直接复用。
+
+Windows 探针至少需要覆盖：
 
 - `cmd.exe` 交互启动、UTF-8/控制字节、resize、退出码 7；
 - 精确 2 MiB 有界输出、ACK 预算不超过 65,536 B、输出中 Ctrl-C 或等价取消；
