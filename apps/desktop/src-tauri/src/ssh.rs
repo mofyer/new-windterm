@@ -1,6 +1,8 @@
 //! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
 #[path = "ssh_auth.rs"]
 pub mod auth;
+#[path = "ssh_forward.rs"]
+pub mod forward;
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
 use crate::known_hosts::{KnownHosts, Saved};
@@ -825,7 +827,7 @@ fn config() -> Arc<client::Config> {
 }
 
 type Observed = Arc<Mutex<Option<PublicKey>>>;
-struct KeyCheck {
+pub(crate) struct KeyCheck {
     expected: Option<Vec<u8>>,
     observed: Observed,
     mismatch: Arc<std::sync::atomic::AtomicBool>,
@@ -1092,6 +1094,61 @@ async fn connect_sftp(
         sftp,
         rekey_rejected,
     })
+}
+
+/// SSH over any byte stream (a TCP socket or a channel through a jump host):
+/// the server must present exactly `key`, then `credential` authenticates.
+#[cfg_attr(not(test), allow(dead_code))] // P0 probe; no UI consumer yet
+pub(crate) async fn connect_pinned<S>(
+    stream: S,
+    request: &Request,
+    key: Vec<u8>,
+    credential: &Credential,
+    cancel: watch::Receiver<bool>,
+) -> Result<client::Handle<KeyCheck>, String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handler = KeyCheck {
+        expected: Some(key),
+        observed: Arc::default(),
+        mismatch: mismatch.clone(),
+        kex_seen: false,
+        rekey_rejected: Arc::default(),
+    };
+    let mut session = client::connect_stream(config(), stream, handler)
+        .await
+        .map_err(|_| {
+            if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
+                "SSH host key changed; authentication was not attempted"
+            } else {
+                "SSH handshake failed"
+            }
+        })?;
+    auth::authenticate(&mut session, request, credential, cancel)
+        .await
+        .map_err(AuthFailure::message)?;
+    Ok(session)
+}
+
+/// Reads the host key a server presents over `stream` without authenticating.
+#[cfg_attr(not(test), allow(dead_code))] // P0 probe; no UI consumer yet
+pub(crate) async fn observe_host_key<S>(stream: S) -> Result<PublicKey, String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let observed = Arc::new(Mutex::new(None));
+    let handler = KeyCheck {
+        expected: None,
+        observed: observed.clone(),
+        mismatch: Arc::default(),
+        kex_seen: false,
+        rekey_rejected: Arc::default(),
+    };
+    let _ = client::connect_stream(config(), stream, handler).await;
+    let key = observed.lock().map_err(|_| "SSH state unavailable")?.take();
+    key.ok_or_else(|| "SSH handshake failed or host key is not Ed25519".into())
 }
 
 fn append(output: &mut Output, bytes: &[u8], stderr: bool) -> Result<(), String> {

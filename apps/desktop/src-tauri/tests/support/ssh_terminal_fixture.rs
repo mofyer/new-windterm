@@ -10,6 +10,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{
     net::TcpListener,
     sync::watch,
@@ -29,6 +30,9 @@ pub struct Fixture {
     pub active: Arc<AtomicUsize>,
     pub denial: Arc<AtomicUsize>,
     pub rekey_limit: Arc<AtomicUsize>,
+    /// Accepted direct-tcpip (local forwarding) channels.
+    #[allow(dead_code)] // read only by the forwarding tests
+    pub forwards: Arc<AtomicUsize>,
     directory: PathBuf,
     cancel: watch::Sender<bool>,
     task: Option<JoinHandle<()>>,
@@ -71,6 +75,8 @@ impl Fixture {
         let active = Arc::new(AtomicUsize::new(0));
         let denial = Arc::new(AtomicUsize::new(0));
         let rekey_limit = Arc::new(AtomicUsize::new(1 << 30));
+        let forwards = Arc::new(AtomicUsize::new(0));
+        let forwarded = forwards.clone();
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (cancel, mut cancelled) = watch::channel(false);
@@ -99,7 +105,7 @@ impl Fixture {
                             auth_rejection_time_initial: Some(Duration::ZERO),
                             ..Default::default()
                         });
-                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), size: (80,24), line: Vec::new(), output: None };
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shell: None, size: (80,24), line: Vec::new(), output: None };
                         count.fetch_add(1, Ordering::SeqCst);
                         connections.spawn(async move {
                             let _guard = guard;
@@ -120,6 +126,7 @@ impl Fixture {
             active,
             denial,
             rekey_limit,
+            forwards,
             directory,
             cancel,
             task: Some(task),
@@ -155,6 +162,10 @@ struct Handler {
     auth: Arc<AtomicUsize>,
     active: Arc<AtomicUsize>,
     denial: Arc<AtomicUsize>,
+    forwards: Arc<AtomicUsize>,
+    /// The channel running the line-based shell; russh delivers every
+    /// channel's data to `Handler::data`, so forwarded bytes must be ignored.
+    shell: Option<ChannelId>,
     size: (u32, u32),
     line: Vec<u8>,
     output: Option<JoinHandle<()>>,
@@ -182,6 +193,59 @@ impl server::Handler for Handler {
                 server::Auth::reject()
             },
         )
+    }
+    /// Loopback-only local forwarding: bytes are relayed to 127.0.0.1:port.
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<server::Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: server::ChannelOpenHandle,
+        _session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        let Ok(port) = u16::try_from(port_to_connect) else {
+            return Ok(());
+        };
+        if host_to_connect != "127.0.0.1" {
+            return Ok(()); // dropping the handle rejects the channel
+        }
+        let Ok(mut target) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await else {
+            return Ok(());
+        };
+        reply.accept().await;
+        self.forwards.fetch_add(1, Ordering::SeqCst);
+        tokio::spawn(async move {
+            let (mut from_client, to_client) = channel.split();
+            let (mut target_read, mut target_write) = target.split();
+            let upstream = async {
+                while let Some(message) = from_client.wait().await {
+                    match message {
+                        russh::ChannelMsg::Data { data } => {
+                            if target_write.write_all(&data).await.is_err() {
+                                break;
+                            }
+                        }
+                        russh::ChannelMsg::Eof | russh::ChannelMsg::Close => break,
+                        _ => {}
+                    }
+                }
+                let _ = target_write.shutdown().await;
+            };
+            let downstream = async {
+                let mut buffer = [0; 32 * 1024];
+                while let Ok(n) = target_read.read(&mut buffer).await {
+                    if n == 0 || to_client.data(&buffer[..n]).await.is_err() {
+                        break;
+                    }
+                }
+                let _ = to_client.eof().await;
+            };
+            tokio::join!(upstream, downstream);
+            let _ = to_client.close().await;
+        });
+        Ok(())
     }
     async fn auth_password(
         &mut self,
@@ -215,6 +279,7 @@ impl server::Handler for Handler {
         _modes: &[(Pty, u32)],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
+        self.shell = Some(channel);
         self.size = (cols, rows);
         if term == "xterm-256color" && self.denial.load(Ordering::SeqCst) != 1 {
             session.channel_success(channel)?;
@@ -257,6 +322,9 @@ impl server::Handler for Handler {
         data: &[u8],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
+        if self.shell != Some(channel) {
+            return Ok(()); // forwarded channel data is relayed by its own task
+        }
         for byte in data {
             if *byte == 3 {
                 if let Some(output) = self.output.take() {
