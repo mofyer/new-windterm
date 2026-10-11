@@ -176,8 +176,8 @@ cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
 cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
-cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-readiness --bin pty_probe
 ```
 
 各平台条件编译会使测试数量不同；当前代码的实际计数见文首 `8ee49a4` 成功回执，不沿用历史 12 项。平台专属测试只有在对应 runner 实际运行后才有该平台证据。

@@ -115,9 +115,9 @@ Pipe 对照均通过精确字节校验：head-tr 84.337 ms；rust-1024 14.521 ms
 正常 clone 仓库即可构建本轮诊断，不再依赖首轮未公开临时程序；需本项目 Rust/桌面依赖环境。默认运行共九次有限 PTY 样本与三次 pipe 对照，不接受任意命令。Windows 明确拒绝真实诊断，Linux 路径本轮未实机运行。
 
 ```sh
-cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-diagnostics --bin pty_diagnose
+cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-diagnostics --bin pty_diagnose
 apps/desktop/src-tauri/target/debug/pty_diagnose
-cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-diagnostics --bin pty_diagnose -- -D warnings
+cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-diagnostics --bin pty_diagnose -- -D warnings
 ```
 
 本机 build、诊断最终九次运行与专用 clippy `-D warnings` 均通过；修改的两份 Rust 文件已 rustfmt，`git diff --check` 无误。跨平台 CI 与整仓 Rust 检查由本轮集成统一验收，不能用这里的本机诊断替代。

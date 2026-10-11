@@ -30,13 +30,13 @@ node tests/perf/summarize.mjs rust .artifacts/p0/perf-baseline/rust-debug
 node tests/perf/summarize.mjs rust .artifacts/p0/perf-baseline/rust-release
 ```
 
-脚本内部等价于（`$M` 为 `apps/desktop/src-tauri/Cargo.toml`，release 时加 `--release`）：
+脚本内部等价于（`$M` 为 `apps/desktop/src-tauri/Cargo.toml`，release 时加 `--release`；探针二进制现由 `dev-tools` feature 门控，见[发行包说明](RELEASE.zh-CN.md)）：
 
 ```sh
-cargo build --locked --manifest-path $M --bin pty_probe
-cargo build --locked --manifest-path $M --features pty-readiness --bin pty_probe
-cargo build --locked --manifest-path $M --features pty-diagnostics --bin pty_diagnose
-cargo build --locked --manifest-path $M --features pty-diagnostics,pty-readiness --bin pty_diagnose
+cargo build --locked --manifest-path $M --features dev-tools --bin pty_probe
+cargo build --locked --manifest-path $M --features dev-tools,pty-readiness --bin pty_probe
+cargo build --locked --manifest-path $M --features dev-tools,pty-diagnostics --bin pty_diagnose
+cargo build --locked --manifest-path $M --features dev-tools,pty-diagnostics,pty-readiness --bin pty_diagnose
 /usr/bin/time -l <副本>/pty_diagnose --sample
 /usr/bin/time -l <副本>/pty_probe
 ```
@@ -133,7 +133,7 @@ node ../../tests/perf/summarize.mjs jsonl test-results/perf/xterm-perf.jsonl
 cd apps/desktop && npm run tauri build -- --bundles app
 ```
 
-构建成功（`tauri.conf.json` 中 `bundle.active` 为 false，但 Tauri CLI 2.12.2 在显式 `--bundles app` 时仍生成了 `.app`）。release 依赖此前已由第 1 节脚本编译，本次 `tauri build` 墙钟 26.9 s，不代表全新构建时间。
+构建成功（`tauri.conf.json` 中 `bundle.active` 为 false，但 Tauri CLI 2.12.2 在显式 `--bundles app` 时仍生成了 `.app`；这是 CLI 的设计行为，原因见[发行包说明](RELEASE.zh-CN.md)）。release 依赖此前已由第 1 节脚本编译，本次 `tauri build` 墙钟 26.9 s，不代表全新构建时间。
 
 | 项目 | 值 |
 | --- | --- |
@@ -144,7 +144,7 @@ cd apps/desktop && npm run tauri build -- --bundles app
 | 架构 | 四个可执行文件 `file` 均为 `Mach-O 64-bit executable arm64`，`lipo -info` 均为 `Non-fat file ... architecture: arm64`；`otool -L` 只链接系统框架（WebKit、AppKit 等），无第三方动态库 |
 | 签名 | `codesign -dv`：`Signature=adhoc`，`flags=0x20002(adhoc,linker-signed)`；未签名发行、未公证 |
 
-注意：Tauri 打包把 crate 的全部 `[[bin]]` 都放进了 `.app`，测试/夹具二进制约占 8.2 MB。这是发行前需要处理的打包问题，本轮只记录、不修改。
+注意：Tauri 打包把 crate 中未被 `required-features` 排除的全部二进制都放进了 `.app`（当时只有 `pty_diagnose` 因需要 `pty-diagnostics` 而未入包），测试/夹具二进制约占 8.2 MB。这是发行前需要处理的打包问题，本轮只记录、不修改。后续已用 `dev-tools` feature 把它们移出 release 包，前后体积对比见[发行包说明](RELEASE.zh-CN.md)；上表仍是当时提交的测量值。
 
 ### 启动到首个窗口
 

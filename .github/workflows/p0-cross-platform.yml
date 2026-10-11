@@ -125,12 +125,12 @@ jobs:
       - name: Run real Unix PTY probe
         id: pty
         if: matrix.real_pty
-        run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-probe.log"
+        run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-probe.log"
 
       - name: Run opt-in readiness Unix PTY probe
         id: pty_readiness
         if: matrix.real_pty
-        run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-readiness-probe.log"
+        run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-readiness --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-readiness-probe.log"
 
       - name: Record exact acceptance boundary
         if: always()

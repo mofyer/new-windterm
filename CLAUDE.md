@@ -55,15 +55,17 @@ cargo clippy --locked --manifest-path $M --all-targets --all-features -- -D warn
 cargo test   --locked --manifest-path $M --lib --all-features            # 单元测试
 cargo test   --locked --manifest-path $M --test ssh_terminal --all-features  # loopback SSH 协议集成测试
 cargo test   --locked --manifest-path $M --lib --all-features <名称过滤>   # 单个测试
-cargo run    --locked --manifest-path $M --bin pty_probe                     # 真实 Unix PTY 探针
-cargo run    --locked --manifest-path $M --features pty-readiness --bin pty_probe
+cargo run    --locked --manifest-path $M --features dev-tools --bin pty_probe   # 真实 Unix PTY 探针
+cargo run    --locked --manifest-path $M --features dev-tools,pty-readiness --bin pty_probe
 ```
+
+`src/bin` 下四个测试/探针二进制由 `dev-tools` feature 门控（`pty_diagnose` 另需 `pty-diagnostics`），release `.app` 不含它们；新增 `src/bin` 二进制要写显式 `[[bin]]` 并加同样门控（`tests/release_bins.rs` 检查），不要给 `tauri build` 传 `dev-tools`。`bundle.active` 为 false，在 `apps/desktop` 下 `npm run tauri build -- --bundles app` 才打 `.app`（未签名公证）；最低 macOS 13.3。见 [docs/p0/RELEASE.zh-CN.md](docs/p0/RELEASE.zh-CN.md)。
 
 受控 SSH/SFTP 夹具（仓库根目录，Node 内置 test runner，无需 npm 依赖；需要系统 OpenSSH，仅 macOS/Linux 非 root，Windows 跳过）：
 
 ```sh
 node --test tests/fixtures/ssh-sftp/fixture.test.mjs      # 夹具自身的启动/清理回归
-node --test tests/fixtures/ssh-sftp/rust-client.test.mjs  # 先 cargo build --bin ssh_probe；启动夹具并以 P0_SSH_FIXTURE_* 环境变量运行被 #[ignore] 的 Rust 真实夹具测试（含只读 SFTP 验收）
+node --test tests/fixtures/ssh-sftp/rust-client.test.mjs  # 自行以 dev-tools 构建 ssh_probe 与 lib 测试二进制；启动夹具并以 P0_SSH_FIXTURE_* 环境变量运行被 #[ignore] 的 Rust 真实夹具测试（含只读 SFTP 验收）
 node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交互 PTY 夹具自检
 node --test tests/fixtures/ssh-terminal/rust-client.test.mjs  # Rust ssh_open 对真实 OpenSSH shell 的互操作（ignored 测试）
 ```
@@ -72,7 +74,7 @@ VT 兼容矩阵：`tests/e2e/vt-matrix.spec.ts` 记录 xterm.js 6.0.0 的 63 项
 
 P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
 
-桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
+桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --locked --features dev-tools --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
 提交前：`git diff --check`。
 
@@ -91,7 +93,7 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 - `pty.rs`：`Sessions` 注册表（每窗口有代际 generation，最多 8 个会话）、reader/writer 线程、ACK 流控与子进程回收。
 - `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash、Windows `cmd.exe /D /Q /K`）。Windows 细节在 `platform_windows.rs`：kill-on-close Job Object 回收进程树；等待线程在子进程退出后关闭 pseudoconsole，使阻塞读取得到 EOF；会话关闭时终止 Job，而不是在 IPC 线程上关闭 pseudoconsole（可能阻塞）；reader 结束后要排空管道。ConPTY 启动时会发 `ESC[6n` 并等待回复，前端会暂存会话 ID 到达前的输入。Windows 测试在 `pty.rs` 的 `windows_tests` 中，只能在 Windows CI 上运行。
-- Cargo features：`pty-readiness` 是默认关闭的 Unix poll/ACK 通知实验（默认构建仍是 5 ms 轮询）；`pty-diagnostics` 启用 `pty_diagnose` 二进制与计时字段。
+- Cargo features：`pty-readiness` 是默认关闭的 Unix poll/ACK 通知实验（默认构建仍是 5 ms 轮询）；`pty-diagnostics` 启用计时字段，并与 `dev-tools` 一起启用 `pty_diagnose` 二进制；`dev-tools` 只用于门控 `src/bin` 下的测试/探针二进制。
 
 ### SSH 流程（`ssh.rs`，交互通道在 `ssh_terminal.rs`，通过 `#[path]` 挂为 `ssh::terminal`）
 

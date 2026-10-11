@@ -64,9 +64,9 @@ idle 差值从 READY_OK 后开始，包含可能的提示符尾部和一次跨�
 分别构建后复制到独立路径，避免第二次构建覆盖第一种策略；生成器使用当前二进制的固定 `--generate 4096` 模式，不接受任意命令。然后交替运行三次 `--sample` 并保留 time 输出：
 
 ```sh
-cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-diagnostics --bin pty_diagnose
+cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-diagnostics --bin pty_diagnose
 # 将 target/debug/pty_diagnose 保存为独立 baseline 路径
-cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-diagnostics,pty-readiness --bin pty_diagnose
+cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-diagnostics,pty-readiness --bin pty_diagnose
 # 将 target/debug/pty_diagnose 保存为独立 readiness 路径
 # 各二进制执行 --sample；顺序 baseline/readiness、readiness/baseline、baseline/readiness
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib --all-features

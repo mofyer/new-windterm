@@ -57,6 +57,6 @@ WindTerm 迁移仅处理公开格式可识别的非秘密字段，使用脱敏 f
 
 ## 发行门槛
 
-macOS 首要构建目标为 `aarch64-apple-darwin`，最低系统版本在 P0 确定。不提前宣称 macOS 28 已验证兼容。CI 构建通过不能替代真实 M 系列设备上的输入法、文件传输和完整功能验收。
+macOS 首要构建目标为 `aarch64-apple-darwin`，最低系统版本在 P0 确定：当前声明 13.3（见[发行包说明](p0/RELEASE.zh-CN.md)），尚未在旧系统实机验证。不提前宣称 macOS 28 已验证兼容。CI 构建通过不能替代真实 M 系列设备上的输入法、文件传输和完整功能验收。
 
 对外分发需要 Apple Developer Program 对应权限、Developer ID 签名和公证；这些是待落实的依赖。候选包须验证新安装、启动、升级、配置迁移和回退限制。各平台安装包与证据齐备后才宣布对应版本可用。[Apple 公证说明](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
