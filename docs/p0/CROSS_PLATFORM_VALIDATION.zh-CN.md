@@ -6,11 +6,11 @@
 
 | 平台 | 当前适配 | 已取得证据 | 尚缺证据 |
 | --- | --- | --- | --- |
-| macOS arm64 | zsh + Unix PTY，可取消读写、ACK 背压及回收 | 本机 macOS 27.0.1：Rust 检查/单测及真实 PTY 探针；此前另有 native GUI 记录 | 本轮 hosted CI 运行记录待触发；签名、公证及完整功能验收未完成 |
-| Linux x64 | 新增 Bash + Unix PTY，复用已有有界传输和取消逻辑 | Linux 命令构造策略已在 Mac 单元测试检查；**这不等于 Linux 已运行** | Ubuntu 24.04 hosted 编译、链接、单测及真实 PTY 探针均待 CI 回执；GUI/WebKit/IME 未测 |
-| Windows x64 | 保留明确的未实现平台检查；创建 PTY 之前拒绝 | 预备 ICO 资源、Windows cfg 错误隔离与拒绝策略测试 | hosted 编译/链接及拒绝策略测试待 CI 回执；ConPTY 可取消 I/O、进程树清理及真实终端尚未实现 |
+| macOS arm64 | zsh + Unix PTY，可取消读写、ACK 背压及回收 | 本机 macOS 27.0.1 与 hosted 前端/检查/12 单测/链接及真实 PTY 探针通过；首次探针期限失败与修订回执均保留 | hosted 2 MiB 用时 35.51 秒，仅完整性通过；吞吐性能、签名、公证及完整功能验收未完成 |
+| Linux x64 | Bash + Unix PTY，复用已有有界传输和取消逻辑 | Ubuntu 24.04 hosted 前端/检查/11 单测/链接及真实 PTY 探针通过 | GUI/WebKit/IME 未测；其他发行版及完整功能未验收 |
+| Windows x64 | 保留明确的未实现平台检查；创建 PTY 之前拒绝 | Windows Server 2022 hosted 前端/检查/11 单测/链接通过，包含平台拒绝策略 | ConPTY 可取消 I/O、进程树清理及真实终端尚未实现；GUI 未验收 |
 
-Linux “新增适配”表示实现已写入代码，不表示发行版兼容或运行通过。Windows 的绿色编译任务也不能解释为 Windows 终端已支持。
+Linux 证据仅覆盖本次 Ubuntu runner 的生产 PTY 层，不表示所有发行版兼容或桌面 GUI 验收。Windows 的绿色编译任务不能解释为 Windows 终端已支持。
 
 ## 平台边界
 
@@ -25,7 +25,7 @@ Linux “新增适配”表示实现已写入代码，不表示发行版兼容�
 
 ## CI 执行内容
 
-工作流：`.github/workflows/p0-cross-platform.yml`。本次已只读确认公开仓库的 Actions 已启用且允许全部 actions；工作流仍需推送后才能取得运行结论。
+工作流：`.github/workflows/p0-cross-platform.yml`。公开仓库 Actions 已启用。当前验证运行已启动，最终结论见下方回执；运行中步骤不能计为通过。
 
 | Runner | 预期 Rust host | 真实 PTY |
 | --- | --- | --- |
@@ -53,7 +53,57 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_p
 
 ## 回执补录要求
 
-推送后在此记录 Actions run URL、被测 commit、每个 job 的 outcome、Rust host、实际测试数及 PTY 探针原始输出。若任何任务失败，应保留失败日志并修复后记录新运行，不把后续 Mac 成功覆盖之前的 Linux/Windows 失败。当前 hosted 回执：**待触发，无三平台成功声明**。
+运行：[38107971793](https://github.com/mofyer/new-windterm/actions/runs/38107971793)，被测 commit `f6b04b706a9921be90dece7fd7f6a7005309e9cd`，2026-10-11，整体 **failure**。前次运行 `38107796175` 被更新提交自动取消，不能计为通过或失败。
+
+| 实际 host / job | 前端、fmt、check、clippy、桌面链接 | 单测 | 真实 PTY | job outcome |
+| --- | --- | --- | --- | --- |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38107971793/job/114377456049) | 全部通过 | 12 通过 | 2 MiB 负载未在旧 10 秒总期限内结束 | failure |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38107971793/job/114377456123) | 全部通过 | 11 通过 | 完整性、Ctrl-C、退出码和 12 轮关闭回收通过；峰值 65,531 B | success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38107971793/job/114377456159) | 全部通过 | 11 通过，含 `pending_adapter_rejects_session_before_allocating_a_pty` | skipped；适配器仍未实现 | success |
+
+Mac 原始失败：`FAIL PTY probe: Probe output timed out waiting for "END_LOAD"; received 691618 bytes`。数据持续到达后触发探针的统一 10 秒总期限；日志没有显示 2 秒无输出或生产 ACK 超时。后续仅将 2 MiB 完整性负载改为独立、有界的 60 秒期限，普通标记 10 秒、无进展 2 秒、生产 ACK 15 秒、8 MiB 探针输出上限以及 2,097,152 字节完整性断言均保留。负载耗时和 KiB/s 仅作诊断，不代表吞吐性能验收。修订后的 hosted 回执见下。
+
+Linux 原始成功输出：
+
+```text
+P0 real PTY probe: OS=linux ARCH=x86_64
+PASS real PTY: ownership, resize 132x43, UTF-8 bytes, 2 MiB exact output, Ctrl-C, exit 7, idempotent close; peak unacknowledged=65531 bytes
+PASS 12 real PTY open/write/close cycles with withheld ACKs and worker reaping
+```
+
+原始 job 日志、run 元数据及三端上传的检查日志已归档于本地 `.artifacts/p0/ci/38107971793/`；公共 Actions 运行页可查对应 job 与 14 天日志 artifact。本次失败保留，不被后续成功覆盖。
+
+### 修订后回执
+
+验证运行：[38108375014](https://github.com/mofyer/new-windterm/actions/runs/38108375014)，被测 commit `a82770db2dc5fc4ccc04ba3865ef18ff6168c614`，2026-10-11，整体 **success**。三端实际 host 与预期一致；每端前端资源构建、Rust fmt/check/clippy、桌面可执行文件链接均成功。
+
+| 实际 host / job | 单测 | 真实 PTY | job outcome |
+| --- | --- | --- | --- |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38108375014/job/114378599131) | 12 通过 | 2 MiB 完整性、尺寸、UTF-8、归属、Ctrl-C、退出码、12 轮关闭回收通过 | success |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38108375014/job/114378599215) | 11 通过 | 与 macOS 相同的生产 PTY 探针通过 | success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38108375014/job/114378598998) | 11 通过，含 PTY 分配前拒绝测试 | skipped；ConPTY 适配器仍未实现 | success |
+
+macOS 原始探针输出：
+
+```text
+P0 real PTY probe: OS=macos ARCH=aarch64
+PASS 2 MiB byte integrity: 2097152 payload bytes in 35.51s including ACK pause; 57.7 KiB/s observed (diagnostic only)
+PASS real PTY: ownership, resize 132x43, UTF-8 bytes, 2 MiB exact output, Ctrl-C, exit 7, idempotent close; peak unacknowledged=24743 bytes
+PASS 12 real PTY open/write/close cycles with withheld ACKs and worker reaping
+```
+
+Linux 原始探针输出：
+
+```text
+P0 real PTY probe: OS=linux ARCH=x86_64
+PASS 2 MiB byte integrity: 2097152 payload bytes in 0.55s including ACK pause; 3701.7 KiB/s observed (diagnostic only)
+PASS real PTY: ownership, resize 132x43, UTF-8 bytes, 2 MiB exact output, Ctrl-C, exit 7, idempotent close; peak unacknowledged=65536 bytes
+PASS 12 real PTY open/write/close cycles with withheld ACKs and worker reaping
+```
+
+两端输出均保持在 65,536 B 未确认预算内。上述速度包含 300 ms 人工 ACK 暂停，来自不同 hosted runner 的单次功能探针；不能用来宣称平台吞吐性能达标或作公平性能对比。macOS 的 35.51 秒需要后续独立性能分析；本轮没有更改生产 I/O、ACK 或预算策略。
+
+最终日志归档：`.artifacts/p0/ci/38108375014/`（三份 job 日志、`run.json`、每端 environment/frontend/check/tests/clippy/link 日志及 Unix PTY 日志）。公共运行页的日志 artifact 保存 14 天。三端编译成功不包含 GUI、WebView/IME、安装/签名、SSH/SFTP、Windows 真终端或 WindTerm 全功能一致性验收。
 
 ## 官方依据
 

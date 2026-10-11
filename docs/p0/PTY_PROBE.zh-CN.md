@@ -2,6 +2,8 @@
 
 日期：2026-10-11。范围：Rust/portable-pty 的本地字节链路及 Tauri IPC 接口；**不是完整 P0 通过报告，也不是 SSH/SFTP 实现**。
 
+> 本文保留第一轮的实现与实测快照；下文“当前平台”和测试数量均指该轮。第二轮新增 Linux 适配与三平台 CI，最新状态见[跨平台验证](CROSS_PLATFORM_VALIDATION.zh-CN.md)和[本轮结果](RESULTS.zh-CN.md)。
+
 ## 实现
 
 位置：`apps/desktop/src-tauri/`。Tauri 2.12.3、tauri-build 2.7.2、portable-pty 0.9.0，以及其他直接依赖均固定精确版本；`Cargo.lock` 固定传递依赖。

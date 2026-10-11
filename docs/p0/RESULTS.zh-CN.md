@@ -1,55 +1,56 @@
-# P0 本轮结果与下一步
+# P0 第二轮结果与下一步
 
-日期：2026-10-11。**P0 进行中：本地原型可运行，但完整功能基线、关键可行性验证与 P0 验收尚未完成。** 最新 Silver Soft UI 已实现白色画布、银白浮层、24px 主面板圆角与双向柔影，完成 56 项浏览器回归及有限原生冒烟；用户已回复“接近了，按这个方向继续”，认可视觉方向。下文区分新版结果、旧 Mint 原生功能证据和后端诊断，不把方向认可或有限检查当作完整产品验收。
+日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可本轮深色方向。本轮完成新的 arm64 原生粘贴/尺寸/退出冒烟；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
-## 交付与证据
+## 第二轮交付与证据
 
-| 内容 | 本轮结果 | 证据与边界 |
+| 内容 | 当前结果 | 边界与证据 |
 | --- | --- | --- |
-| 上游盘点 | 固定 2.7.0 发布样本与源码，记录 117 个初始 ID、静态资源和少量实际入口 | [BASELINE](BASELINE.zh-CN.md)、[结构化台账](baseline.json)；尚未冻结完整基线，入口可见不证明功能成功 |
-| 技术调查 | 梳理 VT、编辑/折叠、历史压缩、SSH 高级能力、tmux 和 modem 缺口 | [FEASIBILITY](FEASIBILITY.zh-CN.md)；协议依赖候选不等于已实现或全部锁定 |
-| Silver Soft UI 原型 | 白色画布、银白浮层、纯白终端、24px 主面板圆角与双向柔影；保留侧栏、标签/分屏、命令面板和连接/传输演示 | [设计系统](DESIGN_SYSTEM.zh-CN.md)、[UI_MAP](UI_MAP.zh-CN.md)；SSH 指纹、文件与传输均为模拟，无真实网络和文件落盘 |
-| 最新浏览器验收 | 56 passed，16.2 秒，无测试放宽：53 项正向/契约（含 2 项对比度检查）、2 项 VT 缺口、1 项旧 Unicode 6 反例；0 failed/skipped/flaky | [WEB_QA](WEB_QA.zh-CN.md)；Chrome headless，不能替代原生 WKWebView/IME 验收 |
-| Rust 检查 | `cargo check`、10 个单元测试、`clippy -D warnings` 通过 | [PTY_PROBE](PTY_PROBE.zh-CN.md)；涵盖 ACK、预算、关闭、尺寸、平台边界和生命周期规则 |
-| 真实 PTY | 2,097,152 字节输出完整性、ACK 暂停/恢复、Ctrl-C、132×43 resize、退出码 7、重复关闭与关闭后拒绝输入 | [PTY_PROBE](PTY_PROBE.zh-CN.md)；是本机 PTY 探针，不是 SSH/SFTP 或完整图形链路验收 |
-| 关闭与清理 | 12 轮真实 PTY 打开、输出、不发 ACK、关闭和等待回收；未发现该测试进程残留 | [PTY_PROBE](PTY_PROBE.zh-CN.md)；不覆盖守护化、双重 fork、脱离会话等进程 |
-| 本地应用 | 已有 debug `.app` 构建产物，可用于继续原生补验 | 路径见下文；不是签名公证后的发行版 |
-| 已测 Mint 原生补验 | WKWebView 中真实中文/emoji 回显、尺寸与退出码正确；大量输出中断存在待查延迟 | 见下节；不是新一轮样式、IME、长期性能或即时中断验收 |
-| 新版原生冒烟 | arm64 debug `.app` 重打并启动，中文/emoji 命令回显与输出完整，`stty size` 为 `23 129`，`exit 7` 状态正确 | WKWebView 实际本地 PTY；仅为本轮冒烟，不是 IME、性能或全功能验收 |
+| 高输出状态更新 | 专项 Chrome 512 块输出中状态控件 DOM 写入从 2,560 次降至 4 次；最终全套观察 3 次；512 块 ACK 顺序与有界窗口保留 | [RESPONSIVENESS](RESPONSIVENESS.zh-CN.md)、[WEB_QA](WEB_QA.zh-CN.md)；IPC stub，无 Rust/PTY/WKWebView，不宣称原生性能解决 |
+| 开发诊断 | 仅开发模式按参数启用，固定 13 个聚合数字；无输入/输出/路径/会话 ID 或采样数组 | 同上；无查询参数不安装，生产产物删除诊断表面 |
+| 开发服务隔离 | Vite 忽略 `src-tauri` 变更，专项验证不再发送相应 full-reload 消息 | 同上；旧日志消息不等于页面实际导航，不以假设替代观察 |
+| VT52 隔离实验 | 6 项有限实验通过，验证跨块基本输出转换、有界状态和未实现诊断 | [TERMINAL_COMPAT](TERMINAL_COMPAT.zh-CN.md)；没有接生产 UI/PTY，非完整 VT52 或 WindTerm 对齐 |
+| DECSCL 缺口判据 | 改为 DECRQSS 查询 conformance 的前后响应，并核对 xterm 源码 | 同上；移除以 primary DA class 判断切换成功的旧断言 |
+| 跨平台 CI | 修订后三个任务均成功；Mac 12 项、Linux/Windows 各 11 项单测；Mac/Linux 真实 PTY 通过，Windows 真实 PTY 跳过 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md)保留原失败与成功回执；ConPTY 未实现，CI 成功不等于三端产品可用或性能达标 |
+| 本机 Rust | 当前 Mac 单测为 12 项，含 Linux 命令/环境及缺失 shell 策略；检查和探针按专项报告记录 | 各目标条件测试数可不同，不把未运行的 Windows/Linux 测试计入 |
+| 界面与全套浏览器验收 | 70/70，18.5 秒，0 failed/skipped/flaky；67 正向/契约含 6 项隔离 VT52 PoC，另 2 项原始 VT 缺口及 1 项旧 Unicode 反例；build 通过 | [WEB_QA](WEB_QA.zh-CN.md)、[设计系统](DESIGN_SYSTEM.zh-CN.md)；浅深色方向均获认可，反例与 PoC 不算生产兼容通过 |
+| 本轮原生冒烟 | 新 arm64 debug 构建约 11.89 秒、31.76 MiB；中性灰深色下真实 PTY 粘贴中文/emoji 回显和输出完整，23 行/129 列、exit 7 | WKWebView 实测；只证明粘贴路径，不证明键盘中文/IME或高输出响应 |
 
-PTY 报告记录宿主为 macOS 27.0.1、arm64。本轮已测未确认输出有效载荷峰值 61,607 字节，低于 65,536 字节预算；该数字只针对有效载荷，不能当作应用 RSS、吞吐或性能领先证据。
+状态 DOM 合并不改变终端内容、ACK 或输入时序，不关闭 screenReaderMode。诊断只是观测，Chrome 单次耗时与 keydown→stub 延迟不能用于宣布 WKWebView 的 Ctrl-C 延迟已解决。详见[响应专项](RESPONSIVENESS.zh-CN.md)。
 
-## 已测 Mint 构建的原生补验
+## 终端兼容边界
 
-主执行通道在 macOS 27.0.1 arm64 的已测 Mint debug `.app` 中，经 `tauri://localhost` WKWebView 记录以下真实 PTY 行为；这不覆盖随后用户要求的新一轮样式调整：
+原始 xterm 的 VT52 地址序列缺口继续保留。隔离 PoC 只处理干净 ANSI 初态下的一组基本 VT52 输出；污染 origin/滚动区域、图形字符集、输入键映射、身份响应等仍未完成。未来接入时 ACK 必须按原输入块与字节计数，不能按转换长度或等待后续块补齐控制序列；当前生产终端不经过该适配器。
 
-- 执行含 `P0_FINAL 中文🌏` 的 `printf`，命令回显和输出正确。此前 emoji 错列问题在接入 Unicode 11 宽度表后未复现；这不等于 Unicode 13/ZWJ 或中文 IME 组合输入通过。
-- `stty size` 返回 `27 135`，即 27 行、135 列。
-- 持续 `yes` 输出累计约 41.9 MB 后，多次触发 Ctrl-C 才观察到输出停止；随后 `printf P0_RESPONSIVE` 成功，`exit 7` 显示退出码 7。
+DECSCL 的旧 primary DA 判据已撤回。新探针先查询 `DCS $ q " p ST`，发送 `CSI 62 ; 1 " p` 后再查询，实际前后均为 `DCS 1 $ r 61 ; 1 " p ST`；结合 xterm 6.0.0 源码硬编码与未支持说明确认缺口。DA 仅作身份观察。实验通过和缺口复现均不等于完整兼容性验收。
 
-该中断观察不能作为吞吐性能或即时 Ctrl-C 响应通过证据；辅助功能输入事件（AX）、输入排队与输出消费延迟需要专项定位。后端随后使用同一生产 Session 做独立真实 `yes` 诊断：输出 8,390,577 字节后注入 `0x03`，暂停 ACK 300ms，在 316.16ms 后收到恢复 `printf`（包含该 300ms 暂停），未确认有效载荷峰值 5,937 字节，正常回收，无生产代码修改。这支持该后端路径可中断，不能据 GUI/CUA 的未量化观察归因为 Rust 死锁；临时诊断也不是 GUI 性能基准。
+## 跨平台执行状态
 
-## 最新白银浮层版视觉证据
+- macOS arm64：本轮 Rust/PTY 检查及新版原生粘贴、尺寸和退出冒烟已有记录，高输出与 IME 未验收。
+- Linux：Bash/Unix PTY 已在 Ubuntu 24.04 hosted 完成编译、链接、单测与真实 PTY 探针；GUI、其他发行版和完整功能仍未验收。
+- Windows：hosted 编译/链接及拒绝策略已有通过记录；ConPTY 的可取消 I/O、句柄与进程树尚未实现，真实 PTY 明确跳过。
 
-三张文档截图均已更新并核对为最新 Silver Soft UI：[浅色工作台](../assets/p0-light-workspace.png)、[连接表单](../assets/p0-light-connection.png)、[深色工作台](../assets/p0-dark-workspace.png)。最新浏览器对比度抽检的最低值为浅色 4.674:1、深色 4.640:1；该结果仅覆盖所测颜色对，不是完整无障碍认证。用户随后明确认可继续沿该方向完善，认可范围不扩展为完整产品验收。
+`.github/workflows/p0-cross-platform.yml` 使用 macos-15、ubuntu-24.04、windows-2022。首轮 Mac hosted 负载探针触及旧 10 秒总期限失败；修订探针总期限后，三平台编译/检查/链接及各自测试范围均成功，Windows 真实 PTY 仍明确跳过。原失败、取消运行和成功 commit/run 统一记录在[执行回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)。Mac/Linux 的 2 MiB 探针耗时分别为 35.51 秒和 0.55 秒，来自不同 runner 并含人工 ACK 暂停，仅作功能诊断，不能用作公平吞吐对比或性能通过结论。[跨平台计划](../CROSS_PLATFORM.zh-CN.md)
 
-最终白银浮层版已重新构建、重启，构建约 9.7 秒，arm64 debug 产物约 31.76 MiB。主执行通道在 `tauri://localhost` WKWebView 的真实本地终端运行 `printf 'P0_SILVER_OK 中文 🌏\n'; stty size; exit 7`：命令回显与输出完整，尺寸为 23 行、129 列，界面退出码为 7。此处是新版原生冒烟；上文 41.9 MB 和 8,390,577 字节中断诊断仍保留为此前功能证据，不构成新版高负载性能验收。
+## 上一轮保留证据
 
-## 跨平台边界
+以下仅作为历史，不冒充本轮新代码、深色主题或原生性能验收：
 
-macOS、Windows、Linux 从 P0 共同进入架构设计，详见[跨平台计划](../CROSS_PLATFORM.zh-CN.md)。本轮将 shell、环境与工作目录、非阻塞 I/O 和 EOF 规则隔离到平台模块；尚未支持的平台在分配 PTY 前明确报错。Windows/Linux 的适配、构建与实机验收仍未完成；macOS 原生通过不向其他平台继承。
+- 56 项浏览器通过：53 正向/契约（含 2 项对比度）、2 项终端缺口、1 项旧 Unicode6 反例；原 DECSCL 断言在第二轮纠正。上一轮 Rust 为 10 项，当前 Mac 已增加至 12 项。
+- 真实 PTY 探针完成 2 MiB 字节完整性、背压、Ctrl-C、resize、exit 7 与 12 轮关闭；普通前台进程未见该探针残留，不覆盖守护化/脱离会话进程。[PTY_PROBE](PTY_PROBE.zh-CN.md)
+- 旧 Mint 原生窗口持续 `yes` 累计约 41.9 MB 后，多次 Ctrl-C 才观察停止，随后恢复 `printf` 与 exit 7 成功；AX/GUI 输入与队列延迟尚未量化。
+- 同生产 Session 独立后端诊断在 8,390,577 字节后注入 `0x03`，暂停 ACK 300ms，316.16ms 后收到恢复 `printf`（包含暂停），pending 峰值 5,937 字节，正常回收；不代表 GUI 性能，也不足以将此前延迟归因为 Rust 死锁。
+- 上一轮白银原生 `.app` 在 WKWebView 中完成 `P0_SILVER_OK 中文 🌏` 回显/输出、`stty size`=`23 129` 与 exit 7。仅为当时版本冒烟，不是 IME、Unicode13/ZWJ 或本轮全量验收。
 
-## 已确认的缺口与范围
+## 本轮视觉与原生冒烟
 
-浏览器独立序列探针确认：VT52 模式切换后的定位序列未按预期执行；DECSCL 选择 VT200 conformance 后，设备属性仍未报告目标 class。两项测试为 green 表示缺口可重复，**不表示对应兼容性通过**。这些证据限定于具体序列，不能外推为所有 VT 模式均不支持。
+浅色方向保持：[工作台](../assets/p0-light-workspace.png)、[连接表单](../assets/p0-light-connection.png)。中性炭灰深色已更新并获用户方向认可：[工作台](../assets/p0-dark-workspace.png)、[连接表单](../assets/p0-dark-connection.png)。浏览器正文/控件所测最低对比度为浅色 4.674:1、深色 6.321:1，1000×650 分屏与文件面板无几何越界或 pageerror；这不是完整可访问性认证。
 
-117 项只是初始清单。上游实际入口还观察到 VT52、VT102、Bell、Big5/EUC-JP 字符集、Sysmon、Hex 编辑、虚拟空间、多插入符号、全屏/置顶与调试模式等候选；需新增独立 ID 或拆分行为，保留旧 ID，不以实现难度删减范围。上游能力、候选入口及本项目实现应继续分开记录。
+新构建在 `tauri://localhost` WKWebView 的真实本地终端粘贴 `printf 'P0_CARBON_PASTE 中文 🌏\n'; stty size; exit 7`，AX 可见命令与输出均含完整中文/emoji，尺寸 23 行、129 列，退出码 7。首次 CUA `typeText` 通道未送出 Unicode，改为 paste 后才成功；因此仅记录**粘贴回显成功**，不称为中文键盘或 IME 通过。本轮没有重测原生高输出，不解决旧 Ctrl-C 延迟。
 
-原型目前最多 8 个会话、5,000 行终端历史；这些是 P0 防护预算，不是最终功能上限，也不是动态压缩实现。真实 SSH/SFTP、主机信任与认证、tmux 集成、其他协议、完整 VT 方言和历史压缩尚未完成。未完成中文 IME、VoiceOver、Retina、完整原生交互、CPU/RSS/耗电/启动性能、签名公证或正式发行验收。原生补验应另记录实际动作和证据，不能从浏览器结果推断通过。
+## 复核入口
 
-## 运行与复核
-
-macOS 开发环境需 Node.js/npm、仓库指定 Rust 工具链和 Xcode Command Line Tools。在仓库根目录执行：
+macOS 开发环境需 Node.js/npm、仓库 Rust 工具链及 Xcode Command Line Tools：
 
 ```sh
 cd apps/desktop
@@ -57,33 +58,24 @@ npm ci
 npm run tauri dev
 ```
 
-`tauri dev` 自动启动前端服务。桌面窗口点击「本地终端」可启动原型限定的本机 `/bin/zsh -f -i`；不会加载用户 shell 配置或读取 SSH 凭据。纯浏览器演示改用 `npm run dev`，地址为 `http://127.0.0.1:1420`，不能启动真实 PTY。两种模式不要同时占用 1420 端口。
+桌面模式自动启动开发服务器。纯浏览器演示改用 `npm run dev`；两者不要同时占用 1420。前端检查为 `npm run build`，浏览器全套为 `npx playwright test --config playwright.config.ts`（需服务已运行和系统 Chrome）。
 
-本机现有 debug 应用：`apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`。这是忽略的本地构建产物，不随 Git 发布；当前默认配置关闭发行打包。
-
-前端和浏览器测试在 `apps/desktop` 下运行；浏览器测试需另一个终端已有开发服务器，以及系统 Google Chrome：
-
-```sh
-npm run build
-npx playwright test --config playwright.config.ts
-```
-
-Rust 检查在仓库根目录运行：
+仓库根目录执行 Rust 检查和真实 PTY 探针：
 
 ```sh
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
-cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
-cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
 ```
 
-浏览器原始统计、探针附件和截图位于被忽略的 `apps/desktop/test-results/`，重跑可能覆盖；提交的报告记录范围与结果，不把本地工件目录当公开下载链接。
+本轮 debug 产物位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，不随 Git 分发，无签名公证。浏览器临时回执位于被忽略的 `apps/desktop/test-results/`，后续运行会覆盖。
 
-## 下一步与 P0 出口
+## 未完成与下一步
 
-1. 补齐上游实际行为与新增候选，明确 GSSAPI 等文档冲突，形成可追溯的完整基线。
-2. 针对 VT52/DECSCL、其他 VT 方言以及 Free Type、折叠、压缩历史分别做概念验证和架构决策，保持全功能目标。
-3. 沿用户已认可的白银浮层方向完善体验；定位大输出下 Ctrl-C 观察延迟，补验原生 IME、快捷键与资源，对 ACK 超时、页面刷新、窗口退出及资源耗尽增加故障场景。
-4. 建立受控 SSH/SFTP、agent、跳板、转发及 tmux 测试夹具，保存对端与客户端证据；不接触私人连接配置。
-5. 基于完整功能风险、实测预算和人力重估工期。满足[路线图](../ROADMAP.zh-CN.md)的 P0 门槛后再作阶段结论，当前不宣布 P0 完成。
+1. 在已完成的 CI 功能验证基础上继续原生响应、Windows ConPTY 与桌面平台专项；保留原失败及修订成功记录，沿已认可的浅深色方向完善。
+2. 完成原生 IME、Ctrl-C 分层延迟、资源与可访问性专项，不能以 Chrome 状态优化代替。
+3. 继续 VT52 接入策略、其他 VT 方言、Free Type、折叠与压缩历史验证；保留 117 项初始能力及新增候选，不降低完整功能目标。
+4. 建立真实 SSH/SFTP、agent、跳板/转发和 tmux 夹具；当前仍是演示而非远程连接产品。
+5. 完成功能基线、平台运行与风险预算后才重估工期、判断 P0 出口；当前没有正式发行版，P0 未完成。

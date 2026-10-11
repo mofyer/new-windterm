@@ -2,7 +2,7 @@
 
 状态：P0 进行中；用户已确认 Rust + Tauri 2 + xterm.js 与 Apache-2.0。`apps/desktop` 已有可运行交互原型和 Rust 本地 PTY，原型依赖已锁定，远程协议及完整产品能力尚未实现。
 调研日期：2026-10-11。本文保留后续架构候选与验证要求；当前实现和验证边界见 [P0 结果](p0/RESULTS.zh-CN.md)，不构成性能或全量兼容性承诺。
-Silver Soft UI 白色画布、银白浮层、24px 主面板圆角与双向柔影已实现，方向已获用户认可；最新浏览器报告为 56 项通过、16.2 秒：53 项正向/契约（含 2 项对比度检查）、2 项 VT52/DECSCL 缺口、1 项旧 Unicode6 反例。新版 arm64 原生冒烟也已执行；这些有限结果和方向认可均不等于完整功能或可访问性验收，详见[浏览器报告](p0/WEB_QA.zh-CN.md)。10 项 Rust 单测及相关检查已有独立复核；旧 Mint 原生持续输出的输入/队列延迟诊断与新版原生冒烟分别记录，详见 [P0 结果](p0/RESULTS.zh-CN.md)。
+浅色白银浮层与深色中性炭灰方向均已获用户认可，不代表完整功能验收。浏览器、Rust、平台 CI 与原生证据统一见 [P0 结果](p0/RESULTS.zh-CN.md)及[浏览器报告](p0/WEB_QA.zh-CN.md)，此处不重复易变化的测试数量。原生中文/emoji 粘贴冒烟不等于 IME 通过，Chrome 状态更新优化不等于原生高输出响应已解决，隔离 VT52 实验也未接生产终端。
 
 ## 目标与范围
 
@@ -13,7 +13,7 @@ Silver Soft UI 白色画布、银白浮层、24px 主面板圆角与双向柔影
 - 实际最低 macOS 版本由选定依赖和测试矩阵确定，暂不提前承诺。
 - 界面采用[现代苹果风设计](DESIGN.zh-CN.md)，保留完整功能语义、安全与效率；苹果风不代表改用 SwiftUI/AppKit，已确认的 Rust/Tauri/xterm.js 路线保持。
 
-共享核心和协议逻辑保持平台无关，PTY、shell、凭据库、快捷键、文件系统和系统集成通过平台适配；Windows/Linux 不是 macOS 完成后另写的产品。当前只具备 macOS 宿主实测，不宣称三端兼容。具体差异、CI 与实机验收边界见[跨平台计划](CROSS_PLATFORM.zh-CN.md)。
+共享核心和协议逻辑保持平台无关，PTY、shell、凭据库、快捷键、文件系统和系统集成通过平台适配；Windows/Linux 不是 macOS 完成后另写的产品。已有 macOS 宿主和部分 hosted 证据，不能据此宣称三端完整兼容。具体差异、CI 与实机验收边界见[跨平台计划](CROSS_PLATFORM.zh-CN.md)。
 
 ## 桌面路线比较
 
@@ -33,7 +33,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 ## 推荐候选的职责边界
 
 以下以已确认的 Tauri 路线展开；核心业务接口应避免绑定某个 UI 框架。
-当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS shell/环境/I/O/EOF，未适配平台在创建 PTY 前明确拒绝。下表的 SSH/SFTP、长期凭据与完整持久化层仍为计划，演示界面不代表对应后端已经存在。
+当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。下表的 SSH/SFTP、长期凭据与完整持久化层仍为计划，演示界面不代表对应后端已经存在。
 
 | 模块 | 职责 | 不承担的职责 |
 | --- | --- | --- |

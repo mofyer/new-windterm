@@ -2,8 +2,8 @@
 
 状态：P0 进行中，2026-10-11。**macOS、Windows、Linux 从当前阶段共同作为架构目标；Apple Silicon 优先验证和交付。** 后续平台通过适配层接入同一核心，不在 macOS 产品完成后另写一套协议与业务逻辑。
 
-当前 macOS arm64 原生原型已有有限运行与 PTY 验证；这不是完整 macOS 产品验收。Windows/Linux 尚待适配，未完成构建或运行验收；依赖宣称跨平台、条件编译或 CI 编译成功，都不能直接当作产品支持三端的结论。完整功能范围保持[初始 117 项](FEATURE_PARITY.zh-CN.md)及后续盘点新增项，不以平台差异删减目标。
-最新 Silver Soft UI 的浏览器回归与截图已经更新；原生冒烟和此前 Mint 构建的功能诊断在 [P0 结果](p0/RESULTS.zh-CN.md)中分开记录，不因视觉构建更新而继承完整原生或其他平台的验收结论。
+当前 macOS arm64 有本机原生与 PTY 证据，Linux Bash/Unix PTY 已有 hosted 编译和运行记录；Windows 只有编译/链接与拒绝策略证据，ConPTY 尚未实现。依赖支持、代码适配、CI 编译与实机运行必须分开记录，不能直接宣称三端可用。完整范围保持[初始 117 项](FEATURE_PARITY.zh-CN.md)及新增候选。
+本轮深色和前端响应改动已完成浏览器回归及新版 macOS 原生粘贴/尺寸/退出冒烟；原生高输出仍未验收。修订后三平台 CI 任务均成功：Mac/Linux 真 PTY 通过，Windows 真 PTY 跳过，ConPTY 未实现。此前 Mac 旧总期限失败与修订后的成功统一保留在[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)；探针单次耗时不算性能验收。新旧功能证据见 [P0 结果](p0/RESULTS.zh-CN.md)。
 
 ## 共享核心与平台边界
 
@@ -20,13 +20,13 @@
 
 | 能力 | macOS | Windows | Linux | 共同验收 |
 | --- | --- | --- | --- | --- |
-| PTY | Unix PTY 适配，现有宿主探针作为起点 | ConPTY 适配待实现/验证，独立处理句柄、阻塞取消与进程回收 | Unix PTY 适配，仍需 Linux 实机验证 | 输入/输出完整性、resize、Ctrl-C、退出码、背压、关闭与无残留 |
+| PTY | Unix PTY 适配，宿主与 hosted 修订分别记录 | ConPTY 适配待实现，当前明确拒绝 | Bash + Unix PTY，已有 Ubuntu hosted 探针记录 | 输入/输出完整性、resize、Ctrl-C、退出码、背压、关闭与无残留 |
 | shell 发现 | 检测可用 zsh/bash/PowerShell Core 等 | 检测 Cmd、Windows PowerShell/PowerShell；管理员模式独立授权 | 检测 bash/zsh/PowerShell Core 等 | 显示实际路径与可用状态；参数使用结构化 argv，缺失明确报错，不拼接 shell 字符串 |
 | 凭据库候选 | Keychain | Credential Manager | Secret Service | 写入、读取、删除、锁定、取消和不可用；失败不得静默退回明文 |
 
 现有 P0 shell 是受限测试配置，不是最终 shell 发现策略；不得把固定 `/bin/zsh`、`/tmp`、Unix 环境变量或 `fcntl` 传播到共享核心。Windows 的输入与终止策略不能直接套用 Unix 信号；ConPTY 的创建、缩放、关闭与管道生命周期需单独实现和测试。[Microsoft ConPTY 说明](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)
 
-本轮已将固定 shell/环境/工作目录、非阻塞 I/O 和 EOF 规则隔离到 `apps/desktop/src-tauri/src/platform.rs`，保留共享 UUID、窗口归属、页面代次与 ACK 状态。Windows/Linux 在分配 PTY 前返回明确的适配待完成错误；`libc` 限于 Unix target，Windows 错误不再按 Unix `EIO` 判为正常 EOF。macOS 的 10 项单测及检查已通过，但平台隔离不等于实现 ConPTY 或完成 Linux 移植；非 macOS 条件测试与进程树回收仍需在对应平台构建和执行。
+平台规则位于 `apps/desktop/src-tauri/src/platform.rs`，共享 UUID、窗口归属、页面代次与 ACK 状态保留。第二轮 Linux 检查 Bash 后使用隔离参数、环境和系统临时目录，复用 Unix I/O；Windows 仍在分配 PTY 前返回待适配错误。`libc` 限于 Unix target。Mac 的 12 项单测含 Linux 命令策略检查，其本身不能证明 Linux 已运行；另已取得 Linux runner 的编译与真实 PTY 回执，以及 Windows runner 的编译和拒绝策略回执。Windows 真实 PTY 仍未实现。
 
 凭据适配器只向业务层提供受控操作及引用，普通配置不保存秘密。Linux 须检测会话服务是否存在及是否锁定；未安装服务时可保持本次会话不保存凭据，并明确提示。三个候选均需锁定 Rust 接入库和核查授权，当前不声称已经接通。[Apple Keychain](https://developer.apple.com/documentation/security/keychain-services) · [Windows Credential Management API](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) · [Secret Service 规范](https://specifications.freedesktop.org/secret-service/latest/)
 
@@ -43,7 +43,7 @@ Tauri 在 macOS 使用 WKWebView，Windows 使用 WebView2，Linux 使用 WebKit
 
 ## CI 与实际验收
 
-以下是计划矩阵，不是现有 CI 通过记录。实施时固定 runner 系统/架构、Rust 与 Node 工具链、依赖锁文件；使用独立测试凭据和临时工作目录。
+下表仍包含后续验收计划，不是三端产品验收通过记录。第二轮已新增 `.github/workflows/p0-cross-platform.yml`：macos-15、ubuntu-24.04、windows-2022，固定工具链与锁文件，Unix 执行真实 PTY 探针、Windows 执行拒绝策略。修订后工作流已成功，逐项范围和原失败见[专项报告](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)。
 
 | 通道 | macOS | Windows | Linux | 通过意味着什么 |
 | --- | --- | --- | --- | --- |

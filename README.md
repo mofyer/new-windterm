@@ -12,11 +12,11 @@ An independent Rust-based reimplementation targeting full WindTerm feature parit
 
 功能以[逐项对齐矩阵](docs/FEATURE_PARITY.zh-CN.md)管理。117 项是初始清单；上游界面盘点新增的 VT52、VT102、字符集、Sysmon、Hex 编辑等候选仍需补齐，完整基线尚未冻结。上游 README 与实际版本有差异的项目先实测确认；上游尚未实现的路线图不自动计入基线。
 
-**Silver Soft UI 已实现，白银浮层方向已获用户认可。** 默认白色画布、银白浮层、24px 主面板圆角与双向柔影，薄荷/绿色用于局部强调。会话侧栏、标签/分屏、命令面板和模拟文件传输保留；功能语义、安全与效率继续完整对齐。下方为最新版本截图；方向认可不代表完整功能或可访问性验收完成。[设计系统](docs/p0/DESIGN_SYSTEM.zh-CN.md) · [原型入口说明](docs/p0/UI_MAP.zh-CN.md)
+**浅色白银浮层与深色中性炭灰方向均已获用户认可。** 浅色保留白色画布、银白浮层、24px 主面板圆角与双向柔影；侧栏、标签/分屏、命令面板和模拟文件传输保持。深色截图已更新，方向认可不代表完整功能验收。[设计系统](docs/p0/DESIGN_SYSTEM.zh-CN.md) · [原型入口说明](docs/p0/UI_MAP.zh-CN.md)
 
 ![P0 Silver Soft UI 浅色工作台](docs/assets/p0-light-workspace.png)
 
-[浅色连接表单](docs/assets/p0-light-connection.png) · [深色工作台](docs/assets/p0-dark-workspace.png)
+[浅色连接表单](docs/assets/p0-light-connection.png) · [深色工作台](docs/assets/p0-dark-workspace.png) · [深色连接表单](docs/assets/p0-dark-connection.png)
 
 ## 本地开发与本轮结果
 
@@ -33,9 +33,9 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本机已生成的 debug 应用位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，属于本地构建产物，不随 Git 分发，也不是签名公证后的发行包。
 
-最新白银浮层版 56 项浏览器测试通过（53 项正向/契约，含 2 项对比度检查；2 项 VT52/DECSCL 缺口确认；1 项旧 Unicode 6 反例），另有 10 项 Rust 单测，以及真实 PTY 的 2 MiB 输出、Ctrl-C、resize、退出和 12 轮关闭记录。新版 arm64 原生窗口已完成中文/emoji 回显、`stty size` 和退出码 7 冒烟。旧版大量输出曾需多次 Ctrl-C 才观察停止，GUI/CUA 延迟仍待专项排查，不能把这些结果当作性能通过。
+P0 第二轮已增加高输出状态合并、仅开发模式的 13 项聚合诊断数字、未接生产终端的 VT52 隔离实验，以及 Linux Bash/Unix PTY 适配和三平台 CI 工作流。Chrome 受控 512 块输出中，状态控件 DOM 写入从 2,560 次降至 4 次；这不证明原生 WKWebView 的 Ctrl-C 延迟已经解决。VT52 实验通过 6 项有限测试，DECSCL 改用 DECRQSS 前后查询确认缺口。
 
-macOS arm64 已有原生原型验证；Windows/Linux 已纳入架构并隔离平台边界，仍待适配、构建及运行验收。真实 SSH/SFTP、中文 IME、全量终端兼容、安全和发行验收尚未完成。[验证范围与下一步](docs/p0/RESULTS.zh-CN.md)
+本轮 70 项浏览器测试通过（67 正向/契约，含 6 项隔离 VT52 PoC；2 项原始 VT 缺口；1 项旧 Unicode 反例）。修订后三平台 CI 任务均通过：Mac 12 项、Linux/Windows 各 11 项单测，Mac/Linux 真实 PTY 通过；Windows 真实 PTY 明确跳过，ConPTY 未实现。新版 arm64 原生应用仅验证中文/emoji **粘贴**、尺寸与 exit 7，未验证 IME 或本轮原生高输出响应。CI 探针耗时不是性能验收；原失败及成功回执见[平台报告](docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)。P0、全功能和发行验收仍未完成。[本轮结果与边界](docs/p0/RESULTS.zh-CN.md)
 
 ## 为什么做
 

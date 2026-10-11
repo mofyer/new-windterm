@@ -5,11 +5,11 @@
 ## 结果
 
 - 命令：在 `apps/desktop` 下执行 `npx playwright test --config playwright.config.ts`。
-- 重设计后最终完整执行：**56 passed，0 failed，0 skipped，0 flaky；16.2 秒**，未配置重试。`npm run build`（TypeScript 严格检查与 Vite 打包）也通过。
-- 其中 **53 项交互/正向终端/前端 IPC 契约/主题对比度断言通过，2 项确认现有兼容缺口，1 项复现默认 Unicode6 旧列宽问题**。后面三项的通过表示反例被复现，绝不能计入对应功能完成数。
+- 重设计后最终完整执行：**70 passed，0 failed，0 skipped，0 flaky；18.5 秒**，未配置重试。`npm run build`（TypeScript 严格检查与 Vite 打包）也通过。
+- 其中 **67 项交互/正向终端/前端 IPC 契约/响应/主题对比度及隔离 PoC 断言通过，2 项确认现有兼容缺口，1 项复现默认 Unicode6 旧列宽问题**。后面三项的通过表示反例被复现，绝不能计入对应功能完成数。
 - 环境：macOS arm64，系统 Chrome `154.0.8037.99` headless；Playwright `1.64.0`，xterm.js `6.0.0`。
 - 没有修改应用生产代码；对已有原型进行验收测试，不声称这组事后验收是 TDD 实现过程。
-- 未采集代码覆盖率，不能由 56 项测试推算单元测试覆盖百分比。这是 E2E 专用套件；Rust 单元与集成测试另行记录。
+- 未采集代码覆盖率，不能由 70 项测试推算单元测试覆盖百分比。这是 E2E 专用套件；Rust 单元与集成测试另行记录。
 
 独立审查发现 8 会话上限时主机确认按钮误报已打开会话；新增测试先复现失败，界面作者修复后最终完整回归已通过。重设计删除了旧营销标题与页脚，布局测试更新为新标签栏、终端工具栏和文件面板区域。兼容探针得到两个明确缺口，见下表。
 
@@ -61,7 +61,7 @@ npx playwright test --config playwright.config.ts
 | ANSI 真彩 `38;2;145;90;190m` | 单元格前景 RGB `0x915abe` | 此样本通过 |
 | Alternate screen `?1049h/l` | 切到 alternate，返回恢复原缓冲 `X` | 此样本通过 |
 | VT52 `ESC[?2l` 后 `ESCY!#X` | 期望写完 X 后零基 row=1、col=4；实际 row=0、col=3，第一行输出 `!#X` | **缺口已确认：该 VT52 切换/定位路径不兼容** |
-| DECSCL `ESC[62;1"p` 后 primary DA | 实际仍为 `ESC[?1;2c`，未报告 class 62 | **缺口已确认：该 VT200 conformance 选择/标识路径不兼容** |
+| DECSCL 请求 VT200 前后查询 conformance | `DCS $ q " p ST` 前后均返回 `DCS 1 $ r 61 ; 1 " p ST`；安装的 xterm 源码也标注未支持 | **缺口已确认；primary DA 仅记录身份，不再用作 conformance 判据** |
 
 这两条是具体序列的可重复证据，不能外推为所有 VT 方言全不支持，也不能因其测试为 green 就说 legacy terminal parity 通过。下一阶段需选择兼容层、替代终端内核或明确扩展 xterm；保留用户要求的完整功能目标。
 
@@ -87,30 +87,41 @@ npx playwright test --config playwright.config.ts
 
 ## 最终白银浮层配色与正文对比度
 
-最终版本按用户补充要求改为白色终端、银白浮层、24px 圆角和更明确的外留白/柔阴影，仅保留绿色控件强调。复用已有 56 项测试全部通过；本次没有放宽布局/对比度断言或新增无关测试。报告与 layout 截图已经刷新为此最终版本，旧版大片 mint 底色截图不作为本次证据。
+最终版本按用户补充要求改为白色终端、银白浮层、24px 圆角和更明确的外留白/柔阴影，仅保留绿色控件强调。在此基础上新增的低色度深色版本，以及响应/watch 与隔离 VT52 实验，合并全套共 70 项通过；本次没有放宽布局/对比度断言。报告与 layout 截图已经刷新为此最终版本，旧版大片 mint 底色截图不作为本次证据。
 
 检测读取实际 computed style，将透明背景逐层合成，并计入按钮 `filter: brightness(...)` 对文字与背景的影响。测试停用动画，避免把 theme 过渡帧误判为最终配色。每个测点均按普通正文标准 **4.5:1** 检查，未因字号较小或辅助说明降低阈值。
 
 | 测点 | 浅色比值 | 深色比值 |
 | --- | ---: | ---: |
-| body 默认文字 | 11.486 | 12.306 |
-| 底部运行提示 muted | 4.875 | 8.238 |
-| 侧栏分类 muted | 4.674 | 7.429 |
-| 已选会话文字 | 5.225 | 5.153 |
-| 新建连接 CTA 白字 | 4.792 | 4.792 |
-| 连接弹窗说明 muted | 4.674 | 7.429 |
-| 弹窗 primary 默认 | 6.054 | 4.792 |
-| 弹窗 primary hover | 5.805 | 4.640 |
+| body 默认文字 | 11.486 | 13.793 |
+| 底部运行提示 muted | 4.875 | 8.082 |
+| 侧栏分类 muted | 4.674 | 7.199 |
+| 已选会话文字 | 5.225 | 6.321 |
+| 新建连接 CTA 文字（浅色白字/深色墨色字） | 4.792 | 8.006 |
+| 连接弹窗说明 muted | 4.674 | 6.925 |
+| 弹窗 primary 默认 | 6.054 | 8.006 |
+| 弹窗 primary hover | 5.805 | 7.292 |
 
-验收初次发现深色 primary hover 的 `brightness(1.08)` 使比值下降为 **4.204**，用例先失败；作者调整为 `.94` 后比值 **4.640**，最终全套通过。未放宽阈值。
+当前深色采用低色度灰黑表面与浅灰蓝控件，按钮改用墨色正文；以上是实际 computed style 实测值。旧 mint 版本的数值不作为当前深色验收证据。所有阈值保持不变。
 
 此处是上述正文与主要控件色彩对比度验收，不是整套 WCAG 合规认证；不包含禁用按钮、图标/边框非文字对比度，也不要求用户程序自行指定的 ANSI/truecolor 输出全部满足 4.5。1000×650 的分屏加文件面板几何边界在此最终配色版本再次通过。
 
+## 响应与开发构建隔离的独立复核
+
+只读审查 `main.ts`、`responsiveness.ts` 和 `vite.config.ts`：没有发现阻塞本轮合并的实现缺陷。输出状态更新只调度一个 100 ms 计时器，ACK 和输入 Promise 链不等待该计时器；error/exit 同步刷新并取消待更新任务，后台输出不刷活动会话状态。输入、ACK 的原有串行、限额与关闭路径保留。
+
+本次完整运行的响应场景完成 512 / 512 有序 ACK，最大 16 个未确认块；2,096,640 字节输入下仅尺寸/字节节点发生 3 次变化，另四控件无冗余写入。单次 Chrome stub 流耗时 333.1 ms，keydown→stub IPC 0.3 ms；不将它们外推为真实 WKWebView 改善。原生响应关卡仍按 [RESPONSIVENESS](RESPONSIVENESS.zh-CN.md) 保留未验收。
+
+实际开发诊断 snapshot 为 **13 个数字字段**，文档数值已核对一致；没有输入、输出、路径或会话 ID。生产 build 后搜索诊断对象名、查询参数和全部 13 个字段名，共 15 个标记，全部未出现在发布 JS 中。watch 回归通过：受控 Rust target HTML 改动未产生相应 Vite reload 消息，也未改变页面加载计数。
+
+VT52 独立 PoC 的 6 项和原始探针的 5 项随全套再次通过；PoC 没有接入实际应用/PTY。具体控制序列与未覆盖边界见 [TERMINAL_COMPAT](TERMINAL_COMPAT.zh-CN.md)。DECSCL 已采用前后 conformance 查询及源码判据，修正旧的仅用 primary DA 判断方式。
+
 ## 证据与未验收范围
 
-- 测试源码：`apps/desktop/tests/e2e/workspace.spec.ts`、`terminal-probes.spec.ts`、`unicode-width.spec.ts`、`pty-ui-contract.spec.ts`、`contrast.spec.ts`。
+- 测试源码：`apps/desktop/tests/e2e/workspace.spec.ts`、`terminal-probes.spec.ts`、`unicode-width.spec.ts`、`pty-ui-contract.spec.ts`、`contrast.spec.ts`、`responsiveness.spec.ts`、`dev-watch.spec.ts`、`vt52-compat.spec.ts`。
 - 原始统计/探针 attachment：`apps/desktop/test-results/results.json`。
 - 布局截图：`apps/desktop/test-results/layout-1000.png`、`layout-1280.png`、`layout-1440.png`。
+- 最终深色工作台/弹窗预览：`docs/assets/p0-dark-workspace.png`、`docs/assets/p0-dark-connection.png`，1440×900，分屏与文件面板同时开启；均已查看。深色 1000×650 另核对全部主区域无越界，过程无 pageerror。
 - `test-results/` 被忽略；重跑会覆盖，父任务可归档到 `.artifacts/p0/`。未将机器截图或原始本地运行目录提交仓库。
 
-仍需其他通道验收：WKWebView 真机、中文输入法组合及候选窗、VoiceOver、Retina、全量 VT/ECMA 方言、真实 PTY 大流量与背压、后台进程资源、剪贴板/粘贴安全、真实 SSH 主机信任与认证、SFTP 文件一致性，以及 macOS/Windows/Linux 发布签名。E2E headless 的通过不替代上述证据。
+本轮独立原生通道已完成 WKWebView 中性灰主题下的真实 PTY 粘贴中文/emoji、尺寸与退出冒烟，见 [RESULTS](RESULTS.zh-CN.md)；CUA typeText 未送出 Unicode，不能将 paste 成功计作中文键盘或 IME 通过。仍需完整原生专项：输入法组合与候选窗、VoiceOver、Retina、全量 VT/ECMA 方言、高输出响应与资源、剪贴板安全、真实 SSH 信任与认证、SFTP 一致性及各平台发布签名。E2E headless 的通过不替代这些证据。
