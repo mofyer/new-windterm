@@ -1,4 +1,5 @@
 mod known_hosts;
+pub mod modem;
 pub mod net_terminal;
 mod platform;
 pub mod pty;
