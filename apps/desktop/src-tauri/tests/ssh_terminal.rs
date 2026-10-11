@@ -2,13 +2,14 @@
 mod fixture;
 use new_windterm_desktop::{
     pty::{EventSink, PtyEvent},
-    ssh::{Challenge, Request, Ssh, Trust},
+    ssh::{Challenge, Credential, Request, Ssh, Trust},
 };
 use std::{
     sync::{atomic::Ordering, Arc},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
+use zeroize::Zeroizing;
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 fn id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -568,4 +569,141 @@ async fn saved_trust_is_reused_and_a_changed_key_needs_explicit_replacement() {
 
     server.stop().await;
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+/// Opens a terminal with `credential` and either exits it (Ok) or returns the
+/// open error. A fresh challenge is probed for every attempt.
+async fn attempt(
+    server: &fixture::Fixture,
+    service: &Arc<Ssh>,
+    key_path: &std::path::Path,
+    credential: Credential,
+) -> Result<(), String> {
+    let scope = service.context("main").unwrap();
+    let mut input = request(server);
+    input.private_key_path = key_path.to_string_lossy().into();
+    let challenge = service.probe("main", &id(), input, &scope).await.unwrap();
+    let (sender, mut events) = mpsc::channel(128);
+    let sink: EventSink = Arc::new(move |event| {
+        sender
+            .try_send(event)
+            .map_err(|_| "test event queue full".into())
+    });
+    let session = service
+        .open_with(
+            "main",
+            &id(),
+            &challenge.challenge_token,
+            &scope,
+            credential,
+            80,
+            24,
+            sink,
+        )
+        .await?;
+    until(service, &session, &mut events, b"> ").await;
+    service.write("main", &session, b"exit\n".to_vec()).unwrap();
+    assert!(matches!(
+        closed(&mut events, service, &session).await,
+        PtyEvent::Exit { code: Some(7), .. }
+    ));
+    drained(server).await;
+    Ok(())
+}
+
+fn secret(text: &str) -> Option<Zeroizing<String>> {
+    Some(Zeroizing::new(text.into()))
+}
+
+#[tokio::test]
+async fn password_and_passphrase_keys_authenticate_and_wrong_secrets_fail() {
+    let _serial = TEST_LOCK.lock().await;
+    let mut server = fixture::Fixture::start().await;
+    let service = Arc::new(Ssh::default());
+    let none = std::path::PathBuf::new();
+    let password = |text: &str| Credential::Password {
+        password: Zeroizing::new(text.into()),
+    };
+
+    attempt(&server, &service, &none, password(fixture::PASSWORD))
+        .await
+        .unwrap();
+    let wrong = attempt(&server, &service, &none, password("not-it")).await;
+    assert_eq!(wrong.unwrap_err(), "SSH password authentication rejected");
+
+    let encrypted = server.encrypted_key_path.clone();
+    let with = |passphrase| Credential::Key { passphrase };
+    attempt(
+        &server,
+        &service,
+        &encrypted,
+        with(secret(fixture::PASSPHRASE)),
+    )
+    .await
+    .unwrap();
+    // Decryption failures happen locally, before any authentication request.
+    let before = server.authentications.load(Ordering::SeqCst);
+    let missing = attempt(&server, &service, &encrypted, with(None)).await;
+    assert!(missing.unwrap_err().contains("needs a passphrase"));
+    let bad = attempt(&server, &service, &encrypted, with(secret("not-it"))).await;
+    assert!(bad.unwrap_err().contains("check the passphrase"));
+    assert_eq!(server.authentications.load(Ordering::SeqCst), before);
+
+    // Key authentication still requires a path.
+    let no_path = attempt(&server, &service, &none, Credential::default()).await;
+    assert!(no_path
+        .unwrap_err()
+        .contains("private key path is required"));
+    server.stop().await;
+}
+
+/// Uses a private, temporary `ssh-agent`; never the user's agent.
+#[cfg(unix)]
+#[tokio::test]
+async fn agent_authenticates_with_a_loaded_key() {
+    let _serial = TEST_LOCK.lock().await;
+    if !std::path::Path::new("/usr/bin/ssh-agent").exists() {
+        eprintln!("skipped: /usr/bin/ssh-agent is not installed");
+        return;
+    }
+    let mut server = fixture::Fixture::start().await;
+    let socket = std::env::temp_dir().join(format!("p0-agent-{}.sock", &id()[..8]));
+    let mut agent = std::process::Command::new("/usr/bin/ssh-agent")
+        .args(["-D", "-a"])
+        .arg(&socket)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let service = Arc::new(Ssh::default());
+    let none = std::path::PathBuf::new();
+    let previous = std::env::var_os("SSH_AUTH_SOCK");
+    std::env::set_var("SSH_AUTH_SOCK", &socket);
+    let empty = attempt(&server, &service, &none, Credential::Agent {}).await;
+    let added = std::process::Command::new("/usr/bin/ssh-add")
+        .arg(&server.key_path)
+        .env("SSH_AUTH_SOCK", &socket)
+        .output()
+        .unwrap();
+    let result = attempt(&server, &service, &none, Credential::Agent {}).await;
+    match previous {
+        Some(value) => std::env::set_var("SSH_AUTH_SOCK", value),
+        None => std::env::remove_var("SSH_AUTH_SOCK"),
+    }
+    let _ = agent.kill();
+    let _ = agent.wait();
+    let _ = std::fs::remove_file(&socket);
+    assert_eq!(empty.unwrap_err(), "SSH agent has no usable keys");
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+    result.unwrap();
+    server.stop().await;
 }

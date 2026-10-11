@@ -127,10 +127,36 @@ impl Ssh {
         rows: u16,
         sink: EventSink,
     ) -> Result<String, String> {
+        self.open_with(
+            owner,
+            id,
+            token,
+            scope,
+            Credential::default(),
+            cols,
+            rows,
+            sink,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_with(
+        self: &Arc<Self>,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        credential: Credential,
+        cols: u16,
+        rows: u16,
+        sink: EventSink,
+    ) -> Result<String, String> {
         size(cols, rows)?;
         let mut operation = self.start(owner, id, scope)?;
         let pending = self.consume(owner, token)?;
-        let work = connect(pending, operation.cancel.clone(), cols, rows);
+        credential.validate(&pending.request)?;
+        let work = connect(pending, credential, operation.cancel.clone(), cols, rows);
         let connection = tokio::select! {
             biased;
             _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
@@ -205,6 +231,7 @@ struct Connection {
 }
 async fn connect(
     pending: Pending,
+    credential: Credential,
     cancel: watch::Receiver<bool>,
     cols: u16,
     rows: u16,
@@ -236,16 +263,9 @@ async fn connect(
                     "SSH handshake failed"
                 }
             })?;
-        let path = pending.request.private_key_path;
-        let key = read_key_bounded(cancel, move || private_key(&path)).await?;
-        if !session
-            .authenticate_publickey(pending.request.username, key)
+        auth::authenticate(&mut session, &pending.request, &credential, cancel)
             .await
-            .map_err(|_| "SSH authentication failed")?
-            .success()
-        {
-            return Err("SSH public key authentication rejected".into());
-        }
+            .map_err(AuthFailure::message)?;
         let mut channel = session
             .channel_open_session()
             .await

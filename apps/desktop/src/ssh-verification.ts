@@ -13,7 +13,12 @@ type Challenge = {
 };
 type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number };
 
-export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string };
+/** Sent to the backend only when a confirmed challenge is consumed. */
+export type SshCredential =
+  | { method: "key"; passphrase?: string }
+  | { method: "password"; password: string }
+  | { method: "agent" };
+export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string; credential: SshCredential };
 type Purpose = "verification" | "terminal" | "files";
 
 // Trust is always explicit. The terminal and file callbacks synchronously reserve
@@ -32,8 +37,11 @@ export function createSshVerification(
     <form id="ssh-verification-form" autocomplete="off">
       <fieldset id="ssh-fields"><div class="form-row"><label>主机<input id="ssh-host" name="host" placeholder="127.0.0.1" maxlength="253" required spellcheck="false"/></label><label class="port">端口<input id="ssh-port" name="port" type="number" value="22" min="1" max="65535" required/></label></div>
       <label>SSH 用户名<input id="ssh-username" name="username" maxlength="64" required spellcheck="false"/></label>
-      <label>私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
-      <p class="caption">P0 仅支持未加密的 Ed25519 密钥。输入文件路径，不粘贴私钥；路径不保存，密钥由桌面后端读取。</p></fieldset>
+      <label>认证方式<select id="ssh-auth" name="auth"><option value="key">私钥文件</option><option value="password">密码</option><option value="agent">SSH agent</option></select></label>
+      <div id="ssh-key-fields"><label>私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
+      <label>私钥口令（未加密的私钥留空）<input id="ssh-passphrase" type="password" autocomplete="off" maxlength="1024"/></label></div>
+      <label id="ssh-password-row" hidden>密码<input id="ssh-password" type="password" autocomplete="off" maxlength="1024"/></label>
+      <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p></fieldset>
       <div class="dialog-actions"><button type="submit" id="ssh-probe" class="primary">检查主机指纹</button></div>
     </form>
     <section id="ssh-challenge" hidden aria-label="真实主机指纹">
@@ -67,6 +75,17 @@ export function createSshVerification(
   const error = get("ssh-error");
   const desktop = isTauri();
   const remember = get<HTMLInputElement>("ssh-remember");
+  const authMethod = get<HTMLSelectElement>("ssh-auth");
+  // Held only between probe and accept/hand-off; cleared with the dialog.
+  let credential: SshCredential | undefined;
+  const showAuthFields = () => {
+    const method = authMethod.value;
+    get("ssh-key-fields").hidden = method !== "key";
+    get("ssh-password-row").hidden = method !== "password";
+    get<HTMLInputElement>("ssh-key-path").required = method === "key";
+    get<HTMLInputElement>("ssh-password").required = method === "password";
+  };
+  authMethod.addEventListener("change", showAuthFields);
   const replace = get<HTMLButtonElement>("ssh-replace");
   const replaceConfirm = get<HTMLInputElement>("ssh-replace-confirm");
   let purpose: Purpose = "verification";
@@ -85,12 +104,17 @@ export function createSshVerification(
     operationId = undefined;
     challenge = undefined;
     scopeToken = undefined;
+    credential = undefined;
   };
   const clear = () => {
     form.reset();
     get<HTMLInputElement>("ssh-host").value = "";
     get<HTMLInputElement>("ssh-username").value = "";
     get<HTMLInputElement>("ssh-key-path").value = "";
+    get<HTMLInputElement>("ssh-passphrase").value = "";
+    get<HTMLInputElement>("ssh-password").value = "";
+    authMethod.value = "key";
+    showAuthFields();
     resultView.replaceChildren();
     for (const id of ["ssh-endpoint", "ssh-algorithm", "ssh-fingerprint", "ssh-expiry", "ssh-trust-note", "ssh-saved-fingerprint"]) get(id).textContent = "";
     remember.checked = replaceConfirm.checked = false;
@@ -152,6 +176,13 @@ export function createSshVerification(
     const version = ++revision;
     const id = crypto.randomUUID();
     operationId = id;
+    const method = authMethod.value;
+    const passphrase = get<HTMLInputElement>("ssh-passphrase").value;
+    credential = method === "password"
+      ? { method: "password", password: get<HTMLInputElement>("ssh-password").value }
+      : method === "agent" ? { method: "agent" } : passphrase ? { method: "key", passphrase } : { method: "key" };
+    get<HTMLInputElement>("ssh-passphrase").value = "";
+    get<HTMLInputElement>("ssh-password").value = "";
     fields.disabled = probe.disabled = true;
     retry.hidden = true;
     error.textContent = "";
@@ -165,7 +196,8 @@ export function createSshVerification(
           host: get<HTMLInputElement>("ssh-host").value.trim(),
           port: Number(get<HTMLInputElement>("ssh-port").value),
           username: get<HTMLInputElement>("ssh-username").value.trim(),
-          privateKeyPath: get<HTMLInputElement>("ssh-key-path").value,
+          // The probe never authenticates; only the key path travels with it.
+          privateKeyPath: method === "key" ? get<HTMLInputElement>("ssh-key-path").value : "",
         },
       });
       if (!current(version)) {
@@ -256,7 +288,7 @@ export function createSshVerification(
     if (purpose !== "verification") {
       const handoff = {
         challengeToken: token, scopeToken, operationId: crypto.randomUUID(),
-        name: `${challenge.host}:${challenge.port}`,
+        name: `${challenge.host}:${challenge.port}`, credential: credential ?? { method: "key" },
       };
       const started = purpose === "terminal" ? openTerminal(handoff) : openFiles(handoff);
       if (!started) {
@@ -278,7 +310,8 @@ export function createSshVerification(
     status.textContent = "正在认证并执行 fixture-check…可随时取消。";
     dialog.setAttribute("aria-busy", "true");
     try {
-      const result = await invoke<VerificationResult>("ssh_accept", { scopeToken, challengeToken: token, operationId: id });
+      const result = await invoke<VerificationResult>("ssh_accept", { scopeToken, challengeToken: token, operationId: id, credential: credential ?? { method: "key" } });
+      credential = undefined;
       if (!current(version)) return;
       challengeView.hidden = true;
       resultView.hidden = false;

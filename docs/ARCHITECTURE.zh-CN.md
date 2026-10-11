@@ -56,7 +56,7 @@ portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 
 `ssh_open` 请求 PTY/shell 后返回会话 ID，复用 `PtyEvent` 和 xterm 的原始字节写入/顺序 ACK 路径；输入、尺寸、ACK、关闭分别使用 `ssh_write/resize/ack/close`。输入与输出独立驱动，关闭和取消不排在输入队列后面；归属、scope 失效、晚到打开结果、超时、窗口/应用退出均有清理路径。前端远程标签禁用演示样本与压力命令，不自动向远端发送它们。
 
-真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。主机信任可在明确确认后保存（变化即阻断、需独立替换）；当前不支持密码、加密私钥、agent、代理/跳板、转发或 SFTP 写操作；只读 SFTP 浏览见[受控夹具与 IPC](p0/SSH_SFTP_FIXTURE.zh-CN.md)。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
+真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。主机信任可在明确确认后保存（变化即阻断、需独立替换）；认证支持 Ed25519/ECDSA 私钥（可带口令）、密码与 SSH agent（`ssh_auth.rs`）；当前不支持 RSA 私钥、keyboard-interactive、代理/跳板、转发或 SFTP 写操作；只读 SFTP 浏览见[受控夹具与 IPC](p0/SSH_SFTP_FIXTURE.zh-CN.md)。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
 
 ## 终端状态只保留一份
 

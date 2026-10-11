@@ -296,6 +296,7 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
       setBusy(request.operationId, "正在认证并读取登录目录…可随时取消。");
       void invoke<SftpOpened>("ssh_sftp_open", {
         challengeToken: request.challengeToken, operationId: request.operationId, scopeToken: request.scopeToken,
+        credential: request.credential,
       }).then(opened => {
         if (version !== revision) {
           // Cancelled or disconnected while opening: release the late grant.

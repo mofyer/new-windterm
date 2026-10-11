@@ -517,7 +517,7 @@ async function openSsh(s: Session, request: SshTerminalRequest) {
   try {
     const { id } = await invoke<{ id: string }>("ssh_open", {
       challengeToken: request.challengeToken, operationId: request.operationId,
-      scopeToken: request.scopeToken, onEvent: terminalChannel(s),
+      scopeToken: request.scopeToken, credential: request.credential, onEvent: terminalChannel(s),
       cols: s.terminal.cols, rows: s.terminal.rows,
     });
     if (s.disposed || s.ended) {

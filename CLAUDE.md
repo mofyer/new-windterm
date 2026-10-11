@@ -90,7 +90,9 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 主机信任：`ssh_probe` 的 Challenge 带 `trust: new | known | changed`，与应用数据目录下 OpenSSH 格式的 `known_hosts`（`known_hosts.rs`）比较；`changed` 的 challenge 不能被消费，只有独立命令 `ssh_trust_replace` 能更新，`ssh_trust_save` 只接受 `new`。前端对 `known` 自动继续。
 
-约束：只支持以绝对路径指定的未加密 Ed25519 私钥（由 Rust 有界读取）；不保存凭据；russh 重协商时不会重新检查主机密钥，因此 rekey 被显式拒绝。`sftp.rs` 直接驱动 `RawSftpSession`：目录在 4096 项或 1 MiB 文件名处提前停止（只约束保留部分，每页仍会完整解码）；读取最多 64 KiB 且长度须与 `stat` 一致。
+认证（`ssh_auth.rs`）：`Credential` 为 `key`（可带口令）/ `password` / `agent`，只在 `ssh_accept/ssh_open/ssh_sftp_open` 传入（probe 不认证），用 `Zeroizing` 持有。服务端拒绝凭据会吊销 SFTP 授权，本地失败（agent 不可用、口令错误）不吊销。Rust 侧保留无凭据的 `accept/open/sftp_open` 供测试使用，IPC 走 `*_with` 版本。
+
+约束：私钥以绝对路径指定、由 Rust 有界读取，仅 Ed25519/ECDSA（未开启 russh `rsa` 特性）；不保存凭据；russh 重协商时不会重新检查主机密钥，因此 rekey 被显式拒绝。`sftp.rs` 直接驱动 `RawSftpSession`：目录在 4096 项或 1 MiB 文件名处提前停止（只约束保留部分，每页仍会完整解码）；读取最多 64 KiB 且长度须与 `stat` 一致。
 
 ### 前端
 

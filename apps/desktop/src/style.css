@@ -295,3 +295,4 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 .ssh-changed code { font-size: 12px; }
 .ssh-changed p { margin: 0; }
 .ssh-changed button { justify-self: start; }
+#ssh-verification-dialog select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }

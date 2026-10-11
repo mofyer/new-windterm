@@ -9,7 +9,15 @@ async fn main() {
         server.rekey_limit.load(std::sync::atomic::Ordering::SeqCst),
         1 << 30
     );
-    println!("host=127.0.0.1\nport={}\nusername=fixture\nprivateKeyPath={}\nfingerprint={}\nStop: press Enter; automatic stop after 600 seconds", server.port, server.key_path.display(), server.fingerprint());
+    println!(
+        "host=127.0.0.1\nport={}\nusername=fixture\nprivateKeyPath={}\nencryptedPrivateKeyPath={} (passphrase {})\npassword={}\nfingerprint={}\nStop: press Enter; automatic stop after 600 seconds",
+        server.port,
+        server.key_path.display(),
+        server.encrypted_key_path.display(),
+        fixture::PASSPHRASE,
+        fixture::PASSWORD,
+        server.fingerprint()
+    );
     let (stop, stopped) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         let mut line = String::new();

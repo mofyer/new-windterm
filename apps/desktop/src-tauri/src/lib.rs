@@ -39,13 +39,15 @@ async fn ssh_accept(
     challenge_token: String,
     operation_id: String,
     scope_token: String,
+    credential: Option<ssh::Credential>,
 ) -> Result<ssh::Output, String> {
     service
-        .accept(
+        .accept_with(
             window.label(),
             &operation_id,
             &challenge_token,
             &scope_token,
+            credential.unwrap_or_default(),
         )
         .await
 }
@@ -57,13 +59,15 @@ async fn ssh_sftp_open(
     challenge_token: String,
     operation_id: String,
     scope_token: String,
+    credential: Option<ssh::Credential>,
 ) -> Result<ssh::SftpOpened, String> {
     service
-        .sftp_open(
+        .sftp_open_with(
             window.label(),
             &operation_id,
             &challenge_token,
             &scope_token,
+            credential.unwrap_or_default(),
         )
         .await
 }
@@ -181,17 +185,19 @@ async fn ssh_open(
     challenge_token: String,
     operation_id: String,
     scope_token: String,
+    credential: Option<ssh::Credential>,
     cols: u16,
     rows: u16,
     on_event: Channel<PtyEvent>,
 ) -> Result<Opened, String> {
     service
         .inner()
-        .open(
+        .open_with(
             window.label(),
             &operation_id,
             &challenge_token,
             &scope_token,
+            credential.unwrap_or_default(),
             cols,
             rows,
             Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),

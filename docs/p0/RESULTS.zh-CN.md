@@ -2,6 +2,18 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
+## SSH 认证方式
+
+三个真实入口（固定命令验证、交互终端、只读 SFTP）共用新的认证模块 `ssh_auth.rs`：私钥文件（Ed25519/ECDSA，可带口令）、密码、本机 SSH agent（Unix `SSH_AUTH_SOCK`；Windows OpenSSH agent 命名管道 `\\.\pipe\openssh-ssh-agent`）。probe 不认证，也不携带密码或口令；凭据只在核对指纹后的 `ssh_accept / ssh_open / ssh_sftp_open` 中传入，后端以 `Zeroizing` 持有并在用完后清零，不保存、不写日志、不回显到错误信息。SFTP 浏览授权在有效期内保留凭据，用于每次重连。服务端拒绝凭据会吊销 SFTP 授权；agent 不可用、口令错误等本地失败不会吊销。agent 最多尝试 4 把公钥，避免耗尽服务端 `MaxAuthTries`。
+
+| 检查 | 结果 |
+| --- | --- |
+| Rust 单元 | 凭据按方法解析并拒绝多余字段（含 agent 携带密码）、私钥方式必须有路径、秘密 ≤ 1 KiB 且不含 NUL |
+| russh 集成（真实 TCP/SSH） | 密码正确/错误；加密私钥口令正确、缺失、错误（后两者在本地失败，服务端认证计数不变）；临时 `ssh-agent` 无密钥时报错、`ssh-add` 后认证成功；SSH target 13/13 |
+| 浏览器（IPC stub） | 密码与口令不进入 probe 请求、probe 后清空输入框、只在 accept 时发送一次；agent 与私钥方式的请求形状；终端与文件面板交接只带凭据、不带路径；全套 118/118 |
+
+边界：RSA 私钥需开启 russh `rsa` 特性（会引入新 crate），本轮未启用；不支持 keyboard-interactive、证书认证、Pageant；agent 认证只在 macOS 本机验证，Windows 命名管道路径只经交叉编译检查。密码与口令会经过 WebView，这是 ROADMAP 已说明的边界。
+
 ## 依赖与许可证清单
 
 锁文件中的 527 个 Rust crate 与 80 个 npm 包无 GPL/AGPL 依赖、无缺失许可证；MPL-2.0 仅为 Tauri CSS 解析等 5 个 crate 与构建期 `lightningcss`，LGPL 只作为 `r-efi` 的可选项。运行时 npm 依赖仅 xterm.js 三个包与 `@tauri-apps/api`。发行前仍需生成随包的第三方许可证汇编。[清单与复核方法](DEPENDENCIES.zh-CN.md)

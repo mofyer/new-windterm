@@ -16,9 +16,14 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 
+pub const PASSWORD: &str = "fixture-password";
+pub const PASSPHRASE: &str = "fixture-passphrase";
+
 pub struct Fixture {
     pub port: u16,
     pub key_path: PathBuf,
+    /// The same client key, encrypted with [`PASSPHRASE`].
+    pub encrypted_key_path: PathBuf,
     pub host: Arc<Mutex<PrivateKey>>,
     pub authentications: Arc<AtomicUsize>,
     pub active: Arc<AtomicUsize>,
@@ -54,6 +59,12 @@ impl Fixture {
         let key_path = directory.join("client_ed25519");
         private_key
             .write_openssh_file(&key_path, ssh_key::LineEnding::LF)
+            .unwrap();
+        let encrypted_key_path = directory.join("client_ed25519_encrypted");
+        private_key
+            .encrypt(&mut russh::keys::key::safe_rng(), PASSPHRASE)
+            .unwrap()
+            .write_openssh_file(&encrypted_key_path, ssh_key::LineEnding::LF)
             .unwrap();
         let host = Arc::new(Mutex::new(key()));
         let authentications = Arc::new(AtomicUsize::new(0));
@@ -103,6 +114,7 @@ impl Fixture {
         Self {
             port,
             key_path,
+            encrypted_key_path,
             host,
             authentications,
             active,
@@ -170,6 +182,18 @@ impl server::Handler for Handler {
                 server::Auth::reject()
             },
         )
+    }
+    async fn auth_password(
+        &mut self,
+        user: &str,
+        password: &str,
+    ) -> Result<server::Auth, Self::Error> {
+        self.auth.fetch_add(1, Ordering::SeqCst);
+        Ok(if user == "fixture" && password == PASSWORD {
+            server::Auth::Accept
+        } else {
+            server::Auth::reject()
+        })
     }
     async fn channel_open_session(
         &mut self,

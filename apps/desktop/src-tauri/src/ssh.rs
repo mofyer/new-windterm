@@ -1,8 +1,12 @@
 //! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
+#[path = "ssh_auth.rs"]
+pub mod auth;
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
 use crate::known_hosts::{KnownHosts, Saved};
 use crate::sftp::{ReadOnlySftp, RemoteEntry, RemoteListing};
+use auth::AuthFailure;
+pub use auth::Credential;
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate},
@@ -101,6 +105,8 @@ struct Grant {
     scope: String,
     request: Request,
     key: Vec<u8>,
+    // Needed for every reconnect; zeroized when the grant is dropped.
+    credential: Credential,
     idle_until: Instant,
     expires: Instant,
 }
@@ -145,6 +151,13 @@ enum SftpResult {
 enum SftpFailure {
     Revoke(String),
     Keep(String),
+}
+
+/// Everything needed to reconnect for one SFTP operation.
+struct Target {
+    request: Request,
+    key: Vec<u8>,
+    credential: Credential,
 }
 
 impl SftpFailure {
@@ -500,9 +513,22 @@ impl Ssh {
         token: &str,
         scope: &str,
     ) -> Result<Output, String> {
+        self.accept_with(owner, id, token, scope, Credential::default())
+            .await
+    }
+
+    pub async fn accept_with(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        credential: Credential,
+    ) -> Result<Output, String> {
         let mut operation = self.start(owner, id, scope)?;
         let pending = self.consume(owner, token)?;
-        let work = execute(pending, operation.cancel.clone());
+        credential.validate(&pending.request)?;
+        let work = execute(pending, credential, operation.cancel.clone());
         let output = tokio::select! {
             biased;
             _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
@@ -523,20 +549,38 @@ impl Ssh {
         token: &str,
         scope: &str,
     ) -> Result<SftpOpened, String> {
+        self.sftp_open_with(owner, id, token, scope, Credential::default())
+            .await
+    }
+
+    pub async fn sftp_open_with(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        credential: Credential,
+    ) -> Result<SftpOpened, String> {
         let operation = self.start(owner, id, scope)?;
         // Fail before any network work when no grant could be issued anyway.
         self.grant_capacity()?;
         let pending = self.consume(owner, token)?;
+        credential.validate(&pending.request)?;
         let (request, key) = (pending.request, pending.key);
+        let target = Target {
+            request: request.clone(),
+            key: key.clone(),
+            credential: credential.clone(),
+        };
         let listing = match self
-            .run_sftp(&operation, request.clone(), key.clone(), SftpRequest::Open)
+            .run_sftp(&operation, target, SftpRequest::Open)
             .await
             .map_err(SftpFailure::message)?
         {
             SftpResult::List(listing) => listing,
             _ => return Err("Unexpected SFTP result".into()),
         };
-        let grant_token = self.issue_grant(&operation, scope, request, key)?;
+        let grant_token = self.issue_grant(&operation, scope, request, key, credential)?;
         Ok(SftpOpened {
             grant_token,
             idle_seconds: SFTP_IDLE.as_secs(),
@@ -619,8 +663,8 @@ impl Ssh {
         request: SftpRequest,
     ) -> Result<SftpResult, String> {
         let operation = self.start(owner, id, scope)?;
-        let (target, key) = self.use_grant(owner, grant, scope)?;
-        self.run_sftp(&operation, target, key, request)
+        let target = self.use_grant(owner, grant, scope)?;
+        self.run_sftp(&operation, target, request)
             .await
             .map_err(|failure| match failure {
                 SftpFailure::Revoke(message) => {
@@ -634,12 +678,11 @@ impl Ssh {
     async fn run_sftp(
         &self,
         operation: &Operation<'_>,
-        target: Request,
-        key: Vec<u8>,
+        target: Target,
         request: SftpRequest,
     ) -> Result<SftpResult, SftpFailure> {
         let mut cancel = operation.cancel.clone();
-        let work = execute_sftp(target, key, cancel.clone(), request);
+        let work = execute_sftp(target, cancel.clone(), request);
         tokio::select! {
             biased;
             _ = cancel.changed() => Err(SftpFailure::Keep("SSH operation cancelled".into())),
@@ -664,6 +707,7 @@ impl Ssh {
         scope: &str,
         request: Request,
         key: Vec<u8>,
+        credential: Credential,
     ) -> Result<String, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         if *operation.cancel.borrow()
@@ -685,6 +729,7 @@ impl Ssh {
                 scope: scope.into(),
                 request,
                 key,
+                credential,
                 idle_until: now + SFTP_IDLE,
                 expires: now + SFTP_LIFETIME,
             },
@@ -692,12 +737,7 @@ impl Ssh {
         Ok(token)
     }
 
-    fn use_grant(
-        &self,
-        owner: &str,
-        token: &str,
-        scope: &str,
-    ) -> Result<(Request, Vec<u8>), String> {
+    fn use_grant(&self, owner: &str, token: &str, scope: &str) -> Result<Target, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         let now = Instant::now();
         registry.grants.retain(|_, grant| grant.alive(now));
@@ -710,7 +750,11 @@ impl Ssh {
             return Err(SFTP_EXPIRED.into());
         }
         grant.idle_until = (now + SFTP_IDLE).min(grant.expires);
-        Ok((grant.request.clone(), grant.key.clone()))
+        Ok(Target {
+            request: grant.request.clone(),
+            key: grant.key.clone(),
+            credential: grant.credential.clone(),
+        })
     }
 
     fn revoke_grant(&self, owner: &str, token: &str) {
@@ -742,9 +786,11 @@ fn validate(request: &Request) -> Result<(), String> {
     {
         return Err("Invalid SSH username".into());
     }
-    if request.private_key_path.len() > 4096
-        || !std::path::Path::new(&request.private_key_path).is_absolute()
-        || request.private_key_path.contains('\0')
+    // Empty means password or agent authentication; checked when consumed.
+    if !request.private_key_path.is_empty()
+        && (request.private_key_path.len() > 4096
+            || !std::path::Path::new(&request.private_key_path).is_absolute()
+            || request.private_key_path.contains('\0'))
     {
         return Err("An absolute private key path is required".into());
     }
@@ -829,7 +875,7 @@ impl client::Handler for KeyCheck {
     }
 }
 
-fn private_key(path: &str) -> Result<PrivateKeyWithHashAlg, String> {
+fn private_key(path: &str, passphrase: Option<&str>) -> Result<PrivateKeyWithHashAlg, String> {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -858,15 +904,28 @@ fn private_key(path: &str) -> Result<PrivateKeyWithHashAlg, String> {
         return Err("Private key exceeds 64 KiB".into());
     }
     let content = std::str::from_utf8(&bytes).map_err(|_| "Invalid private key")?;
-    let key = russh::keys::decode_secret_key(content, None)
-        .map_err(|_| "Invalid or encrypted private key; P0 requires an unencrypted Ed25519 key")?;
-    if key.algorithm() != Algorithm::Ed25519 {
-        return Err("P0 requires an Ed25519 private key".into());
+    let key = russh::keys::decode_secret_key(content, passphrase).map_err(|_| {
+        if passphrase.is_some() {
+            "Private key could not be decrypted; check the passphrase"
+        } else {
+            "Invalid private key, or it is encrypted and needs a passphrase"
+        }
+    })?;
+    // RSA needs the russh `rsa` feature, which this build does not enable.
+    if !matches!(
+        key.algorithm(),
+        Algorithm::Ed25519 | Algorithm::Ecdsa { .. }
+    ) {
+        return Err("P0 supports Ed25519 and ECDSA private keys".into());
     }
     Ok(PrivateKeyWithHashAlg::new(Arc::new(key), None))
 }
 
-async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Output, String> {
+async fn execute(
+    pending: Pending,
+    credential: Credential,
+    cancel: watch::Receiver<bool>,
+) -> Result<Output, String> {
     let (_socket, stream) = transport(&pending.request).await?;
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -886,16 +945,10 @@ async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Outp
                 "SSH handshake failed"
             }
         })?;
-    // Read the explicitly selected key only after the new handshake matched.
-    let path = pending.request.private_key_path;
-    let key = read_key_bounded(cancel, move || private_key(&path)).await?;
-    let authenticated = session
-        .authenticate_publickey(pending.request.username, key)
+    // Credentials are used only after the new handshake matched the pin.
+    auth::authenticate(&mut session, &pending.request, &credential, cancel)
         .await
-        .map_err(|_| "SSH authentication failed")?;
-    if !authenticated.success() {
-        return Err("SSH public key authentication rejected".into());
-    }
+        .map_err(AuthFailure::message)?;
     let mut channel = session
         .channel_open_session()
         .await
@@ -937,12 +990,11 @@ async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Outp
 }
 
 async fn execute_sftp(
-    target: Request,
-    key: Vec<u8>,
+    target: Target,
     cancel: watch::Receiver<bool>,
     request: SftpRequest,
 ) -> Result<SftpResult, SftpFailure> {
-    let authenticated = connect_sftp(target, key, cancel).await?;
+    let authenticated = connect_sftp(target, cancel).await?;
     let AuthenticatedSftp {
         _socket,
         session,
@@ -974,10 +1026,14 @@ async fn execute_sftp(
 }
 
 async fn connect_sftp(
-    target: Request,
-    key: Vec<u8>,
+    target: Target,
     cancel: watch::Receiver<bool>,
 ) -> Result<AuthenticatedSftp, SftpFailure> {
+    let Target {
+        request: target,
+        key,
+        credential,
+    } = target;
     let (socket, stream) = transport(&target).await.map_err(SftpFailure::Keep)?;
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -997,20 +1053,12 @@ async fn connect_sftp(
                 SftpFailure::Keep("SSH handshake failed".into())
             }
         })?;
-    let path = target.private_key_path;
-    let key = read_key_bounded(cancel, move || private_key(&path))
+    auth::authenticate(&mut session, &target, &credential, cancel)
         .await
-        .map_err(SftpFailure::Keep)?;
-    if !session
-        .authenticate_publickey(target.username, key)
-        .await
-        .map_err(|_| SftpFailure::Keep("SSH authentication failed".into()))?
-        .success()
-    {
-        return Err(SftpFailure::Revoke(
-            "SSH public key authentication rejected".into(),
-        ));
-    }
+        .map_err(|failure| match failure {
+            AuthFailure::Rejected(message) => SftpFailure::Revoke(message),
+            AuthFailure::Failed(message) => SftpFailure::Keep(message),
+        })?;
     let channel = session
         .channel_open_session()
         .await
@@ -1181,12 +1229,12 @@ mod tests {
         let root = std::env::temp_dir().join(id());
         std::fs::create_dir(&root).unwrap();
         assert_eq!(
-            private_key(root.to_str().unwrap()).err().unwrap(),
+            private_key(root.to_str().unwrap(), None).err().unwrap(),
             "Private key must be a regular file"
         );
         let path = root.join("secret-name");
         std::fs::write(&path, vec![b'x'; MAX_BYTES + 1]).unwrap();
-        let error = private_key(path.to_str().unwrap()).err().unwrap();
+        let error = private_key(path.to_str().unwrap(), None).err().unwrap();
         assert_eq!(
             error,
             "Private key must be a regular file of at most 64 KiB"
@@ -1337,7 +1385,13 @@ mod tests {
         let scope = service.context(owner).unwrap();
         let operation = service.start(owner, &id(), &scope).unwrap();
         service
-            .issue_grant(&operation, &scope, request, vec![1, 2, 3])
+            .issue_grant(
+                &operation,
+                &scope,
+                request,
+                vec![1, 2, 3],
+                Credential::default(),
+            )
             .unwrap()
     }
 
@@ -1353,8 +1407,8 @@ mod tests {
         assert!(service.sftp_close("other", &token).is_err());
         let before = service.registry.lock().unwrap().grants[&token].idle_until;
         std::thread::sleep(Duration::from_millis(5));
-        let (target, key) = service.use_grant("main", &token, &scope).unwrap();
-        assert_eq!((target.port, key), (2222, vec![1, 2, 3]));
+        let target = service.use_grant("main", &token, &scope).unwrap();
+        assert_eq!((target.request.port, target.key), (2222, vec![1, 2, 3]));
         assert!(service.registry.lock().unwrap().grants[&token].idle_until > before);
         assert_eq!(
             service
@@ -1398,7 +1452,13 @@ mod tests {
         let scope = service.context("main").unwrap();
         let operation = service.start("main", &id(), &scope).unwrap();
         assert!(service
-            .issue_grant(&operation, &scope, request(), vec![1])
+            .issue_grant(
+                &operation,
+                &scope,
+                request(),
+                vec![1],
+                Credential::default()
+            )
             .is_err());
         service.sftp_close("main", &tokens[0]).unwrap();
         service.sftp_close("main", &tokens[0]).unwrap();
@@ -1406,7 +1466,13 @@ mod tests {
         service.close_owner("main");
         assert!(service.registry.lock().unwrap().grants.is_empty());
         assert!(service
-            .issue_grant(&operation, &scope, request(), vec![1])
+            .issue_grant(
+                &operation,
+                &scope,
+                request(),
+                vec![1],
+                Credential::default()
+            )
             .is_err());
         let _ = grant(&service, "main", request());
         service.shutdown();
