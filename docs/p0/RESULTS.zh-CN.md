@@ -14,7 +14,7 @@
 | 本轮首个提交本机 Rust 独立复验 | **28 单元 passed、1 explicit ignored；9 真实 SSH 集成 passed，26.85 秒**；fmt/check all-targets/all-features/clippy `-D warnings` 通过；独立 Rust 审查 APPROVE，未发现 critical/high | 代码 `807e0eb` 已在夹具辅助模块最终路径下复验；集成测试包含主动 rekey 拒绝。后续仅测试扫描器修订已独立 APPROVE，target 10/10（9 真实协议 + 1 helper），20.34 秒，fmt/target check/clippy 通过。真实 TCP/SSH 对端为有限命令 russh 服务端，不是 OS shell/OpenSSH；ignored 不计入通过 |
 | 当前共享 SSH 回归 | 代码 `807e0eb` 的 `ssh_probe --locked` 独立构建 7.04 秒；OpenSSH Node harness **2/2 passed、0 skipped，3.507 秒**，显式运行所需对端的 ignored 测试 | 本机固定命令入口：明确指纹、UTF-8、exit 7、错误客户端密钥与重连密钥不匹配路径；两次临时材料读取均为 ENOENT，额外确认无当前夹具目录/进程；不代表交互 OpenSSH 或应用 SFTP 验收 |
 | 本轮原生 GUI | arm64 debug 构建成功；WKWebView 完成实际指纹、本次信任、中文/emoji 输出、尺寸变化、输出中 Ctrl-C、exit 7、关闭和夹具清理 | 主任务 CUA 实测，详见下节；默认 readiness 关闭。仅为有限 russh 命令状态机的真实网络/native 链路，不代表 OS shell/OpenSSH、IME 或性能验收 |
-| 本轮三平台 CI | `8ee49a4` 的 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) **success**：三端前端/fmt/check/test/clippy/link 通过；Mac/Linux 默认及 readiness PTY 通过，Windows 两种 PTY 均 skipped | 三端各 10 项 SSH target 为 9 协议 + 1 helper；Windows ConPTY 仍未实现，test/link 的非阻塞 PDB 同名 warning 保留。[最终成功及前两次失败](CROSS_PLATFORM_VALIDATION.zh-CN.md)；不代表三端 GUI、OpenSSH 交互或性能验收 |
+| 本轮三平台 CI | `8ee49a4` 的 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) **success**：三端前端/fmt/check/test/clippy/link 通过；Mac/Linux 默认及 readiness PTY 通过，Windows 两种 PTY 均 skipped | 三端各 10 项 SSH target 为 9 协议 + 1 helper；Windows ConPTY 仍未实现，test/link 的非阻塞 PDB 同名 warning 保留。[最终成功及前两次失败](CROSS_PLATFORM_VALIDATION.zh-CN.md)；Windows 保持拒绝策略的原因与门槛见[ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)；不代表三端 GUI、OpenSSH 交互或性能验收 |
 
 普通「新建连接」和 SFTP 文件界面仍是演示。交互 SSH 不支持长期信任、完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
 
@@ -134,7 +134,7 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features 
 
 ## 未完成与下一步
 
-1. 在当前三平台 CI、Rust 独立复验与 macOS 原生冒烟基础上继续平台专项和 Windows ConPTY；保留两次失败与修订成功记录，沿已认可的浅深色方向完善。
+1. 在当前三平台 CI、Rust 独立复验与 macOS 原生冒烟基础上继续平台专项；Windows ConPTY 先按[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)完成可取消 reader/child 生命周期，再解除拒绝策略。保留两次失败与修订成功记录，沿已认可的浅深色方向完善。
 2. 完成原生 IME、Ctrl-C 分层延迟、资源与可访问性专项，不能以 Chrome 状态优化代替。
 3. 继续 VT52 接入策略、其他 VT 方言、Free Type、折叠与压缩历史验证；当前台账为130项：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整基线尚未冻结、功能对齐未完成，不降低完整功能目标。
 4. 在交互 SSH 通道基础上继续 OpenSSH/真实系统 shell 互操作、rekey、安全主机信任持久化、完整认证、长期背压与 Rust SFTP；再扩展 agent、跳板/转发及 tmux，不能将有限命令协议测试等同远程连接产品。

@@ -2,7 +2,7 @@
 
 状态：P0 进行中，2026-10-11。**macOS、Windows、Linux 从当前阶段共同作为架构目标；Apple Silicon 优先验证和交付。** 后续平台通过适配层接入同一核心，不在 macOS 产品完成后另写一套协议与业务逻辑。
 
-当前 macOS arm64 有本机原生与 PTY 证据，Linux Bash/Unix PTY 已有 hosted 编译和运行记录；Windows 已有历史编译/链接、平台拒绝策略及当前有限 loopback SSH 协议测试证据，ConPTY 尚未实现。依赖支持、代码适配、CI 编译与实机运行必须分开记录，不能直接宣称三端可用。完整范围按[功能矩阵](FEATURE_PARITY.zh-CN.md)跟踪：当前 130 项，完整基线尚未冻结。
+当前 macOS arm64 有本机原生与 PTY 证据，Linux Bash/Unix PTY 已有 hosted 编译和运行记录；Windows 已有历史编译/链接、平台拒绝策略及当前有限 loopback SSH 协议测试证据，ConPTY 尚未实现。Windows 的阻塞读取消、子进程回收和真实探针门槛见[P0 ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md)。依赖支持、代码适配、CI 编译与实机运行必须分开记录，不能直接宣称三端可用。完整范围按[功能矩阵](FEATURE_PARITY.zh-CN.md)跟踪：当前 130 项，完整基线尚未冻结。
 当前轮交互 SSH 已通过浏览器契约、macOS Rust 独立复验及 WKWebView 有限命令冒烟；PTY readiness 仍是默认关闭的实验，原生高输出性能未验收。最终提交 `8ee49a4` 的 CI 三端检查、链接、SSH target 通过，Mac/Linux 默认与 readiness PTY 通过；Windows PTY 仍跳过。前两次失败及最小修订均保留，不能将最终 CI 成功当作三端 GUI 或完整功能验收。历史 macOS 总期限失败、修订成功及各轮范围保留在[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)，最新验收统一见 [P0 结果](p0/RESULTS.zh-CN.md)。
 
 ## 共享核心与平台边界
