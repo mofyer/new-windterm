@@ -14,6 +14,37 @@
 
 本机浏览器全套 134/134 通过。下文的评审修复在此次运行之后提交，需要以新的 CI 运行为准。
 
+## keyboard-interactive 实时提示（C13）
+
+连接过程中，服务端每一轮 keyboard-interactive 提示都会在发起操作的窗口中弹出对话框，用户回答后再继续，见[说明](SSH_KBDINT.zh-CN.md)。
+
+覆盖范围与约束：
+- **适用操作**：指纹确认、终端标签页、SFTP 面板。
+- **命令绑定**：新增 `ssh_auth_respond`。回答只接受同一窗口、同一操作 ID、当前轮次。
+- **上限**：最多 8 轮、每轮 16 个提示；回答不超过 1024 字节；每轮最长等待 120 秒，超时即失败。
+- **等待计时**：用户作答的时间不计入网络期限。
+- **中止**：取消、页面刷新或应用退出时，正在等待的一轮会被中止。
+- **SFTP 授权**：不保存回答，之后每次 SFTP 操作都会重新提示。
+- **服务端文本**：只用 `textContent` 渲染，控制字符和双向覆盖字符会被替换。
+
+在集成分支上的检查结果：
+
+| 检查 | 结果 |
+| --- | --- |
+| Rust 单元 | 102 passed / 4 ignored |
+| `ssh_kbdint` 集成 | 5/5 |
+| `ssh_terminal` 集成 | 14/14 |
+| `net_terminal` 集成 | 7/7 |
+| 浏览器全套 | 148/148 |
+| 真实 OpenSSH 夹具 | 4/4 与 1/1，用于回归 |
+
+独立评审结论为 APPROVE。它提出的唯一一项 MEDIUM 已在合并时修复：两条连接路径原先各自构造客户端配置，现在共用 `base_config()`。
+
+边界与限制：
+- 没有在真实 PAM 或 OpenSSH 的 keyboard-interactive 下验证，包括 OpenSSH 的 `LoginGraceTime`。
+- 没有在原生窗口中手工操作。
+- WebView、IPC JSON 以及 russh 内部持有的回答副本没有清零。
+
 ## Telnet 与 Raw TCP 终端标签（C02/C03）
 
 桌面端现在可以从「新建连接」或命令面板打开 Telnet / Raw TCP 终端标签，见[说明](NET_TERMINAL.zh-CN.md)：

@@ -4,94 +4,129 @@
 
 ---
 
-你正在接手公开仓库 `https://github.com/mofyer/new-windterm`，本地目录为 `/Users/yafan/Workspace/www/new-windterm`。目标是使用 Rust + Tauri 2 + xterm.js，独立重构 WindTerm 2.7.0 的完整已有功能；视觉方向为现代苹果风，浅色 Silver Soft UI、深色中性 Carbon Dark；Apache-2.0；macOS Apple Silicon 优先，但 Windows/Linux 从架构和测试层面同步考虑。
+你正在接手公开仓库 `https://github.com/mofyer/new-windterm`，本地目录为 `/Users/yafan/Workspace/www/new-windterm`。
 
-用户明确要求：功能一致，允许更新 UI 风格；不能因为先做 macOS 就删减 Windows/Linux 或 WindTerm 功能；目前仍处于 P0，不能宣布完整重构完成、P1 通过或产品可用。
+- **目标**：使用 Rust + Tauri 2 + xterm.js，独立重构 WindTerm 2.7.0 的完整已有功能。
+- **视觉方向**：现代苹果风。浅色为 Silver Soft UI，深色为中性 Carbon Dark。
+- **许可证**：Apache-2.0。
+- **平台**：macOS Apple Silicon 优先，但 Windows/Linux 从架构和测试层面同步考虑。
 
-## 当前仓库状态
+用户的明确要求：
+- 功能一致，允许更新 UI 风格。
+- 不能因为先做 macOS 就删减 Windows/Linux 或 WindTerm 的功能。
+- 目前仍处于 P0，不能宣布完整重构完成、P1 通过或产品可用。
 
-- 分支：`main`
-- 远程：`git@github.com:mofyer/new-windterm.git`
-- 当前 HEAD：`21b6150 docs: record sftp ipc ci evidence [skip ci]`
-- 最近功能提交：`3216339 feat: expose bounded read-only sftp ipc`
-- 工作区交接时应先执行 `git status --short`，保留其他未提交改动，不要重置或覆盖用户改动。
-- P0 总路线：[docs/ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)
-- 功能总矩阵：[docs/FEATURE_PARITY.zh-CN.md](FEATURE_PARITY.zh-CN.md)，当前追踪 130 项，完整基线尚未冻结。
-- 当前结果：[docs/p0/RESULTS.zh-CN.md](p0/RESULTS.zh-CN.md)
-- 跨平台计划：[docs/CROSS_PLATFORM.zh-CN.md](CROSS_PLATFORM.zh-CN.md)
+仓库根目录的 `CLAUDE.md` 汇总了命令、架构和约定，接手后先读。
 
-## 已完成且有证据的内容
+## 当前仓库状态（2026-10-11）
 
-1. Rust + Tauri 2 + xterm.js 原型可运行，已形成真实本地 PTY、交互 SSH 和苹果风界面原型。
-2. 交互 SSH 已接入 xterm 标签页，覆盖有限范围的输入、输出、resize、取消和关闭。
-3. 只读 SFTP 已接入文件面板：`ssh_sftp_open` 消费一次性 challenge 并签发窗口内、仅内存的短时授权；`ssh_sftp_list/metadata/read` 使用授权，每次操作仍重新连接、固定校验主机密钥并重新读取私钥；`ssh_sftp_close` 吊销。五个命令已登记到 `build.rs` 与 capability。
-4. 目录用 raw SFTP 逐页读取，4,096 项或 1 MiB 文件名即停止并标记截断；预览最多 64 KiB 且须与 `stat` 长度一致。真实 OpenSSH 夹具 3/3、浏览器 108/108、Rust 单元 40 passed / 2 ignored。
-5. 没有 SFTP 写入、删除、重命名、权限修改或下载落盘；面板尚未在原生 WKWebView 实测，三平台 CI 尚未覆盖本轮。
-6. 本地检查已通过：
-   - `cargo fmt -- --check`
-   - `cargo check --locked --all-targets --all-features`
-   - `cargo clippy --locked --all-targets --all-features -- -D warnings`
-   - Rust 单测 30 passed / 1 ignored
-   - SSH 集成测试 10/10 passed
-7. 三平台 CI 已成功：[run 38126837364](https://github.com/mofyer/new-windterm/actions/runs/38126837364)。
-   - macOS arm64：30 passed / 1 ignored，SSH 10/10，默认和 readiness PTY 通过
-   - Linux x64：29 passed / 1 ignored，SSH 10/10，默认和 readiness PTY 通过
-   - Windows x64：28 passed / 1 ignored，SSH 10/10，编译、测试、Clippy、链接通过
-   - Windows 真实 ConPTY PTY 仍按策略跳过，不能称 Windows 终端已支持
+### 分支
+
+- **远端 `main`**：仍是 `9afcafe docs: add model handoff brief [skip ci]`，本轮没有改动。
+- **本地 `main`**：比远端多一个未推送的提交 `107c012 feat: wire read-only sftp into the file panel`，它已包含在集成分支中。
+- **集成分支 `p0/integration`**：本轮全部工作都在这里，已推送。它把各个 `p0/*` 工作分支，以及子代理在 `.claude/worktrees/` 下的分支合并在一起。
+- **合并到 `main`**：必须先取得用户的明确同意。用户授权的推送范围只有 `p0/*` 工作分支和手动触发的 CI，`main` 不能动。
+- **已推送的工作分支**：
+  - `p0/sftp-panel`、`p0/openssh-shell`、`p0/ssh-auth`、`p0/ssh-kbdint`
+  - `p0/ssh-forward`、`p0/ssh-proxy`、`p0/ssh-remote-forward`
+  - `p0/scp`、`p0/telnet`、`p0/terminal-history`、`p0/windows-conpty`
+- **未跟踪目录**：`.claude/` 中是子代理的 worktree，属于过程产物。删除前先用 `git worktree list` 确认其中的提交已经合并。
+
+### CI 与文档
+
+- **CI**：`.github/workflows/p0-cross-platform.yml`，覆盖 macOS arm64、Linux x64、Windows x64。工作分支上可以用 `gh workflow run p0-cross-platform.yml --ref <分支>` 手动触发。最近的证据以 [RESULTS](p0/RESULTS.zh-CN.md) 顶部各节为准。
+- **结果与边界**：[docs/p0/RESULTS.zh-CN.md](p0/RESULTS.zh-CN.md)。
+- **功能总矩阵**：[docs/FEATURE_PARITY.zh-CN.md](FEATURE_PARITY.zh-CN.md)，共 130 个 ID。本轮没有改变任何一行的状态。
+- **路线图**：[docs/ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+
+## 本轮完成且有证据的内容（集成分支）
+
+每一项都只覆盖下表“证据”一栏写到的范围。
+
+| 领域 | 内容 | 证据 | 主要边界 |
+| --- | --- | --- | --- |
+| 只读 SFTP 文件面板 | 指纹核对后签发短时授权；目录分页与截断；64 KiB 预览 | 真实 OpenSSH 夹具；浏览器测试 | 没有写操作、下载落盘或原生 WKWebView 实测；F01 未完成 |
+| 主机信任 | `known_hosts`（OpenSSH 格式）；`new`/`known`/`changed` 三种状态；变化时阻断 | 单元与集成测试；系统 `ssh` 接受我们保存的条目 | 不导入用户的 `~/.ssh/known_hosts` |
+| SSH 认证 | 私钥（可带口令）、密码、agent、keyboard-interactive；bcrypt 轮数上限 | loopback 与真实 OpenSSH | 只支持 Ed25519/ECDSA，没有 RSA |
+| keyboard-interactive 实时提示 | 连接时逐轮弹窗作答；`ssh_auth_respond` 绑定窗口、操作和轮次；适用于终端标签页和 SFTP 面板 | loopback 夹具；浏览器测试 | 没有真实 PAM/OpenSSH 验证，没有原生手工测试 |
+| 交互 SSH | Rust `ssh_open` 连接真实 OpenSSH shell | `tests/fixtures/ssh-terminal/rust-client.test.mjs` | 没有长期会话和断线恢复 |
+| 转发 | 本地转发、SOCKS5 动态转发、跳板、远端转发、agent 转发；服务端主动打开的通道默认拒绝，`forwarded-tcpip` 最多 64 个 | loopback 夹具 | 没有界面 |
+| 代理 | HTTP CONNECT、SOCKS5、ProxyCommand（不经过 shell） | loopback 代理 | 没有界面 |
+| 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
+| SCP | `scp -t/-f` 传单个文件 | 真实 OpenSSH 夹具 | 没有目录、递归或界面 |
+| Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试 | 没有真实 telnetd 或网络设备 |
+| XMODEM/YMODEM | 不依赖 I/O 的发送与接收 | 23 项单元测试 | 没有 lrzsz 互操作，没有接入终端；ZMODEM 只有决策记录 |
+| tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
+| 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
+| Windows ConPTY | `cmd.exe` 生命周期：Job Object 回收进程树，关闭、ACK、Ctrl+C 等 | Windows CI | 只验证了 `cmd.exe`；句柄泄漏检查仍在 CI 中确认，见下文 |
+| 性能基线 | 本机 PTY、xterm、启动与内存基线 | [记录](p0/PERFORMANCE_BASELINE.zh-CN.md) | 测量环境嘈杂；没有 WKWebView 数字，没有与 WindTerm 对比 |
+| 上游静态复核 | 130 项逐条对照上游静态材料 | [复核记录](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md) | 静态证据不等于行为已验证 |
+| 依赖与许可证 | 依赖清单 | [清单](p0/DEPENDENCIES.zh-CN.md) | — |
+| 安全评审 | 网络探针没有 CRITICAL 或 HIGH 问题；MEDIUM 已修复或已写明不采纳的理由 | RESULTS「网络探针安全评审」一节 | — |
+
+X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有实现代码。
 
 ## 绝对不能误报的边界
 
-- 不能说 WindTerm 功能已经完整对齐。
-- 不能说 SFTP 已完成：只有只读浏览；没有写操作、下载落盘、持久连接、断线恢复和原生面板验收。
-- 目录预算只约束保留部分；每页 `readdir` 会先完整解码（瞬时为 256 KiB 包的若干倍），russh 通道缓冲另计，不能写成完整的恶意服务端内存保证。非 UTF-8 文件名会导致整页报错。
-- Windows 的 ConPTY 同步 reader 取消、idle close、reader join、进程树回收和真实 PTY 探针仍未完成；`platform::ensure_supported()` 继续拒绝 Windows PTY。
-- macOS arm64 CI 或本地 debug 构建不等于真机 IME、高输出性能、签名、公证或完整发行验收。
-- 浏览器 E2E 使用 IPC stub，不能外推 Rust 网络或原生 GUI 成功。
-- 有限 loopback russh 服务端不等于真实远端 OS shell/OpenSSH 互操作。
+- 不能说 WindTerm 功能已经完整对齐，也不能说 P0 或 P1 已通过。
+- 不能说 SFTP 已完成。现在只有只读浏览，没有以下能力：
+  - 写操作、下载落盘
+  - 持久连接、断线恢复
+  - 原生面板验收
+- 不能说 Windows 终端可用：
+  - 只在 CI 上验证了 `cmd.exe` 的 ConPTY 生命周期。
+  - PowerShell、WebView2 原生窗口、输入法和真实用户环境都没有验收。
+  - 已知限制见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md)：排空没有期限，Job 分配存在竞态。
+- 测试替身的结果不能外推：
+  - 浏览器 E2E 使用 IPC stub，不能外推为 Rust 或原生 GUI 成功。
+  - loopback russh 或测试内 TCP 服务端，不能等同于真实 OpenSSH、telnetd 或网络设备。
+- 构建结果不代表发行验收：
+  - macOS arm64 CI 或本地 debug 构建，不等于真机 IME、高输出性能、签名、公证或发行验收。
+  - release 包目前混入了三个测试二进制。
+- 概念验证与探针不改变功能矩阵中任何一行的状态。
+
+## 需要用户提供或决定的事项
+
+这些事项已向用户说明过，不要自行绕过：
+
+- **合并**：同意把 `p0/integration` 合并到 `main`（需要在 CI 通过之后）。
+- **串口（C04）**：需要一个真实的 USB 串口设备。
+- **X11 转发（C15）**：需要批准安装 XQuartz，或改用 Xvfb 在 Linux 上验证。
+- **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
+- **辅助功能**：输入法与 VoiceOver 需要在真机上测试。
+- **发行**：签名与公证需要凭据。
 
 ## 推荐下一步顺序
 
-### 第一优先级：只读 SFTP 收尾验收
-
-1. 在原生 WKWebView 中用 `tests/fixtures/ssh-sftp/fixture.mjs --serve` 实测文件面板，记录截图与清理证据。
-2. 推送后取得三平台 CI 回执，记录各端 Rust 单元计数。
-
-### 第二优先级：完善 P0 连接安全和跨平台门槛
-
-1. 评估 `read_key_bounded` 在 Windows 非普通文件/命名管道路径上的阻塞风险，确保取消或超时不会永久占用 key-reader permit。
-2. 按 `docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md` 实现并验证 Windows ConPTY reader cancellation、idle close、自然退出、重复 close/reload、ACK timeout、子进程树回收。
-3. 继续主机信任、完整认证、长期会话、rekey、OpenSSH shell、代理/跳板/转发等 P0 盘点；不能跳过功能矩阵。
-
-### 第三优先级：继续终端和功能基线盘点
-
-- 输入法、中文组合态、emoji、宽字符和粘贴路径
-- VT100/VT220/VT52、DECSCL、Free Type、折叠和压缩历史
-- 真实 shell、tmux、标签页、分屏、会话恢复
-- WindTerm 2.7.0 功能矩阵逐项证据
-- macOS 签名、公证、配置迁移和发行流程
+1. **确认 Windows 句柄泄漏检查**。新版检查是 4 轮预热加 24 轮测量，在 CI 中单独运行。看日志里打印的句柄序列：如果是线性增长，就是真实泄漏，需要逐项排查 Session、portable-pty 和 conhost 的句柄；如果趋于平稳，就在 ADR 中记录。然后取得一次三平台全绿的集成 CI，再向用户申请合并到 `main`。
+2. **把探针接入界面**：SCP、转发、代理和 tmux 都只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
+3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
+4. **互操作**：
+   - lrzsz：XMODEM/YMODEM，并评估 ZMODEM 的 `zmodem2`。
+   - 真实 telnetd。
+   - Linux CI 上卡住连接的取消测试。
+5. **发行前问题**：从 release 包中排除 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture`。
+6. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
 
 ## 本地验证命令
 
-在本机使用已安装的 Rust 工具链：
-
 ```sh
-export PATH="/Users/yafan/.cargo/bin:$PATH"
-cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
-cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
-cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib --all-features
-cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --test ssh_terminal --all-features
+export PATH="$HOME/.cargo/bin:$PATH"
+M=apps/desktop/src-tauri/Cargo.toml
+cargo fmt --manifest-path $M -- --check
+cargo clippy --locked --manifest-path $M --all-targets --all-features -- -D warnings
+cargo test --locked --manifest-path $M --all-features            # 单元与集成测试；部分测试需要本机 tmux 或 ssh-agent，缺少时会跳过
+node --test tests/fixtures/ssh-sftp/rust-client.test.mjs          # 真实 OpenSSH：SFTP 与 SCP
+node --test tests/fixtures/ssh-sftp/fixture.test.mjs
+node --test tests/fixtures/ssh-terminal/rust-client.test.mjs      # 真实 OpenSSH shell
+(cd apps/desktop && npm run build && npx playwright test)        # 需要先另开 npm run dev
 ```
 
-提交前执行：
+补充说明：
+- **Windows 代码的本机检查**：可以对 `x86_64-pc-windows-msvc` 目标运行 clippy，用桩头文件、假 `ar` 和假 `rc` 跳过 C 依赖的链接。这只做类型检查，Windows 测试只能在 CI 上运行。本机的辅助脚本在临时目录中，不会长期保留，需要时重新搭建。
+- **Playwright 开发服务器**：多个子代理并行时，各自用不同的 Vite 端口，例如 1431–1437，并使用不提交的本地 Playwright 配置，避免互相关闭对方的 1420 服务。
 
-```sh
-git diff --check
-git status --short
-git log --oneline -5
-```
-
-代码改动后必须让 Rust reviewer 或 verifier 独立审查；不要在没有真实证据时宣称跨平台运行、SFTP 完成或 WindTerm parity 完成。文档更新应同步记录提交、测试范围、平台和未验收边界。
+提交前执行 `git diff --check`。
 
 ## 交接后的工作方式
 
@@ -99,4 +134,7 @@ git log --oneline -5
 - 进度用中文简短报告：当前动作、证据、未验证范围、下一步。
 - 不要询问已经明确的技术路线或视觉方向。
 - 不要重置工作区，不要覆盖其他模型或用户的未提交改动。
-- 任何外部发布、删除、覆盖、发送消息等不可逆操作都要在具体结果准备好后再确认；普通本地开发、测试、文档和提交可直接继续。
+- 任何外部发布、删除、覆盖、发送消息等不可逆操作，都要在具体结果准备好后再确认；普通本地开发、测试、文档和提交可以直接继续。
+- 代码改动后必须让 Rust reviewer 或 verifier 独立审查。审查结论与处理方式要写进 RESULTS。
+- 新增 Tauri 命令要改三处：`lib.rs`、`build.rs`、`capabilities/main.json`。
+- 只改文档的提交在标题末尾加 `[skip ci]`。
