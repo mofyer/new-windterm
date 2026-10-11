@@ -58,6 +58,7 @@
 | XMODEM/YMODEM | 不依赖 I/O 的发送与接收 | 23 项单元测试 | 没有 lrzsz 互操作，没有接入终端；ZMODEM 只有决策记录 |
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
+| VT 兼容矩阵 | xterm.js 6.0.0 的 63 项探针：支持 35、部分支持 16、不支持 12 | [矩阵](p0/VT_MATRIX.zh-CN.md) | 没有运行 vttest，没有与 WindTerm、xterm 或 DEC 对比 |
 | Windows ConPTY | `cmd.exe` 生命周期：Job Object 回收进程树，关闭、ACK、Ctrl+C 等 | Windows CI | 只验证了 `cmd.exe`；句柄泄漏检查仍在 CI 中确认，见下文 |
 | 性能基线 | 本机 PTY、xterm、启动与内存基线 | [记录](p0/PERFORMANCE_BASELINE.zh-CN.md) | 测量环境嘈杂；没有 WKWebView 数字，没有与 WindTerm 对比 |
 | 上游静态复核 | 130 项逐条对照上游静态材料 | [复核记录](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md) | 静态证据不等于行为已验证 |
@@ -105,8 +106,9 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
    - lrzsz：XMODEM/YMODEM，并评估 ZMODEM 的 `zmodem2`。
    - 真实 telnetd。
    - Linux CI 上卡住连接的取消测试。
-5. **发行前问题**：从 release 包中排除 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture`。
-6. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
+5. **VT 差距**：先用解析器钩子补设备身份（DA/DECSCL）和 OSC 52；双宽行、左右边距、矩形操作和 SIXEL 需要评估改动 xterm.js 渲染器或内核的代价。
+6. **发行前问题**：从 release 包中排除 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture`。
+7. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
 
 ## 本地验证命令
 
