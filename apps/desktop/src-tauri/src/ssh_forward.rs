@@ -456,6 +456,77 @@ mod tests {
         server.stop().await;
     }
 
+    /// Sends `line` to a fixture shell and waits for `marker` in its output.
+    async fn ask(channel: &mut russh::Channel<client::Msg>, line: &[u8], marker: &str) -> bool {
+        channel.data(line).await.unwrap();
+        let mut seen = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while let Ok(Some(message)) = tokio::time::timeout_at(deadline, channel.wait()).await {
+            if let russh::ChannelMsg::Data { data } = message {
+                seen.extend_from_slice(&data);
+                if String::from_utf8_lossy(&seen).contains(marker) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    async fn shell(ssh: &client::Handle<KeyCheck>, cols: u32) -> russh::Channel<client::Msg> {
+        let channel = ssh.channel_open_session().await.unwrap();
+        channel
+            .request_pty(true, "xterm", cols, 24, 0, 0, &[])
+            .await
+            .unwrap();
+        channel.request_shell(true).await.unwrap();
+        channel
+    }
+
+    /// ControlMaster semantics inside the app: one authenticated connection
+    /// carries several independent shells; closing one leaves the others.
+    #[tokio::test]
+    async fn one_connection_multiplexes_independent_shells() {
+        let mut server = fixture::Fixture::start().await;
+        let ssh = session(&server).await;
+        let mut shells = Vec::new();
+        for cols in [81, 82, 83] {
+            shells.push(shell(&ssh, cols).await);
+        }
+        assert_eq!(
+            server.active.load(Ordering::SeqCst),
+            1,
+            "one TCP/SSH connection"
+        );
+        for (index, channel) in shells.iter_mut().enumerate() {
+            assert!(ask(channel, b"size\n", &format!("SIZE {} 24", 81 + index)).await);
+        }
+        let closed = shells.remove(1);
+        closed.close().await.unwrap();
+        drop(closed);
+        for channel in shells.iter_mut() {
+            assert!(
+                ask(channel, b"unicode\n", "中文").await,
+                "a sibling stopped after one closed"
+            );
+        }
+        assert_eq!(
+            server.authentications.load(Ordering::SeqCst),
+            1,
+            "authenticated once"
+        );
+        ssh.disconnect(russh::Disconnect::ByApplication, "", "en")
+            .await
+            .unwrap();
+        for channel in shells.iter_mut() {
+            let ended = tokio::time::timeout(Duration::from_secs(5), async {
+                while channel.wait().await.is_some() {}
+            })
+            .await;
+            assert!(ended.is_ok(), "channel survived the master disconnect");
+        }
+        server.stop().await;
+    }
+
     #[tokio::test]
     async fn jump_host_pins_each_hop_independently() {
         let mut jump_server = fixture::Fixture::start().await;

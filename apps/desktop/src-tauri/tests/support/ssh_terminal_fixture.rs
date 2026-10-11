@@ -107,7 +107,7 @@ impl Fixture {
                             auth_rejection_time_initial: Some(Duration::ZERO),
                             ..Default::default()
                         });
-                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shell: None, round: 0, size: (80,24), line: Vec::new(), output: None };
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shells: Default::default(), round: 0, output: None };
                         count.fetch_add(1, Ordering::SeqCst);
                         connections.spawn(async move {
                             let _guard = guard;
@@ -165,13 +165,12 @@ struct Handler {
     active: Arc<AtomicUsize>,
     denial: Arc<AtomicUsize>,
     forwards: Arc<AtomicUsize>,
-    /// The channel running the line-based shell; russh delivers every
-    /// channel's data to `Handler::data`, so forwarded bytes must be ignored.
-    shell: Option<ChannelId>,
+    /// Size and pending input line of each line-based shell channel. russh
+    /// delivers every channel's data to `Handler::data`, so forwarded bytes
+    /// (channels without a PTY) are ignored here.
+    shells: std::collections::HashMap<ChannelId, ((u32, u32), Vec<u8>)>,
     /// Keyboard-interactive progress: 0 none, 1 password asked, 2 code asked.
     round: u8,
-    size: (u32, u32),
-    line: Vec<u8>,
     output: Option<JoinHandle<()>>,
 }
 impl Drop for Handler {
@@ -317,8 +316,7 @@ impl server::Handler for Handler {
         _modes: &[(Pty, u32)],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
-        self.shell = Some(channel);
-        self.size = (cols, rows);
+        self.shells.insert(channel, ((cols, rows), Vec::new()));
         if term == "xterm-256color" && self.denial.load(Ordering::SeqCst) != 1 {
             session.channel_success(channel)?;
         } else {
@@ -344,14 +342,16 @@ impl server::Handler for Handler {
     }
     async fn window_change_request(
         &mut self,
-        _channel: ChannelId,
+        channel: ChannelId,
         cols: u32,
         rows: u32,
         _width: u32,
         _height: u32,
         _session: &mut server::Session,
     ) -> Result<(), Self::Error> {
-        self.size = (cols, rows);
+        if let Some((size, _)) = self.shells.get_mut(&channel) {
+            *size = (cols, rows);
+        }
         Ok(())
     }
     async fn data(
@@ -360,31 +360,39 @@ impl server::Handler for Handler {
         data: &[u8],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
-        if self.shell != Some(channel) {
+        let Some(((cols, rows), line)) = self.shells.get_mut(&channel) else {
             return Ok(()); // forwarded channel data is relayed by its own task
-        }
+        };
+        let size = (*cols, *rows);
+        let mut commands = Vec::new();
         for byte in data {
             if *byte == 3 {
-                if let Some(output) = self.output.take() {
-                    output.abort();
-                }
-                self.line.clear();
-                session.data(channel, b"\r\nINTERRUPTED\r\n> ".to_vec())?;
+                line.clear();
+                commands.push(None);
                 continue;
             }
             if *byte != b'\r' && *byte != b'\n' {
-                if self.line.len() >= 256 {
+                if line.len() >= 256 {
                     return Err(russh::Error::Disconnect);
                 }
-                self.line.push(*byte);
+                line.push(*byte);
                 continue;
             }
-            let command = std::mem::take(&mut self.line);
+            commands.push(Some(std::mem::take(line)));
+        }
+        for command in commands {
+            let Some(command) = command else {
+                if let Some(output) = self.output.take() {
+                    output.abort();
+                }
+                session.data(channel, b"\r\nINTERRUPTED\r\n> ".to_vec())?;
+                continue;
+            };
             match command.as_slice() {
                 b"unicode" => session.data(channel, "中文 🌏\r\n> ".as_bytes().to_vec())?,
                 b"size" => session.data(
                     channel,
-                    format!("SIZE {} {}\r\n> ", self.size.0, self.size.1).into_bytes(),
+                    format!("SIZE {} {}\r\n> ", size.0, size.1).into_bytes(),
                 )?,
                 b"large" | b"burst" => {
                     if let Some(output) = self.output.take() {
@@ -405,9 +413,11 @@ impl server::Handler for Handler {
                     }));
                 }
                 b"exit" => {
+                    self.shells.remove(&channel);
                     session.exit_status_request(channel, 7)?;
                     session.eof(channel)?;
                     session.close(channel)?;
+                    break;
                 }
                 b"" => {}
                 _ => session.data(channel, b"Unknown fixture command\r\n> ".to_vec())?,
