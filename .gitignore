@@ -1,0 +1,37 @@
+# Build and package output
+/target/
+**/target/
+/node_modules/
+**/node_modules/
+/dist/
+/build/
+/coverage/
+*.dmg
+*.app/
+*.msi
+*.exe
+*.deb
+*.rpm
+
+# Local environment and orchestration
+.env
+.env.*
+!.env.example
+/.omc/
+/.reference/
+.DS_Store
+*.log
+
+# Credentials and local secrets
+/secrets/
+/credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+
+# Cargo.lock is intentionally tracked for this application.
