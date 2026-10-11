@@ -2,6 +2,14 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
+## Windows ConPTY 本地终端（工作分支 `p0/windows-conpty`）
+
+`platform::ensure_supported()` 不再拒绝 Windows。按 [ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md) 实现的生命周期：shell（`cmd.exe /D /Q /K`）启动后立即加入 kill-on-close Job Object；等待线程持有子进程，子进程退出后关闭 pseudoconsole，使阻塞的 `ReadFile` 在 conhost 刷完输出后得到 EOF；关闭会话即终止整个 Job；reader 结束后继续读取并丢弃输出直到 EOF，避免 portable-pty 自持读句柄时 conhost 卡在写满的管道上；启动 shell 前恢复正常 Ctrl+C 处理，防止继承“忽略 Ctrl+C”属性。前端在会话 ID 到达前暂存输入（≤ 4 KiB），保证 xterm 对 ConPTY 启动时光标位置查询（`ESC[6n`）的回复不会丢失，否则 Windows shell 会卡在启动阶段。私钥读取在 Windows 上拒绝设备命名空间路径，并要求打开后 `GetFileType == FILE_TYPE_DISK`。
+
+三平台 CI [run 38134532830](https://github.com/mofyer/new-windterm/actions/runs/38134532830) **success**：Windows 48 passed / 2 ignored，其中 10 项 ConPTY 生命周期测试全部通过（exit 7、UTF-8、窗口尺寸、空闲与重复关闭、输出中关闭、Ctrl+C、ACK 预算与超时、页面刷新、Job Object 回收脱离子进程、12 轮循环），SSH 10/10；macOS 41、Linux 40 passed。诊断日志记录原始 `0x03` 与 win32-input-mode 编码都能中断 `ping -t` 与 `for /L`。此前 5 次失败依次暴露并修复了：启动光标查询、清空环境后的测试标记、ACK 超时后的管道死锁、`ping -t` 起始判据、继承的 Ctrl+C 忽略属性。本机另有 Windows 目标的交叉 clippy 检查（使用桩头文件，仅类型检查）。
+
+边界：只验证了 `cmd.exe`；PowerShell、WebView2 原生窗口、输入法、高输出性能与真实 Windows 用户环境（非 CI runner）尚未验收；`pty-readiness` 在 Windows 上不使用（ConPTY 管道为阻塞读取）。
+
 ## SCP 上传与下载（F08/F09）
 
 传统 `scp -t/-f` 协议在 exec 通道上实现，与 SFTP 分开验收。对真实 OpenSSH（夹具白名单只放行目录内的 `scp -f|-t -- '<路径>'`）上传并下载 1 MiB 的中文文件名文件，字节一致；缺失文件、大小上限、非法文件名与越界路径均被拒绝。夹具运行脚本 4/4 通过。目录、递归与时间戳未实现，也没有界面。[说明](SSH_SFTP_FIXTURE.zh-CN.md)

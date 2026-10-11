@@ -1,6 +1,12 @@
 # Windows ConPTY 适配决策记录
 
-状态：**待实现，当前保留明确拒绝策略**。日期：2026-10-11。
+状态：**已实现并通过 `windows-2022` CI（cmd.exe）**。日期：2026-10-11。
+
+## 实现结果（更新）
+
+本记录下文保留原有分析。实现采用与原“CancelSynchronousIo”建议不同、但满足同一门槛的方案：不跨线程取消 `ReadFile`，而是让等待线程在子进程退出后关闭 pseudoconsole，由 conhost 关闭管道产生 EOF；关闭会话时终止 kill-on-close Job Object 以回收整个进程树；reader 结束后排空管道直到 EOF。原文列出的验收顺序（空闲关闭、输出中关闭、自然退出、重复关闭/刷新、ACK 超时、12 轮循环、`cmd /c start` 子进程树）与 Ctrl+C 均在 [run 38134532830](https://github.com/mofyer/new-windterm/actions/runs/38134532830) 通过，详见 [RESULTS](RESULTS.zh-CN.md)。仍未覆盖 PowerShell、WebView2 原生窗口、输入法与真实用户环境。
+
+## 原始记录
 
 ## 决策
 

@@ -2,7 +2,11 @@
 
 日期：2026-10-11。最终目标仍是三平台完整功能一致；交付顺序保持 macOS Apple Silicon 优先，Windows/Linux 后续。本文区分代码适配、编译、真实 PTY 和 GUI 验收，不能以 CI 绿色代替整个平台可用。
 
-## 最新提交：只读 SFTP IPC 与 Windows shell 契约（第六次 CI 通过）
+## Windows ConPTY 生命周期（工作分支，第六次尝试通过）
+
+工作分支 `p0/windows-conpty` 的 [run 38134532830](https://github.com/mofyer/new-windterm/actions/runs/38134532830) **success**：Windows x64 Rust 48 passed / 2 ignored（含 10 项 ConPTY 生命周期测试），SSH target 10/10；macOS arm64 41 passed，Linux x64 40 passed，均 2 ignored，默认与 readiness PTY 探针通过。此前 run 38130718974（已取消）、38131377983、38132281341、38132935391、38133799928 失败，原因与修复见 [RESULTS](RESULTS.zh-CN.md) 的 Windows 一节。Windows 上的 Unix `pty_probe` 仍跳过，ConPTY 验证在 Rust 测试步骤中完成。
+
+## 上一提交：只读 SFTP IPC 与 Windows shell 契约（第六次 CI 通过）
 
 提交 `32163390df223beb7cb367b8deb7c53dec800c58` 的 [run 38126837364](https://github.com/mofyer/new-windterm/actions/runs/38126837364) **success**。本轮把 `russh-sftp 3.0.1` 只读 Rust wrapper 接入 Tauri IPC，并为未来 Windows ConPTY 适配保留经过 `ComSpec` 校验的 `cmd.exe /D /Q /K` 命令契约；Windows gate 仍保持拒绝，未执行真实 ConPTY 探针。
 

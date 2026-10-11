@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - WindTerm 功能已对齐、P0/P1 已通过、产品可用；
 - SFTP 已完成（只有 Rust 只读 IPC，无前端面板、无真实 OpenSSH subsystem 验收、无写操作）；
-- Windows 终端已支持（ConPTY 未实现，`platform::ensure_supported()` 明确拒绝 Windows PTY）；
+- Windows 终端已完整可用（ConPTY 只在 CI 上验证了 cmd.exe 的生命周期，未验证 PowerShell、WebView2 原生窗口和输入法）；
 - 浏览器 E2E 通过等于 Rust/原生成功（浏览器测试使用 IPC stub）；
 - loopback russh 测试服务端通过等于真实 OS shell / OpenSSH 互操作通过；
 - CI 或本地 debug 构建通过等于 IME、高输出性能、签名公证或发行验收。
@@ -83,7 +83,7 @@ P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的
 PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` → 前端 `xterm.write` → 每块按 `sequence` 顺序调用 `pty_ack`/`ssh_ack`。`PtyEvent` 有 `data`/`exit`/`error` 三种，`data` 保持原始字节（每块 4096 字节，64 KiB / 64 块未 ACK 预算，ACK 超时 15 秒）。不要按网络块转 UTF-8，也不要在 Rust 再维护一份 vt100/alacritty 屏幕：xterm.js 是唯一的终端状态来源。
 
 - `pty.rs`：`Sessions` 注册表（每窗口有代际 generation，最多 8 个会话）、reader/writer 线程、ACK 流控与子进程回收。
-- `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash）；Windows 被拒绝，实现前须遵循 [docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md](docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md)。
+- `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash、Windows `cmd.exe /D /Q /K`）。Windows 细节在 `platform_windows.rs`：kill-on-close Job Object 回收进程树；等待线程在子进程退出后关闭 pseudoconsole，使阻塞读取得到 EOF；会话关闭时终止 Job，而不是在 IPC 线程上关闭 pseudoconsole（可能阻塞）；reader 结束后要排空管道。ConPTY 启动时会发 `ESC[6n` 并等待回复，前端会暂存会话 ID 到达前的输入。Windows 测试在 `pty.rs` 的 `windows_tests` 中，只能在 Windows CI 上运行。
 - Cargo features：`pty-readiness` 是默认关闭的 Unix poll/ACK 通知实验（默认构建仍是 5 ms 轮询）；`pty-diagnostics` 启用 `pty_diagnose` 二进制与计时字段。
 
 ### SSH 流程（`ssh.rs`，交互通道在 `ssh_terminal.rs`，通过 `#[path]` 挂为 `ssh::terminal`）

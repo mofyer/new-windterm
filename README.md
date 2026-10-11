@@ -39,7 +39,7 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 PTY 新增默认关闭的 `pty-readiness` 实验：本机三组配对均通过精确 2 MiB 与回收检查，负载中位数从 6898.175 ms 降为 342.195 ms（含 300 ms 人工 ACK 暂停）。这是直接调用 Rust PTY 的 CLI 实验，不代表默认应用或 WebView 性能达标；默认仍使用原读取策略。[实验方法与限制](docs/p0/PTY_READINESS.zh-CN.md)
 
-此前已完成状态 DOM 合并、开发模式聚合诊断、隔离 VT52 实验、Linux Bash/Unix PTY 适配与三平台 CI 验证；Windows ConPTY 仍未实现。原生 IME、高输出响应、完整功能和发行验收仍待完成。
+此前已完成状态 DOM 合并、开发模式聚合诊断、隔离 VT52 实验、Linux Bash/Unix PTY 适配与三平台 CI 验证。Windows ConPTY 本地终端（cmd.exe）已在工作分支实现，并在 `windows-2022` CI 上通过 10 项生命周期测试（含 Ctrl+C 与进程树回收），尚未做原生窗口与真实用户环境验收。原生 IME、高输出响应、完整功能和发行验收仍待完成。
 
 ## 为什么做
 
