@@ -1251,11 +1251,11 @@ mod windows_tests {
         }
     }
 
-    fn interrupts(input: &str, command: &str) -> bool {
+    fn interrupts(input: &str, command: &str, running: &str) -> bool {
         let mut probe = Probe::open();
         probe.ready();
         probe.send(command);
-        let started = probe.pump(DEADLINE, true, |probe| probe.output.len() > 4096);
+        let started = probe.pump(DEADLINE, true, |probe| probe.text().contains(running));
         assert!(started, "command produced no output: {}", probe.tail());
         probe.send(input);
         probe.send("echo P0_^AFTER_CTRL_C\r\n");
@@ -1270,7 +1270,7 @@ mod windows_tests {
     /// xterm.js sends Ctrl+C as a plain 0x03 byte; that must stop a command.
     #[test]
     fn plain_ctrl_c_interrupts_a_running_command() {
-        let ping = interrupts("\x03", "ping -t 127.0.0.1\r\n");
+        let ping = interrupts("\x03", "ping -t 127.0.0.1\r\n", "Reply from");
         record(
             "plain 0x03 + ping -t",
             if ping {
@@ -1279,7 +1279,7 @@ mod windows_tests {
                 "not interrupted"
             },
         );
-        let loop_ = interrupts("\x03", LOOP);
+        let loop_ = interrupts("\x03", LOOP, "1000 P0 bounded");
         record(
             "plain 0x03 + for /L",
             if loop_ {
@@ -1291,7 +1291,7 @@ mod windows_tests {
         // win32-input-mode encoding (Ctrl down, C down/up, Ctrl up), diagnostic only.
         let encoded =
             "\x1b[17;29;0;1;8;1_\x1b[67;46;3;1;8;1_\x1b[67;46;3;0;8;1_\x1b[17;29;0;0;0;1_";
-        let win32 = interrupts(encoded, "ping -t 127.0.0.1\r\n");
+        let win32 = interrupts(encoded, "ping -t 127.0.0.1\r\n", "Reply from");
         record(
             "win32-input-mode Ctrl+C + ping -t",
             if win32 {
