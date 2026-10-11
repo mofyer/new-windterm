@@ -2,17 +2,17 @@
 
 日期：2026-10-11。最终目标仍是三平台完整功能一致；交付顺序保持 macOS Apple Silicon 优先，Windows/Linux 后续。本文区分代码适配、编译、真实 PTY 和 GUI 验收，不能以 CI 绿色代替整个平台可用。
 
-## 最新提交：只读 SFTP 切片与 Windows shell 契约（第五次 CI 通过）
+## 最新提交：只读 SFTP IPC 与 Windows shell 契约（第六次 CI 通过）
 
-提交 `148c9b18987e05a01b479548ac47e2a541c601e4` 的 [run 38118354445](https://github.com/mofyer/new-windterm/actions/runs/38118354445) **success**。本轮加入 `russh-sftp 3.0.1` 只读 Rust wrapper，并为未来 Windows ConPTY 适配加入经过 `ComSpec` 校验的 `cmd.exe /D /Q /K` 命令契约；Windows gate 仍保持拒绝，未执行真实 ConPTY 探针。
+提交 `32163390df223beb7cb367b8deb7c53dec800c58` 的 [run 38126837364](https://github.com/mofyer/new-windterm/actions/runs/38126837364) **success**。本轮把 `russh-sftp 3.0.1` 只读 Rust wrapper 接入 Tauri IPC，并为未来 Windows ConPTY 适配保留经过 `ComSpec` 校验的 `cmd.exe /D /Q /K` 命令契约；Windows gate 仍保持拒绝，未执行真实 ConPTY 探针。
 
 | 实际 host / job | Rust unit / SSH target | 前端 / fmt / check / test / clippy / link | 默认 / readiness PTY |
 | --- | ---: | --- | --- |
-| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38118354445/job/114407754591) | 30/0/1；10/10 | 全部 success | success / success |
-| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38118354445/job/114407754603) | 29/0/1；10/10 | 全部 success | success / success |
-| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38118354445/job/114407754523) | 10/10（Windows unit 无 ignored） | 全部 success | skipped / skipped |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38126837364/job/114432851070) | 30/0/1；10/10 | 全部 success | success / success |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38126837364/job/114432850901) | 29/0/1；10/10 | 全部 success | success / success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38126837364/job/114432851220) | 28/0/1；10/10 | 全部 success | skipped / skipped |
 
-Windows all-targets、unit、Clippy 与链接均通过，真实 PTY 两项按策略跳过；这不证明 ConPTY 同步 reader 的取消、回收或完整 shell 行为。macOS/Linux Unix PTY 继续通过 2 MiB 完整性与 readiness 检查。SFTP wrapper 仅做编译和纯单测验证，未接 Tauri IPC，也未进行 OpenSSH SFTP 网络验收。
+Windows all-targets、unit、Clippy 与链接均通过，真实 PTY 两项按策略跳过；这不证明 ConPTY 同步 reader 的取消、回收或完整 shell 行为。macOS/Linux Unix PTY 继续通过 2 MiB 完整性与 readiness 检查。SFTP IPC 已完成三端编译接线，但尚未进行 OpenSSH SFTP 网络验收、前端面板验收或大目录内存峰值验收。
 
 ## 历史当前轮：Windows 取消钩子预备代码（第四次 CI 通过）
 
