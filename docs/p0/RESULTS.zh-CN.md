@@ -108,7 +108,7 @@ russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项
 - 自然退出时先终止整个 Job，再关闭 pseudoconsole。
 - 终止 Job 失败时回退为终止 shell 进程。
 - Ctrl+C 恢复只执行一次。
-- 12 轮循环测试改为检查句柄增长不超过 8。
+- 循环测试改为检查句柄泄漏：4 轮预热后再跑 24 轮，句柄增长不得超过 8。这项测试在 CI 中单独运行，第一版在 Windows 上失败，详见决策记录。
 - 前端早期输入暂存只作用于本地 PTY，并在退出、启动失败或关闭时清空。
 
 排空无期限与 Job 分配竞态两项已知限制见[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)。

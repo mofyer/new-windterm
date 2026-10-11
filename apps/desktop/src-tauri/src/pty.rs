@@ -1373,17 +1373,34 @@ mod windows_tests {
         }
     }
 
+    /// Handles of this process once teardown settles. Detached threads and
+    /// conhost release finish asynchronously, so take the lowest of a few
+    /// samples.
+    fn settled_handles() -> u32 {
+        (0..10)
+            .map(|_| {
+                thread::sleep(Duration::from_millis(30));
+                platform::windows::handle_count()
+            })
+            .min()
+            .unwrap()
+    }
+
     /// Counts handles of the whole process, so it must run with no other test
-    /// in the binary; CI runs it alone in its own step.
+    /// in the binary; CI runs it alone in its own step. Warm-up cycles absorb
+    /// lazily allocated runtime handles; a per-session leak of even one handle
+    /// grows by 24 over the measured cycles.
     #[test]
     #[ignore = "process-wide handle count; run alone with --ignored --exact"]
-    fn twelve_open_output_close_reap_cycles() {
+    fn open_output_close_reap_cycles_do_not_leak_handles() {
+        const WARM_UP: usize = 4;
+        const MEASURED: usize = 24;
         let _serial = SERIAL
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions = Arc::new(Sessions::default());
-        let mut baseline = None;
-        for cycle in 0..12 {
+        let mut counts = Vec::new();
+        for cycle in 0..WARM_UP + MEASURED {
             let mut probe = Probe::open_in(sessions.clone());
             probe.ready();
             probe.session.close();
@@ -1398,14 +1415,16 @@ mod windows_tests {
                 .filter(|session| !*session.done.0.lock().unwrap())
                 .count();
             assert_eq!(live, 0, "unreaped session after cycle {cycle}");
-            // The first cycle warms up lazily allocated runtime handles.
-            let handles = platform::windows::handle_count();
-            let first = *baseline.get_or_insert(handles);
-            assert!(
-                handles <= first + 8,
-                "handles grew from {first} to {handles} by cycle {cycle}"
-            );
+            if cycle + 1 >= WARM_UP {
+                counts.push(settled_handles());
+            }
         }
+        eprintln!("handle counts after warm-up: {counts:?}");
+        let growth = counts[counts.len() - 1].saturating_sub(counts[0]);
+        assert!(
+            growth <= 8,
+            "handles grew by {growth} over {MEASURED} cycles: {counts:?}"
+        );
         sessions.shutdown();
     }
 }
