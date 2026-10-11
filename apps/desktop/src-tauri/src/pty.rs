@@ -569,9 +569,14 @@ fn launch_workers(
         // Reader errors (ACK timeout, sink failure) end the tree too; after a
         // natural exit this only reaps detached children left in the job.
         #[cfg(windows)]
-        session.close();
-        // Drop the read end before joining the waiter: conhost may be blocked
-        // writing into a full pipe, and closing the pseudoconsole waits for it.
+        {
+            session.close();
+            // Keep draining until conhost closes the pipe. Closing the
+            // pseudoconsole waits for conhost to flush, and portable-pty keeps
+            // its own read handle, so dropping ours could not unblock a writer
+            // stuck on a full pipe.
+            drain(reader.as_mut());
+        }
         drop(reader);
         #[cfg(windows)]
         let status = match waiter.join() {
@@ -864,6 +869,19 @@ fn cleanup_child(
                     None
                 }
             }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn drain(reader: &mut dyn Read) {
+    let mut discard = [0; CHUNK_BYTES];
+    loop {
+        match reader.read(&mut discard) {
+            Ok(0) => return,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return,
         }
     }
 }
@@ -1217,17 +1235,75 @@ mod windows_tests {
         assert!(probe.session.peak_pending_bytes() <= OUTPUT_BUDGET);
     }
 
-    #[test]
-    fn ctrl_c_interrupts_running_output() {
+    /// Records which Ctrl+C encodings ConPTY honours, for the CI artifact.
+    fn record(name: &str, outcome: &str) {
+        if let Some(directory) = std::env::var_os("RUNNER_TEMP") {
+            let path = std::path::Path::new(&directory)
+                .join("p0-logs")
+                .join("windows-ctrl-c.txt");
+            let _ = std::fs::create_dir_all(path.parent().unwrap());
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .unwrap();
+            let _ = writeln!(file, "{name}: {outcome}");
+        }
+    }
+
+    fn interrupts(input: &str, command: &str) -> bool {
         let mut probe = Probe::open();
         probe.ready();
-        probe.send(LOOP);
-        assert!(probe.pump(DEADLINE, true, |probe| probe.output.len() > 64 * 1024));
-        probe.send("\x03");
+        probe.send(command);
+        let started = probe.pump(DEADLINE, true, |probe| probe.output.len() > 4096);
+        assert!(started, "command produced no output: {}", probe.tail());
+        probe.send(input);
         probe.send("echo P0_^AFTER_CTRL_C\r\n");
-        probe.expect("P0_AFTER_CTRL_C");
+        let interrupted = probe.pump(DEADLINE, true, |probe| {
+            probe.text().contains("P0_AFTER_CTRL_C")
+        });
         probe.session.close();
         probe.assert_reaped();
+        interrupted
+    }
+
+    /// xterm.js sends Ctrl+C as a plain 0x03 byte; that must stop a command.
+    #[test]
+    fn plain_ctrl_c_interrupts_a_running_command() {
+        let ping = interrupts("\x03", "ping -t 127.0.0.1\r\n");
+        record(
+            "plain 0x03 + ping -t",
+            if ping {
+                "interrupted"
+            } else {
+                "not interrupted"
+            },
+        );
+        let loop_ = interrupts("\x03", LOOP);
+        record(
+            "plain 0x03 + for /L",
+            if loop_ {
+                "interrupted"
+            } else {
+                "not interrupted"
+            },
+        );
+        // win32-input-mode encoding (Ctrl down, C down/up, Ctrl up), diagnostic only.
+        let encoded =
+            "\x1b[17;29;0;1;8;1_\x1b[67;46;3;1;8;1_\x1b[67;46;3;0;8;1_\x1b[17;29;0;0;0;1_";
+        let win32 = interrupts(encoded, "ping -t 127.0.0.1\r\n");
+        record(
+            "win32-input-mode Ctrl+C + ping -t",
+            if win32 {
+                "interrupted"
+            } else {
+                "not interrupted"
+            },
+        );
+        assert!(
+            ping,
+            "plain 0x03 did not interrupt ping -t (win32 encoding: {win32})"
+        );
     }
 
     #[test]
