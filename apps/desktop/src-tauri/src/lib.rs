@@ -3,6 +3,7 @@ mod platform;
 pub mod pty;
 pub mod sftp;
 pub mod ssh;
+pub mod telnet;
 pub mod tmux_control;
 
 use pty::{PtyEvent, Sessions};
