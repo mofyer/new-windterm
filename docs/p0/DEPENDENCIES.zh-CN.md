@@ -1,0 +1,53 @@
+# 依赖与许可证清单
+
+日期：2026-10-11。依据为仓库锁文件（`apps/desktop/src-tauri/Cargo.lock`、`apps/desktop/package-lock.json`）中的声明许可证，涵盖所有目标平台的条件依赖。本页是 P0 出口要求的清单与风险判断，不是法律意见；发行前仍需生成并随包附带第三方许可证文本。
+
+## 结论
+
+- **没有 GPL/AGPL/SSPL/BUSL 依赖，也没有缺失许可证声明的包。**
+- Rust 侧 527 个 crate，绝大多数为 MIT / Apache-2.0 双许可。需要注意的只有两类：
+  - **MPL-2.0（文件级 copyleft）**：`cssparser`、`cssparser-macros`、`selectors`、`dtoa-short`（Tauri/WebView 工具链的 CSS 解析）与 `option-ext`。不修改源文件时可随 Apache-2.0 项目分发；若修改这些文件，需公开修改后的文件。
+  - **LGPL-2.1-or-later 仅作为可选项**：`r-efi` 为 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`，按 MIT/Apache-2.0 使用。
+- 其余非 MIT/Apache 许可均为宽松许可：Unicode-3.0（ICU4X 数据与 `unicode-ident`）、Zlib、BSD-2/3-Clause、ISC、0BSD、Unlicense、CC0、`Apache-2.0 WITH LLVM-exception`。`ring` 为 `Apache-2.0 AND ISC`。
+- 前端运行时只打包 4 个 npm 包：`@xterm/xterm`、`@xterm/addon-fit`、`@xterm/addon-unicode11`（MIT）与 `@tauri-apps/api`（Apache-2.0 OR MIT）。
+- 开发依赖中的 `lightningcss`（MPL-2.0，Vite 构建期 CSS 工具）不进入发行产物。
+
+## 直接依赖
+
+| 组件 | 锁定版本 | 许可证 | 用途 |
+| --- | --- | --- | --- |
+| tauri / tauri-build | =2.12.3 / =2.7.2 | Apache-2.0 OR MIT | 桌面壳、IPC、构建 |
+| portable-pty | =0.9.0 | MIT | 本地 PTY / ConPTY |
+| russh | =0.64.1 | Apache-2.0 | SSH 客户端（ring 后端） |
+| russh-sftp | =3.0.1 | Apache-2.0 | 只读 SFTP |
+| tokio | =1.50.0 | MIT | 异步运行时 |
+| serde / uuid / zeroize | =1.0.229 / =1.18.1 / =1.9.1 | MIT / Apache-2.0 双许可 | 序列化、ID、秘密清零 |
+| libc（Unix） | =0.2.180 | MIT OR Apache-2.0 | PTY 非阻塞与 poll |
+| windows-sys（Windows，`p0/windows-conpty` 分支） | =0.61.2 | MIT OR Apache-2.0 | Job Object、GetFileType；该版本此前已在锁文件中 |
+| @xterm/xterm 与插件 | 6.0.0 / 0.11.0 / 0.9.0 | MIT | 终端渲染 |
+| @tauri-apps/api | 2.12.3 | Apache-2.0 OR MIT | 前端 IPC |
+
+## 系统组件（不随应用分发）
+
+WebView 由操作系统提供：macOS 的 WKWebView、Windows 的 WebView2 Runtime、Linux 的 WebKitGTK（LGPL，动态链接系统库）。Windows 发行时若捆绑 WebView2 引导程序，需另行遵守 Microsoft 的分发条款；当前没有安装包。
+
+## 发行前待办
+
+1. 生成第三方许可证汇编（例如 `cargo about` 或等价工具，加上 npm 运行时依赖），随 `.app`/安装包附带。
+2. 对 MPL-2.0 文件保持不修改；如需补丁，单独记录并公开修改文件。
+3. 依赖升级时重跑下方脚本，检查新增许可证类别。
+
+## 复核方法
+
+```sh
+cargo metadata --locked --format-version 1 --manifest-path apps/desktop/src-tauri/Cargo.toml > /tmp/meta.json
+python3 - <<'PY'
+import json, collections
+m = json.load(open('/tmp/meta.json'))
+pkgs = {p['id']: p for p in m['packages']}
+ids = {n['id'] for n in m['resolve']['nodes']} - {m['resolve']['root']}
+print(collections.Counter(pkgs[i].get('license') or 'UNKNOWN' for i in ids).most_common())
+lock = json.load(open('apps/desktop/package-lock.json'))['packages']
+print(collections.Counter((p.get('license', 'UNKNOWN'), bool(p.get('dev'))) for k, p in lock.items() if k))
+PY
+```
