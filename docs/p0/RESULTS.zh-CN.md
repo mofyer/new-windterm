@@ -15,6 +15,8 @@
 | 本机 Rust | 当前 Mac 单测为 12 项，含 Linux 命令/环境及缺失 shell 策略；检查和探针按专项报告记录 | 各目标条件测试数可不同，不把未运行的 Windows/Linux 测试计入 |
 | 界面与全套浏览器验收 | 70/70，18.5 秒，0 failed/skipped/flaky；67 正向/契约含 6 项隔离 VT52 PoC，另 2 项原始 VT 缺口及 1 项旧 Unicode 反例；build 通过 | [WEB_QA](WEB_QA.zh-CN.md)、[设计系统](DESIGN_SYSTEM.zh-CN.md)；浅深色方向均获认可，反例与 PoC 不算生产兼容通过 |
 | 本轮原生冒烟 | 新 arm64 debug 构建约 11.89 秒、31.76 MiB；中性灰深色下真实 PTY 粘贴中文/emoji 回显和输出完整，23 行/129 列、exit 7 | WKWebView 实测；只证明粘贴路径，不证明键盘中文/IME或高输出响应 |
+| SSH/SFTP 受控夹具 | macOS `/bin/zsh` 下 6 项真实协议检查与 2 项生命周期测试经独立复验通过；1,048,596 字节源/服务器/下载 SHA-256 一致，正常及监听器异常退出均完成清理 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md)；loopback 与临时密钥，无 chroot、保留同 UID 文件权限；未接 Tauri/CI，应用 SSH/SFTP 仍为演示 |
+| 原生 PTY 等待诊断 | 一次本机有界 2 MiB 输出为 7.45 秒；消费阶段 99.4% 时间等待事件，ACK 调用累计 0.932 ms；报告通过独立核对 | [PTY_PERFORMANCE_DIAGNOSIS](PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)；候选为短读与两处 5 ms 轮询，尚未认定根因，未改生产策略，不是性能基准 |
 
 状态 DOM 合并不改变终端内容、ACK 或输入时序，不关闭 screenReaderMode。诊断只是观测，Chrome 单次耗时与 keydown→stub 延迟不能用于宣布 WKWebView 的 Ctrl-C 延迟已解决。详见[响应专项](RESPONSIVENESS.zh-CN.md)。
 
@@ -77,5 +79,5 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_p
 1. 在已完成的 CI 功能验证基础上继续原生响应、Windows ConPTY 与桌面平台专项；保留原失败及修订成功记录，沿已认可的浅深色方向完善。
 2. 完成原生 IME、Ctrl-C 分层延迟、资源与可访问性专项，不能以 Chrome 状态优化代替。
 3. 继续 VT52 接入策略、其他 VT 方言、Free Type、折叠与压缩历史验证；当前台账为130项：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整基线尚未冻结、功能对齐未完成，不降低完整功能目标。
-4. 建立真实 SSH/SFTP、agent、跳板/转发和 tmux 夹具；当前仍是演示而非远程连接产品。
+4. 利用受控 SSH/SFTP 夹具接入 Rust 客户端、主机信任与认证，再扩展 agent、跳板/转发及 tmux 等夹具；当前应用仍是演示而非远程连接产品。
 5. 完成功能基线、平台运行与风险预算后才重估工期、判断 P0 出口；当前没有正式发行版，P0 未完成。

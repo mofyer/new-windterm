@@ -52,6 +52,7 @@ Rust 负责协议、PTY、文件传输和状态管理，Tauri 2 提供桌面集�
 - [界面与交互设计方向](docs/DESIGN.zh-CN.md)
 - [现状核查与技术依据](docs/RESEARCH.zh-CN.md)
 - [P0 本轮结果与未完成项](docs/p0/RESULTS.zh-CN.md)
+- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为后续 Rust 客户端提供测试对端，应用 SSH/SFTP 仍为演示。
 
 完整工期需在功能盘点、原型验证和人力确定后估算，当前不承诺全项目交付日期。
 
