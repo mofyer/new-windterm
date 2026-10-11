@@ -18,7 +18,7 @@
 
 已获取本地只读参考副本，commit 为 `a8336c1d1e3dd1a981500dae8ef9eb42066de95f`，与 2.7.0 标签对应提交一致。参考目录不纳入本项目 Git 仓库，也不是产品依赖或 vendor 代码。[固定版本源码](https://github.com/kingToolbox/WindTerm/tree/a8336c1d1e3dd1a981500dae8ef9eb42066de95f)
 
-公开树主要包含可独立使用的组件及第三方库，未提供足够的完整应用入口、终端和会话 GUI 产品层，不能把“拉取源码”视为可直接编译完整 WindTerm。当前仅完成静态盘点，未运行上游二进制。
+公开树主要包含可独立使用的组件及第三方库，未提供足够的完整应用入口、终端和会话 GUI 产品层，不能把“拉取源码”视为可直接编译完整 WindTerm。初始调查只完成静态盘点；后续 P0 已在隔离配置下运行官方 2.7.0 包，核对 Help、连接设置与部分菜单入口，详见[当前基线证据](p0/BASELINE.zh-CN.md)。这些入口观察不等于完整行为验收。
 
 实际许可包括：[`src/LICENSE`](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/LICENSE) 为 Apache-2.0，[libssh COPYING](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/COPYING) 为 LGPL-2.1，[agent.c](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/src/agent.c) 标注 2.1 或后续版本，[Onigmo COPYING](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/Onigmo/COPYING) 为 BSD 式许可，[ptyqt LICENSE](https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/Pty/ptyqt%20LICENSE) 为 MIT。不能概括为全库 Apache-2.0。当前不复用上游代码、图标和二进制；未来若复用，需逐文件核查并保留原授权和归属。
 

@@ -1,0 +1,24 @@
+{
+  "name": "new-windterm-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.3",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-unicode11": "0.9.0",
+    "@xterm/xterm": "6.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@tauri-apps/cli": "2.12.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
+}

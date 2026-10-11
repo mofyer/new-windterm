@@ -4,6 +4,7 @@
 /node_modules/
 **/node_modules/
 /dist/
+**/dist/
 /build/
 /coverage/
 *.dmg
@@ -19,6 +20,9 @@
 !.env.example
 /.omc/
 /.reference/
+/.artifacts/
+**/test-results/
+**/playwright-report/
 .DS_Store
 *.log
 

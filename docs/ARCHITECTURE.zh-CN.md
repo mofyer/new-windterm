@@ -1,16 +1,19 @@
 # 架构候选与原型验证
 
-状态：用户已确认 Rust + Tauri 2 + xterm.js 与 Apache-2.0；具体依赖及性能待 P0 验证，尚未实现产品代码。
-调研日期：2026-10-11。本文记录候选方案和验证要求，不构成性能或兼容性承诺。
+状态：P0 进行中；用户已确认 Rust + Tauri 2 + xterm.js 与 Apache-2.0。`apps/desktop` 已有可运行交互原型和 Rust 本地 PTY，原型依赖已锁定，远程协议及完整产品能力尚未实现。
+调研日期：2026-10-11。本文保留后续架构候选与验证要求；当前实现和验证边界见 [P0 结果](p0/RESULTS.zh-CN.md)，不构成性能或全量兼容性承诺。
+Silver Soft UI 白色画布、银白浮层、24px 主面板圆角与双向柔影已实现，方向已获用户认可；最新浏览器报告为 56 项通过、16.2 秒：53 项正向/契约（含 2 项对比度检查）、2 项 VT52/DECSCL 缺口、1 项旧 Unicode6 反例。新版 arm64 原生冒烟也已执行；这些有限结果和方向认可均不等于完整功能或可访问性验收，详见[浏览器报告](p0/WEB_QA.zh-CN.md)。10 项 Rust 单测及相关检查已有独立复核；旧 Mint 原生持续输出的输入/队列延迟诊断与新版原生冒烟分别记录，详见 [P0 结果](p0/RESULTS.zh-CN.md)。
 
 ## 目标与范围
 
 - 首发平台为 macOS Apple Silicon M 系列；按阶段实现完整功能基线。
 - Rust 承担网络、会话生命周期、文件传输与持久化业务核心。
-- 最终目标是完整重构 WindTerm 2.7.0 的现有全部功能；macOS 首发，Windows、Linux 为后续必做阶段。
+- 最终目标是完整重构 WindTerm 2.7.0 的现有全部功能；macOS 优先验证和交付，Windows、Linux 从当前阶段共同作为架构目标。
 - 阶段交付不缩减总范围；以 2.7.0 实际行为、官方功能说明和逐项验收形成完整功能基线。
 - 实际最低 macOS 版本由选定依赖和测试矩阵确定，暂不提前承诺。
 - 界面采用[现代苹果风设计](DESIGN.zh-CN.md)，保留完整功能语义、安全与效率；苹果风不代表改用 SwiftUI/AppKit，已确认的 Rust/Tauri/xterm.js 路线保持。
+
+共享核心和协议逻辑保持平台无关，PTY、shell、凭据库、快捷键、文件系统和系统集成通过平台适配；Windows/Linux 不是 macOS 完成后另写的产品。当前只具备 macOS 宿主实测，不宣称三端兼容。具体差异、CI 与实机验收边界见[跨平台计划](CROSS_PLATFORM.zh-CN.md)。
 
 ## 桌面路线比较
 
@@ -30,6 +33,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 ## 推荐候选的职责边界
 
 以下以已确认的 Tauri 路线展开；核心业务接口应避免绑定某个 UI 框架。
+当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS shell/环境/I/O/EOF，未适配平台在创建 PTY 前明确拒绝。下表的 SSH/SFTP、长期凭据与完整持久化层仍为计划，演示界面不代表对应后端已经存在。
 
 | 模块 | 职责 | 不承担的职责 |
 | --- | --- | --- |
@@ -38,7 +42,7 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 | Rust 会话层 | 状态机、取消、超时、资源释放、会话 ID 与所属窗口校验 | 绘制终端字符 |
 | Rust SSH 层 | 基于 russh 候选实现认证、主机密钥验证、PTY 请求、SSH channel | 把远端输出当作可信 UI 内容 |
 | Rust SFTP 层 | 基于 russh-sftp 候选实现列目录、上传下载、进度、取消与失败反馈 | 默认静默覆盖或删除远端文件 |
-| Rust 本地 PTY 层 | portable-pty 候选；支持原型验证及后续本地 shell | SSH 协议或终端模拟 |
+| Rust 本地 PTY 层 | P0 已采用 portable-pty 0.9.0，支持受限本地 shell；完整平台支持待验证 | SSH 协议或终端模拟 |
 | Rust 存储层 | 会话元数据、设置、迁移与凭据引用 | 在普通配置、日志和仓库中写入明文秘密 |
 
 russh 是 SSH 协议库候选，不代表已覆盖 WindTerm 的全部 SSH/OpenSSH 行为；差距必须逐项验证。[9]
@@ -54,10 +58,11 @@ Tauri 路线由 xterm.js 持有权威终端屏幕状态，Rust 转发字节流�
 alacritty_terminal 提供网格、终端状态和选择等组件，不等于现成桌面终端 UI。[11]
 vt100 可用于受控场景的屏幕快照或测试辅助，不作为完整现代终端能力的默认承诺。[12]
 测试辅助解析器不能成为与生产终端状态竞争的第二个数据源。
+当前工作区统一启用 `@xterm/addon-unicode11@0.9.0` 的 Unicode 11 宽度表，修正已发现的部分 emoji 列宽问题；这不代表 Unicode 13、较新 emoji/ZWJ 或中文输入法已验收，详见[原型说明](p0/UI_MAP.zh-CN.md)。
 
 ## 字节流、顺序与背压
 
-计划数据路径：SSH/PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK。
+当前 PTY 原型的数据路径：PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK；未来 SSH 路径仍需实现。原型具体预算、超时和清理证据见 [PTY 记录](p0/PTY_PROBE.zh-CN.md)，下列要求继续约束后续实现。
 终端输出保留字节语义，避免按网络块独立转 UTF-8 导致跨块字符损坏。
 每个会话独立维护序号、待确认字节数、上下水位及关闭状态。
 达到高水位时暂停读取或等待容量，将背压传到 PTY/SSH；不得无限缓存或静默丢字节。
@@ -117,10 +122,12 @@ xterm 官方安全指南明确：同一页面中的 JavaScript 能访问终端�
 P0 产出是证据及组件可行性决定，涵盖上述全量关卡；不能通过缩减用户目标来宣布验证成功。
 代码构建、签名、公证、安装与全新机器运行是不同验收阶段。[16]
 
-## 建议目录结构（尚未创建）
+## 当前目录与后续拆分建议
+
+`apps/desktop` 已创建：`src` 包含前端原型，`src-tauri/src` 包含 Rust PTY 与 IPC，`tests/e2e` 包含浏览器验收。当前没有下列独立 `crates` 分层，按后续复杂度再拆分，不能从建议目录推断模块已实现。
 
 ```text
-apps/desktop/             # 候选 Tauri + TypeScript UI
+apps/desktop/             # 已有 P0 Tauri + TypeScript UI 与内置 Rust PTY
 crates/session-core/      # 会话状态机与框架无关接口
 crates/transport-ssh/     # russh 适配与主机信任
 crates/transfer-sftp/     # 文件传输任务
@@ -130,7 +137,7 @@ tests/fixtures/           # 终端、SSH、SFTP 验证样本
 benchmarks/               # 可复现压力和资源测量
 ```
 
-以上是结构建议，不表示这些目录、模块或测试已经存在；后续补充通用 transport、串口、调制解调传输与 tmux 模块。
+除已说明的 `apps/desktop` 外，以上为后续结构建议；通用 transport、SSH/SFTP、串口、调制解调传输与 tmux 模块尚待实现。
 
 ## 依赖版本与官方依据
 

@@ -1,0 +1,2258 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-11",
+  "upstream_commit": "a8336c1d1e3dd1a981500dae8ef9eb42066de95f",
+  "target_release": "2.7.0",
+  "scope": "117 existing feature IDs; static inventory only; runtime evidence tracked separately",
+  "features": [
+    {
+      "id": "C01",
+      "capability": "SSH v2",
+      "phase": "P2",
+      "acceptance": "交互、缩放、退出码、断线状态；首次主机密钥确认和变化拒绝",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C01)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：交互、缩放、退出码、断线状态；首次主机密钥确认和变化拒绝",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C02",
+      "capability": "Telnet",
+      "phase": "P2",
+      "acceptance": "协议协商、交互和断线；匹配上游配置项",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C02)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：协议协商、交互和断线；匹配上游配置项",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C03",
+      "capability": "Raw TCP",
+      "phase": "P2",
+      "acceptance": "双向字节流、编码及关闭行为",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C03)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：双向字节流、编码及关闭行为",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C04",
+      "capability": "串口",
+      "phase": "P2",
+      "acceptance": "设备枚举、波特率等串口配置、读写和拔插",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C04)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：设备枚举、波特率等串口配置、读写和拔插",
+      "not_tested_reason": "缺少物理串口/回环适配器；伪终端不能替代拔插和驱动验证。"
+    },
+    {
+      "id": "C05",
+      "capability": "SSH 认证后自动执行",
+      "phase": "P2",
+      "acceptance": "显式启用、执行顺序、失败及重连策略；不误重放输入",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：显式启用、执行顺序、失败及重连策略；不误重放输入",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C06",
+      "capability": "SSH ControlMaster",
+      "phase": "P2",
+      "acceptance": "复用连接、主从生命周期及退出隔离",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C06)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：复用连接、主从生命周期及退出隔离",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C07",
+      "capability": "ProxyCommand",
+      "phase": "P2",
+      "acceptance": "命令参数、代理进程关闭和错误反馈",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C07)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：命令参数、代理进程关闭和错误反馈",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C08",
+      "capability": "ProxyJump",
+      "phase": "P2",
+      "acceptance": "跳转链路、逐跳认证和失败定位",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C08)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：跳转链路、逐跳认证和失败定位",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C09",
+      "capability": "SSH agent",
+      "phase": "P2",
+      "acceptance": "agent 发现、选钥、不可用和取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C09)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：agent 发现、选钥、不可用和取消",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C10",
+      "capability": "agent forwarding",
+      "phase": "P2",
+      "acceptance": "明确授权、转发可用、关闭后失效",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C10)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：明确授权、转发可用、关闭后失效",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C11",
+      "capability": "密码认证及自动登录",
+      "phase": "P2",
+      "acceptance": "正误密码、取消、可选安全保存和再次登录",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C11)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：正误密码、取消、可选安全保存和再次登录",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C12",
+      "capability": "公钥认证及自动登录",
+      "phase": "P2",
+      "acceptance": "带口令/无口令密钥、错误密钥及安全存储",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C12)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：带口令/无口令密钥、错误密钥及安全存储",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C13",
+      "capability": "keyboard-interactive",
+      "phase": "P2",
+      "acceptance": "多轮提示、隐藏输入和取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C13)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：多轮提示、隐藏输入和取消",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C14",
+      "capability": "gssapi-with-mic",
+      "phase": "P0→P2",
+      "acceptance": "README 支持声明与 2.7 路线图延期冲突；实测后确定完整基线",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C14)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:40",
+          "result": "ssh.authGssapiWithMic=true；README与路线图仍冲突"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：README 支持声明与 2.7 路线图延期冲突；实测后确定完整基线",
+      "not_tested_reason": "2.7 UI提供GSSAPI选项，但缺少受控KDC/票据；实际认证未测。"
+    },
+    {
+      "id": "C15",
+      "capability": "X11 forwarding",
+      "phase": "P2",
+      "acceptance": "本地 X 服务依赖、远端窗口与连接清理",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C15)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：本地 X 服务依赖、远端窗口与连接清理",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C16",
+      "capability": "本地/直接端口转发",
+      "phase": "P2",
+      "acceptance": "监听地址、端到端通信、端口冲突及停止",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C16)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：监听地址、端到端通信、端口冲突及停止",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C17",
+      "capability": "远端/反向端口转发",
+      "phase": "P2",
+      "acceptance": "远端监听、服务端限制及关闭",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C17)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：远端监听、服务端限制及关闭",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C18",
+      "capability": "动态端口转发",
+      "phase": "P2",
+      "acceptance": "SOCKS 流量、目标解析、错误和停止",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C18)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：SOCKS 流量、目标解析、错误和停止",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C19",
+      "capability": "HTTP 代理",
+      "phase": "P2",
+      "acceptance": "代理连接、认证、拒绝和断线",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C19)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：代理连接、认证、拒绝和断线",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C20",
+      "capability": "SOCKS5 代理",
+      "phase": "P2",
+      "acceptance": "代理认证、地址解析和不可达反馈",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C20)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：代理认证、地址解析和不可达反馈",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "C21",
+      "capability": "Jump Server 会话代理",
+      "phase": "P2",
+      "acceptance": "可复用跳板会话配置、认证链及生命周期",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row C21)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：可复用跳板会话配置、认证链及生命周期",
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+    },
+    {
+      "id": "T01",
+      "capability": "macOS bash/zsh/PowerShell Core",
+      "phase": "P1",
+      "acceptance": "各 shell 启动、PTY、环境、缩放和退出；提示未安装依赖",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T01)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：各 shell 启动、PTY、环境、缩放和退出；提示未安装依赖",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T02",
+      "capability": "Linux bash/zsh/PowerShell Core",
+      "phase": "P5",
+      "acceptance": "各 shell 的 PTY、信号和生命周期",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T02)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：各 shell 的 PTY、信号和生命周期",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "T03",
+      "capability": "Windows Cmd",
+      "phase": "P5",
+      "acceptance": "命令交互、编码、窗口缩放和退出",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T03)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：命令交互、编码、窗口缩放和退出",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "T04",
+      "capability": "Windows PowerShell",
+      "phase": "P5",
+      "acceptance": "交互、渲染、环境和退出",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T04)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：交互、渲染、环境和退出",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "T05",
+      "capability": "Windows 管理员 Cmd",
+      "phase": "P5",
+      "acceptance": "明确提权、授权取消及权限隔离",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：明确提权、授权取消及权限隔离",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "T06",
+      "capability": "Windows 管理员 PowerShell",
+      "phase": "P5",
+      "acceptance": "明确提权、授权取消及权限隔离",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T06)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：明确提权、授权取消及权限隔离",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "T07",
+      "capability": "VT100",
+      "phase": "P1",
+      "acceptance": "针对该模式的控制序列和 vttest 用例",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T07)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt100.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T08",
+      "capability": "VT220",
+      "phase": "P1",
+      "acceptance": "针对该模式的控制序列和 vttest 用例",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T08)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt220.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T09",
+      "capability": "VT340",
+      "phase": "P1",
+      "acceptance": "图形/控制序列支持边界与上游逐项对照",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T09)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt340.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：图形/控制序列支持边界与上游逐项对照",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T10",
+      "capability": "VT420",
+      "phase": "P1",
+      "acceptance": "针对该模式的控制序列和 vttest 用例",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T10)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt420.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T11",
+      "capability": "VT520",
+      "phase": "P1",
+      "acceptance": "针对该模式的控制序列和 vttest 用例",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T11)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt520.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T12",
+      "capability": "xterm",
+      "phase": "P1",
+      "acceptance": "控制序列、备用屏幕和应用交互",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T12)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/xterm.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：控制序列、备用屏幕和应用交互",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T13",
+      "capability": "xterm-256-colors",
+      "phase": "P1",
+      "acceptance": "TERM 设置、256 色及应用颜色输出",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T13)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/xterm-256color.term",
+          "result": "终端定义文件存在；解析与渲染兼容未测"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
+          "result": "终端下拉选项可见；模式兼容尚未实测"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：TERM 设置、256 色及应用颜色输出",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T14",
+      "capability": "Unicode 13 与宽字符",
+      "phase": "P1",
+      "acceptance": "中英文、组合字符、列宽、选区和光标",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T14)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：中英文、组合字符、列宽、选区和光标",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T15",
+      "capability": "emoji",
+      "phase": "P1",
+      "acceptance": "字形回退、组合 emoji、宽度和复制",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T15)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：字形回退、组合 emoji、宽度和复制",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T16",
+      "capability": "true-color",
+      "phase": "P1",
+      "acceptance": "24 位颜色与重绘一致",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T16)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：24 位颜色与重绘一致",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T17",
+      "capability": "终端鼠标协议",
+      "phase": "P1",
+      "acceptance": "点击、拖动、滚轮、应用捕获与释放",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T17)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：点击、拖动、滚轮、应用捕获与释放",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T18",
+      "capability": "自动换行模式",
+      "phase": "P1",
+      "acceptance": "边界列、长行、开关和窗口缩放",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T18)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：边界列、长行、开关和窗口缩放",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T19",
+      "capability": "自定义协议",
+      "phase": "P0→P2",
+      "acceptance": "实测上游扩展入口、配置格式和行为，再建立等价接口",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T19)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：实测上游扩展入口、配置格式和行为，再建立等价接口",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T20",
+      "capability": "自定义终端类型",
+      "phase": "P0→P1",
+      "acceptance": "实测配置入口及可定制范围，验证序列行为",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T20)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：实测配置入口及可定制范围，验证序列行为",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T21",
+      "capability": "vttest 兼容范围",
+      "phase": "P1",
+      "acceptance": "对照上游宣称的除 Tektronix 4014 外测试范围，逐项保存差异",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T21)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：对照上游宣称的除 Tektronix 4014 外测试范围，逐项保存差异",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T22",
+      "capability": "tmux 集成",
+      "phase": "P4",
+      "acceptance": "按官方演示盘点窗口/窗格映射、同步和重连，区别于仅运行 tmux",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T22)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.actions:2144",
+          "result": "Tmux.AttachSession/DetachClient/SelectLayout 等入口"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：按官方演示盘点窗口/窗格映射、同步和重连，区别于仅运行 tmux",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T23",
+      "capability": "Powerline / Oh-My-Zsh",
+      "phase": "P1",
+      "acceptance": "Linux/macOS 提示符、图标和列宽",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T23)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：Linux/macOS 提示符、图标和列宽",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "T24",
+      "capability": "Powerline / Oh-My-Posh",
+      "phase": "P1/P5",
+      "acceptance": "PowerShell 提示符、字体及多平台布局",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row T24)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：PowerShell 提示符、字体及多平台布局",
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+    },
+    {
+      "id": "F01",
+      "capability": "SFTP 文件浏览",
+      "phase": "P3",
+      "acceptance": "目录、属性、权限、中文/空格路径和错误",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F01)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目录、属性、权限、中文/空格路径和错误",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F02",
+      "capability": "SFTP 下载",
+      "phase": "P3",
+      "acceptance": "文件完整性、覆盖确认、取消及部分文件状态",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F02)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件完整性、覆盖确认、取消及部分文件状态",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F03",
+      "capability": "SFTP 上传",
+      "phase": "P3",
+      "acceptance": "文件完整性、覆盖确认、取消及部分文件状态",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F03)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件完整性、覆盖确认、取消及部分文件状态",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F04",
+      "capability": "SFTP 删除",
+      "phase": "P3",
+      "acceptance": "文件/目录类型、明确确认和权限失败",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F04)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件/目录类型、明确确认和权限失败",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F05",
+      "capability": "SFTP 重命名",
+      "phase": "P3",
+      "acceptance": "冲突、中文路径和失败反馈",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：冲突、中文路径和失败反馈",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F06",
+      "capability": "SFTP 新建文件",
+      "phase": "P3",
+      "acceptance": "内容/空文件、权限及名称冲突",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F06)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：内容/空文件、权限及名称冲突",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F07",
+      "capability": "SFTP 新建目录",
+      "phase": "P3",
+      "acceptance": "权限、名称冲突及刷新",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F07)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：权限、名称冲突及刷新",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F08",
+      "capability": "SCP 下载",
+      "phase": "P3",
+      "acceptance": "协议兼容、路径和完整性、取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F08)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：协议兼容、路径和完整性、取消",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F09",
+      "capability": "SCP 上传",
+      "phase": "P3",
+      "acceptance": "协议兼容、路径和完整性、覆盖",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F09)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：协议兼容、路径和完整性、覆盖",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F10",
+      "capability": "XModem",
+      "phase": "P3",
+      "acceptance": "收发、校验、失败重试及取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F10)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发、校验、失败重试及取消",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F11",
+      "capability": "YModem",
+      "phase": "P3",
+      "acceptance": "收发、批量和文件元信息、取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F11)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发、批量和文件元信息、取消",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F12",
+      "capability": "ZModem",
+      "phase": "P3",
+      "acceptance": "收发协商、终端切换、完整性及取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F12)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发协商、终端切换、完整性及取消",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F13",
+      "capability": "本地文件浏览",
+      "phase": "P3",
+      "acceptance": "目录、属性、中文路径和权限",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F13)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目录、属性、中文路径和权限",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F14",
+      "capability": "本地文件移动",
+      "phase": "P3",
+      "acceptance": "目标、冲突确认及失败不误报",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F14)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目标、冲突确认及失败不误报",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F15",
+      "capability": "本地文件复制到目标",
+      "phase": "P3",
+      "acceptance": "完整性、冲突和取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F15)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：完整性、冲突和取消",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F16",
+      "capability": "本地文件从来源复制",
+      "phase": "P3",
+      "acceptance": "来源选择、完整性及权限",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F16)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：来源选择、完整性及权限",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F17",
+      "capability": "本地删除",
+      "phase": "P3",
+      "acceptance": "确认、权限和上游删除语义盘点",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F17)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：确认、权限和上游删除语义盘点",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F18",
+      "capability": "本地重命名",
+      "phase": "P3",
+      "acceptance": "冲突、中文路径及刷新",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F18)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：冲突、中文路径及刷新",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F19",
+      "capability": "本地新建文件",
+      "phase": "P3",
+      "acceptance": "名称、权限及冲突",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F19)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：名称、权限及冲突",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F20",
+      "capability": "本地新建目录",
+      "phase": "P3",
+      "acceptance": "名称、权限及冲突",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F20)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：名称、权限及冲突",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "F21",
+      "capability": "传输的其他实际选项",
+      "phase": "P0→P3",
+      "acceptance": "盘点递归、续传等是否真实存在；确认后拆分为独立 ID",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row F21)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：盘点递归、续传等是否真实存在；确认后拆分为独立 ID",
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+    },
+    {
+      "id": "G01",
+      "capability": "多语言界面",
+      "phase": "P4",
+      "acceptance": "盘点上游语言，切换、回退及布局无截断",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G01)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/locales/",
+          "result": "34个.locale文件；不是34种语言完整质量验收"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：盘点上游语言，切换、回退及布局无截断",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G02",
+      "capability": "自动补全",
+      "phase": "P4",
+      "acceptance": "来源、候选、选择、取消；敏感输入不收集",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G02)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：来源、候选、选择、取消；敏感输入不收集",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G03",
+      "capability": "Free Type 模式",
+      "phase": "P4",
+      "acceptance": "按官方演示验证编辑与发送边界",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G03)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.keymaps:310",
+          "result": "isFreeTypeMode/cancelFreeTypeMode 入口"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：按官方演示验证编辑与发送边界",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G04",
+      "capability": "Focus 模式",
+      "phase": "P4",
+      "acceptance": "进入退出、面板状态和快捷键",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G04)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：进入退出、面板状态和快捷键",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G05",
+      "capability": "同步输入",
+      "phase": "P4",
+      "acceptance": "目标集合清晰、显式启用、退出和断线隔离",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：目标集合清晰、显式启用、退出和断线隔离",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G06",
+      "capability": "用户名/密码保护",
+      "phase": "P4",
+      "acceptance": "遮罩、保存与解锁；秘密不进明文或日志",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G06)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：遮罩、保存与解锁；秘密不进明文或日志",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G07",
+      "capability": "命令面板",
+      "phase": "P4",
+      "acceptance": "搜索、执行、快捷键和焦点返回",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G07)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：搜索、执行、快捷键和焦点返回",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G08",
+      "capability": "命令发送器",
+      "phase": "P4",
+      "acceptance": "编辑、目标、发送与取消；按上游实测拆分细项",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G08)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：编辑、目标、发送与取消；按上游实测拆分细项",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G09",
+      "capability": "Explorer 面板",
+      "phase": "P4",
+      "acceptance": "导航、展开折叠、定位及会话联动",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G09)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：导航、展开折叠、定位及会话联动",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G10",
+      "capability": "Shell 面板",
+      "phase": "P4",
+      "acceptance": "面板开关、实例生命周期与焦点",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G10)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：面板开关、实例生命周期与焦点",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G11",
+      "capability": "Quick Bar",
+      "phase": "P4",
+      "acceptance": "配置、调用、持久化及快捷操作",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G11)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配置、调用、持久化及快捷操作",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G12",
+      "capability": "粘贴对话框",
+      "phase": "P4",
+      "acceptance": "多行预览、编辑、确认、取消和换行处理",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G12)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：多行预览、编辑、确认、取消和换行处理",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G13",
+      "capability": "本地/远程输入模式",
+      "phase": "P4",
+      "acceptance": "Shift+Enter 切换，当前模式可见且输入不误发送",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G13)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：Shift+Enter 切换，当前模式可见且输入不误发送",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G14",
+      "capability": "Vim 键位",
+      "phase": "P4",
+      "acceptance": "本地编辑、导航及模式切换，匹配上游键表",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G14)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：本地编辑、导航及模式切换，匹配上游键表",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G15",
+      "capability": "时间戳",
+      "phase": "P4",
+      "acceptance": "显示、开关、格式和日志关联",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G15)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：显示、开关、格式和日志关联",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G16",
+      "capability": "文本折叠",
+      "phase": "P4",
+      "acceptance": "折叠展开、搜索及复制边界",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G16)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.keymaps:173",
+          "result": "Text.ToggleFold 及 Fold/Unfold 动作"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：折叠展开、搜索及复制边界",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G17",
+      "capability": "大纲",
+      "phase": "P4",
+      "acceptance": "结构生成、导航与输出更新",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G17)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：结构生成、导航与输出更新",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G18",
+      "capability": "分屏",
+      "phase": "P4",
+      "acceptance": "创建、关闭、缩放、焦点和会话隔离",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G18)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：创建、关闭、缩放、焦点和会话隔离",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G19",
+      "capability": "输出配色方案",
+      "phase": "P4",
+      "acceptance": "配色规则、切换、持久化与渲染",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G19)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配色规则、切换、持久化与渲染",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G20",
+      "capability": "文本搜索",
+      "phase": "P4",
+      "acceptance": "命中、跳转、范围及历史输出",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G20)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：命中、跳转、范围及历史输出",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G21",
+      "capability": "搜索预览",
+      "phase": "P4",
+      "acceptance": "上下文预览、定位与主视图一致",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G21)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：上下文预览、定位与主视图一致",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G22",
+      "capability": "配对分隔符高亮",
+      "phase": "P4",
+      "acceptance": "圆/方/花括号匹配及不配对情况",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G22)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：圆/方/花括号匹配及不配对情况",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G23",
+      "capability": "自定义分隔符",
+      "phase": "P4",
+      "acceptance": "配置、匹配及持久化",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G23)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配置、匹配及持久化",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G24",
+      "capability": "UI 主题",
+      "phase": "P4",
+      "acceptance": "切换、系统缩放、各面板和可读性",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G24)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：切换、系统缩放、各面板和可读性",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G25",
+      "capability": "标签颜色",
+      "phase": "P4",
+      "acceptance": "设置、区分和恢复",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G25)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：设置、区分和恢复",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G26",
+      "capability": "已打开标签搜索",
+      "phase": "P4",
+      "acceptance": "搜索、选择和焦点切换",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G26)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：搜索、选择和焦点切换",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G27",
+      "capability": "关闭右侧标签",
+      "phase": "P4",
+      "acceptance": "正确范围、连接关闭及未完成操作提示",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G27)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：正确范围、连接关闭及未完成操作提示",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G28",
+      "capability": "窗口透明度",
+      "phase": "P4",
+      "acceptance": "调节、重启恢复及平台行为",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G28)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：调节、重启恢复及平台行为",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G29",
+      "capability": "选择即复制",
+      "phase": "P4",
+      "acceptance": "选区、剪贴板、开关及应用鼠标模式冲突",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G29)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：选区、剪贴板、开关及应用鼠标模式冲突",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G30",
+      "capability": "右键粘贴",
+      "phase": "P4",
+      "acceptance": "设置、菜单冲突与粘贴安全确认",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G30)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：设置、菜单冲突与粘贴安全确认",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G31",
+      "capability": "中键粘贴",
+      "phase": "P4",
+      "acceptance": "平台支持、设置及内容正确",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G31)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：平台支持、设置及内容正确",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G32",
+      "capability": "在线文本搜索",
+      "phase": "P4",
+      "acceptance": "Google/Bing/GitHub/StackOverflow/Wikipedia/DuckDuckGo 地址编码与用户主动触发",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G32)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：Google/Bing/GitHub/StackOverflow/Wikipedia/DuckDuckGo 地址编码与用户主动触发",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G33",
+      "capability": "输入时隐藏鼠标指针",
+      "phase": "P4",
+      "acceptance": "输入隐藏、移动恢复和设置",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G33)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：输入隐藏、移动恢复和设置",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "G34",
+      "capability": "锁屏",
+      "phase": "P4",
+      "acceptance": "锁定、解锁、隐藏秘密和后台连接行为",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row G34)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：锁定、解锁、隐藏秘密和后台连接行为",
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+    },
+    {
+      "id": "S01",
+      "capability": "会话配置对话框",
+      "phase": "P2/P4",
+      "acceptance": "创建、编辑、校验及每协议配置项盘点",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S01)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：创建、编辑、校验及每协议配置项盘点",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S02",
+      "capability": "会话树与分组",
+      "phase": "P4",
+      "acceptance": "层级管理、选择、持久化和批量行为盘点",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S02)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：层级管理、选择、持久化和批量行为盘点",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S03",
+      "capability": "会话重命名",
+      "phase": "P4",
+      "acceptance": "冲突、引用和持久化",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S03)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：冲突、引用和持久化",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S04",
+      "capability": "会话复制",
+      "phase": "P4",
+      "acceptance": "独立配置、命名和凭据引用策略",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S04)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：独立配置、命名和凭据引用策略",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S05",
+      "capability": "手动会话日志",
+      "phase": "P4",
+      "acceptance": "开始停止、保存路径、内容和秘密过滤",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：开始停止、保存路径、内容和秘密过滤",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S06",
+      "capability": "自动会话日志",
+      "phase": "P4",
+      "acceptance": "配置、命名、断线和重连边界",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S06)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：配置、命名、断线和重连边界",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S07",
+      "capability": "重启恢复会话",
+      "phase": "P4",
+      "acceptance": "保存、选择、恢复失败与不自动重放输入",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S07)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：保存、选择、恢复失败与不自动重放输入",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S08",
+      "capability": "重启恢复布局",
+      "phase": "P4",
+      "acceptance": "分屏、标签和面板位置",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S08)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：分屏、标签和面板位置",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S09",
+      "capability": "启动指定单会话",
+      "phase": "P4",
+      "acceptance": "配置、认证和失败提示",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S09)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：配置、认证和失败提示",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S10",
+      "capability": "启动指定会话集合",
+      "phase": "P4",
+      "acceptance": "集合、顺序、局部失败和取消",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S10)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：集合、顺序、局部失败和取消",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "S11",
+      "capability": "会话搜索",
+      "phase": "P0→P4",
+      "acceptance": "2.7 路线图标延期；与已打开标签搜索区分，实测确定基线",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row S11)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：2.7 路线图标延期；与已打开标签搜索区分，实测确定基线",
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+    },
+    {
+      "id": "Q01",
+      "capability": "macOS 平台",
+      "phase": "P5",
+      "acceptance": "全部适用项真机回归，arm64 依赖、安装和签名公证",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q01)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：全部适用项真机回归，arm64 依赖、安装和签名公证",
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+    },
+    {
+      "id": "Q02",
+      "capability": "Windows 平台",
+      "phase": "P5",
+      "acceptance": "全部适用项实机回归、安装与升级",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q02)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：全部适用项实机回归、安装与升级",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "Q03",
+      "capability": "Linux 平台",
+      "phase": "P5",
+      "acceptance": "确定发行版矩阵，全部适用项回归、包和升级",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q03)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：确定发行版矩阵，全部适用项回归、包和升级",
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+    },
+    {
+      "id": "Q04",
+      "capability": "动态内存压缩",
+      "phase": "P1",
+      "acceptance": "压缩/解压后内容、搜索一致，固定负载测量空间和 CPU",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q04)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：压缩/解压后内容、搜索一致，固定负载测量空间和 CPU",
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+    },
+    {
+      "id": "Q05",
+      "capability": "吞吐与低延迟",
+      "phase": "P0→P5",
+      "acceptance": "建立同负载基线和预算；持续输出背压、交互延迟和峰值内存",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q05)",
+          "result": "声明存在；不是实测支持"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：建立同负载基线和预算；持续输出背压、交互延迟和峰值内存",
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+    },
+    {
+      "id": "Q06",
+      "capability": "大规模滚动历史",
+      "phase": "P0→P1",
+      "acceptance": "盘点上游容量行为，验证检索、压缩和资源上限，不静默丢数据",
+      "evidence": [
+        {
+          "type": "upstream_document_claim",
+          "source": "docs/FEATURE_PARITY.zh-CN.md (row Q06)",
+          "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:77",
+          "result": "window.scrollbackLimit=999999；不是实际容量/内存上限"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：盘点上游容量行为，验证检索、压缩和资源上限，不静默丢数据",
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+    }
+  ],
+  "new_scope_candidates": [
+    "VT52",
+    "VT102",
+    "Bell",
+    "Big5/EUC-JP and other charset modes",
+    "Sysmon",
+    "Hex editing",
+    "Virtual space",
+    "Multiple carets",
+    "Fullscreen / always on top",
+    "Debug mode"
+  ],
+  "new_scope_status": "UI entries observed; behavior untested; parent to assign additional IDs; 117 not frozen complete scope"
+}
