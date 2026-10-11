@@ -7,18 +7,24 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 
-// Build first: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin ssh_probe
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+const cargo = join(process.env.HOME, '.cargo/bin/cargo');
+const manifest = join(root, 'apps/desktop/src-tauri/Cargo.toml');
 // Compile outside the server lifecycle and protocol deadlines. Parse Cargo's
-// artifact receipt so a cold build never masquerades as a connection timeout.
-const build = spawnSync(join(process.env.HOME, '.cargo/bin/cargo'), [
-  'test', '--manifest-path', join(root, 'apps/desktop/src-tauri/Cargo.toml'),
-  '--lib', '--no-run', '--message-format=json',
-], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
-assert.equal(build.status, 0, build.stderr);
-const testBinary = build.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line))
-  .find(receipt => receipt.reason === 'compiler-artifact' && receipt.profile.test && receipt.executable)?.executable;
-assert.ok(testBinary, 'Cargo did not provide a Rust test executable');
+// artifact receipts so a cold build never masquerades as a connection timeout.
+function cargoArtifact(args, matches, what) {
+  const build = spawnSync(cargo, [...args, '--locked', '--manifest-path', manifest, '--message-format=json'],
+    { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  assert.equal(build.status, 0, build.stderr);
+  const executable = build.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line))
+    .find(receipt => receipt.reason === 'compiler-artifact' && receipt.executable && matches(receipt))?.executable;
+  assert.ok(executable, `Cargo did not provide ${what}`);
+  return executable;
+}
+const testBinary = cargoArtifact(['test', '--lib', '--no-run'], receipt => receipt.profile.test, 'a Rust test executable');
+// ssh_probe is gated behind `dev-tools` so the release .app never ships it.
+const binary = cargoArtifact(['build', '--features', 'dev-tools', '--bin', 'ssh_probe'],
+  receipt => receipt.target.name === 'ssh_probe', 'the ssh_probe executable');
 function runIgnored(name, metadata, extra = {}) {
   return spawnSync(testBinary, [name, '--ignored', '--exact'], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024,
@@ -45,7 +51,6 @@ const titles = {
 // OpenSSH PerSourcePenalties. Server policy remains unchanged; no client retries.
 for (const mode of ['client', 'mismatch', 'sftp', 'scp']) {
 test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
-  const binary = join(root, 'apps/desktop/src-tauri/target/debug/ssh_probe');
   await access(binary);
   const fixture = spawn(process.execPath, [fileURLToPath(new URL('./fixture.mjs', import.meta.url)), '--serve'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';

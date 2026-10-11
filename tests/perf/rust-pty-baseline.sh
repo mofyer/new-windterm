@@ -37,10 +37,10 @@ build() {
     ${features:+--features "$features"} --bin "$bin"
   cp "$TARGET_DIR/$PROFILE/$bin" "$OUT/bin/$variant/$bin"
 }
-build "" pty_probe default
-build pty-readiness pty_probe readiness
-build pty-diagnostics pty_diagnose default
-build pty-diagnostics,pty-readiness pty_diagnose readiness
+build dev-tools pty_probe default
+build dev-tools,pty-readiness pty_probe readiness
+build dev-tools,pty-diagnostics pty_diagnose default
+build dev-tools,pty-diagnostics,pty-readiness pty_diagnose readiness
 
 {
   echo "date=$(date '+%Y-%m-%dT%H:%M:%S%z')"

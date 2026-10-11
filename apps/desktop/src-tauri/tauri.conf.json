@@ -16,5 +16,5 @@
       "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420; object-src 'none'; base-uri 'none'; frame-src 'none'"
     }
   },
-  "bundle": { "active": false, "icon": [], "macOS": { "minimumSystemVersion": "12.0" } }
+  "bundle": { "active": false, "icon": [], "macOS": { "minimumSystemVersion": "13.3" } }
 }

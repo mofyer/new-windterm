@@ -64,4 +64,6 @@ macOS 的 `.app`/DMG、Windows 的 EXE/MSI、Linux 的 DEB/RPM/AppImage 先作�
 
 不在本轮承诺最低 macOS/Windows 版本、Linux 发行版集合或全部 CPU 架构。Apple Silicon arm64 是已优先运行的方向，其余目标需完成依赖、工具链、构建与实机验证后写入支持矩阵；配置中的编译下限不等于支持声明。
 
+P0 已把 macOS 安装下限（`bundle.macOS.minimumSystemVersion`）定为 13.3，与前端构建目标 Safari 16.4 绑定，取值理由见[发行包说明](p0/RELEASE.zh-CN.md)。这是声明的下限，没有在 13.3–26.x 上实机运行，不构成支持承诺；Windows 与 Linux 的最低版本仍未决定。
+
 P0 即开始共享核心审计、平台接口和 CI 矩阵，优先消除 macOS 假设；P1–P4 新能力同步保留三端适配与测试路径；P5 集中完成各平台兼容和发行验收。允许按平台分批交付，不允许把 Windows/Linux 留成事后另写项目。详见[总体架构](ARCHITECTURE.zh-CN.md)和[路线图](ROADMAP.zh-CN.md)。

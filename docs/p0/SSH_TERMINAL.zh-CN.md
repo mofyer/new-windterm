@@ -47,7 +47,7 @@ PTY 与 shell 请求逐个等待成功；允许窗口调整和少量先期数据
 在 `apps/desktop/src-tauri` 执行：
 
 ```sh
-cargo run --bin ssh_terminal_fixture
+cargo run --locked --features dev-tools --bin ssh_terminal_fixture
 ```
 
 需要保持 stdin 打开。程序仅监听 `127.0.0.1` 随机端口，打印本次临时 key 路径与独立服务端指纹。桌面 SSH 终端入口填写这些值，并对照打印的指纹确认。用户名固定 `fixture`。

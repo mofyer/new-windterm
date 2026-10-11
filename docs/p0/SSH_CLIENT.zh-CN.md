@@ -29,7 +29,7 @@
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin ssh_probe
+cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin ssh_probe
 node --test tests/fixtures/ssh-sftp/rust-client.test.mjs
 ```
 

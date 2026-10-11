@@ -56,7 +56,7 @@ cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
 cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin pty_probe
 ```
 
 - `cargo check`、10 个当前 macOS Rust 单元测试、`clippy -D warnings` 通过。

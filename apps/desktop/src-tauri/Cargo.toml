@@ -38,10 +38,30 @@ windows-sys = { version = "=0.61.2", features = ["Wdk_Foundation"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+# Gates every test/probe binary under src/bin. Tauri CLI neither builds nor
+# bundles a [[bin]] whose required-features were not passed to `tauri build`,
+# so the release .app ships the main executable alone. Never pass this feature
+# to a release build (docs/p0/RELEASE.zh-CN.md; tests/release_bins.rs).
+dev-tools = []
 pty-diagnostics = []
 pty-readiness = []
 
 [[bin]]
+name = "pty_probe"
+path = "src/bin/pty_probe.rs"
+required-features = ["dev-tools"]
+
+[[bin]]
 name = "pty_diagnose"
 path = "src/bin/pty_diagnose.rs"
-required-features = ["pty-diagnostics"]
+required-features = ["dev-tools", "pty-diagnostics"]
+
+[[bin]]
+name = "ssh_probe"
+path = "src/bin/ssh_probe.rs"
+required-features = ["dev-tools"]
+
+[[bin]]
+name = "ssh_terminal_fixture"
+path = "src/bin/ssh_terminal_fixture.rs"
+required-features = ["dev-tools"]

@@ -19,7 +19,7 @@ const available = ['darwin', 'linux'].includes(process.platform)
 test('Rust ssh_open: real OpenSSH shell, saved trust, UTF-8, window-change, Ctrl-C, exit 7', { skip: available ? undefined : 'requires non-root macOS/Linux with system OpenSSH', timeout: 120_000 }, async () => {
   const cargo = existsSync(join(process.env.HOME, '.cargo/bin/cargo')) ? join(process.env.HOME, '.cargo/bin/cargo') : 'cargo';
   // Compile before starting the fixture so a cold build is not a protocol timeout.
-  const build = spawnSync(cargo, ['test', '--manifest-path', join(root, 'apps/desktop/src-tauri/Cargo.toml'),
+  const build = spawnSync(cargo, ['test', '--locked', '--manifest-path', join(root, 'apps/desktop/src-tauri/Cargo.toml'),
     '--lib', '--no-run', '--message-format=json'], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   assert.equal(build.status, 0, build.stderr);
   const testBinary = build.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line))
