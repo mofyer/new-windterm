@@ -84,6 +84,16 @@ impl ProcessTree {
     }
 }
 
+/// Whether Ctrl+C is ignored is inherited by child processes: if this app
+/// (or a test runner) was started in a new process group, every shell it
+/// spawns would ignore the Ctrl+C that ConPTY generates for 0x03. Restore
+/// normal processing before spawning. A GUI process has no console of its
+/// own, so this only affects what children inherit.
+pub(crate) fn restore_ctrl_c_processing() {
+    // SAFETY: a null handler with FALSE only clears the inherited ignore flag.
+    unsafe { windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0) };
+}
+
 /// True only for on-disk files. `std` reports pipes, consoles and character
 /// devices as "files" on Windows, and a blocking read from one would hold a
 /// private-key reader permit indefinitely.

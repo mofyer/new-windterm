@@ -467,6 +467,8 @@ fn spawn_local_session(
     sink: EventSink,
 ) -> Result<Arc<Session>, String> {
     platform::ensure_supported()?;
+    #[cfg(windows)]
+    platform::windows::restore_ctrl_c_processing();
     let command = platform::local_command()?;
     let pair = native_pty_system()
         .openpty(size)
