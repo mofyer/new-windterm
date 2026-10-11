@@ -6,7 +6,7 @@
 
 夹具创建 0700 临时根目录，并为 host/client/wrong-client 生成临时 Ed25519 密钥；密钥、known_hosts、配置和连接元数据均为 0600。客户端固定使用 `-F /dev/null`、`IdentityAgent=none`、`IdentitiesOnly=yes`、严格 host-key 校验、关闭转发和密码认证。授权 key 仅关闭 agent、端口、X11 和 user-rc 转发，保留 PTY；`PermitTTY yes` 由临时 sshd 配置显式启用。
 
-`ForceCommand` 拒绝任何非空 `SSH_ORIGINAL_COMMAND`。无远程命令时只进入受控交互 wrapper，命令白名单为：
+`ForceCommand` 拒绝任何非空 `SSH_ORIGINAL_COMMAND`。无远程命令时只进入受控交互 wrapper；zsh 使用 `-f -i`、Bash 使用 `--noprofile --norc -i` 启动（跳过启动文件、保留 PTY 交互），并设置临时 `HOME`/`ZDOTDIR`/`HISTFILE=/dev/null`。命令白名单为：
 
 - `printf`：验证 UTF-8 中文和 emoji；
 - `stty size`：验证 PTY 行列；

@@ -32,6 +32,7 @@ const shell = userInfo().shell;
 if (!['/bin/zsh', '/bin/bash', '/usr/bin/zsh', '/usr/bin/bash'].includes(shell)) {
   unsupported(`login shell ${shell} is not enabled for this fixture`);
 }
+const interactiveShellFlags = shell.endsWith('/zsh') ? '-f -i' : '--noprofile --norc -i';
 process.umask(0o077);
 
 let root;
@@ -102,9 +103,15 @@ async function cleanup() {
         await delay(25);
       }
       for (const pid of [...descendants].reverse()) signal(pid, 'SIGKILL');
-      // A channel process can be reparented by sshd before the tree walk. Its
-      // command line still contains only this private fixture root, so reap
-      // those exact wrapper/generator/config matches without broad UID kills.
+      const deadline = Date.now() + 2500;
+      while (daemon.exitCode === null && daemon.signalCode === null && Date.now() < deadline) await delay(25);
+      if (daemon.exitCode === null && daemon.signalCode === null) signal(daemon.pid, 'SIGKILL');
+    }
+    // A channel process can be reparented by sshd before the tree walk, or the
+    // listener can die first. Its command line still contains only this private
+    // fixture root, so reap exact wrapper/generator/config matches without broad
+    // UID kills.
+    if (root) {
       const ownedMarkers = [join(root, 'interactive.sh'), join(root, 'generator.mjs'), join(root, 'dispatch.sh'), join(root, 'sshd_config')];
       const ownedListing = spawnSync('/bin/ps', ['-axo', 'pid=,uid=,command='], { encoding: 'utf8', timeout: 2000, maxBuffer: 1024 * 1024 });
       if (ownedListing.status === 0) {
@@ -116,11 +123,8 @@ async function cleanup() {
           if (pid > 1 && pid !== process.pid && uid === process.getuid?.() && ownedMarkers.some(marker => command.includes(marker))) signal(pid, 'SIGKILL');
         }
       }
-      const deadline = Date.now() + 2500;
-      while (daemon.exitCode === null && daemon.signalCode === null && Date.now() < deadline) await delay(25);
-      if (daemon.exitCode === null && daemon.signalCode === null) signal(daemon.pid, 'SIGKILL');
+      await rm(root, { recursive: true, force: true });
     }
-    if (root) await rm(root, { recursive: true, force: true });
   })();
   return cleaning;
 }
@@ -195,6 +199,7 @@ for (let index = 0; index < 512 && !stopped; index += 1) {
   const interactive = `#!/bin/sh
 set -eu
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=${quote(root)} ZDOTDIR=${quote(root)} HISTFILE=/dev/null LANG=C.UTF-8 LC_ALL=C.UTF-8
+cd ${quote(root)}
 stty rows 24 cols 80 2>/dev/null || true
 printf 'P0_INTERACTIVE_READY\\r\\nfixture> '
 interrupted=0
@@ -225,7 +230,7 @@ if [ -n "${'${SSH_ORIGINAL_COMMAND-}'}" ]; then
   printf 'P0_COMMAND_DENIED\\n' >&2
   exit 126
 fi
-exec /bin/sh ${quote(join(root, 'interactive.sh'))}
+exec ${quote(shell)} ${interactiveShellFlags} ${quote(join(root, 'interactive.sh'))}
 `;
   await writeFile(join(root, 'dispatch.sh'), dispatch, { mode: 0o700 });
 
