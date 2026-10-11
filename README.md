@@ -10,7 +10,7 @@ An independent Rust-based reimplementation targeting full WindTerm feature parit
 
 最终目标是对齐 **WindTerm 2.7.0 的实际完整功能**：终端与多协议连接、认证和转发、文件传输、tmux 集成、会话管理及 GUI 工作流。macOS M 系列优先，Windows/Linux 随后交付；平台顺序和阶段性 alpha 不代表删减功能，基础连接可用也不代表全量重构完成。
 
-功能以[逐项对齐矩阵](docs/FEATURE_PARITY.zh-CN.md)管理。117 项是初始清单；上游界面盘点新增的 VT52、VT102、字符集、Sysmon、Hex 编辑等候选仍需补齐，完整基线尚未冻结。上游 README 与实际版本有差异的项目先实测确认；上游尚未实现的路线图不自动计入基线。
+功能以[逐项对齐矩阵](docs/FEATURE_PARITY.zh-CN.md)管理。当前追踪130项：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整基线尚未冻结，功能对齐未完成。上游 README 与实际版本有差异的项目先实测确认；上游尚未实现的路线图不自动计入基线。
 
 **浅色白银浮层与深色中性炭灰方向均已获用户认可。** 浅色保留白色画布、银白浮层、24px 主面板圆角与双向柔影；侧栏、标签/分屏、命令面板和模拟文件传输保持。深色截图已更新，方向认可不代表完整功能验收。[设计系统](docs/p0/DESIGN_SYSTEM.zh-CN.md) · [原型入口说明](docs/p0/UI_MAP.zh-CN.md)
 

@@ -1,9 +1,9 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "checked_on": "2026-10-11",
   "upstream_commit": "a8336c1d1e3dd1a981500dae8ef9eb42066de95f",
   "target_release": "2.7.0",
-  "scope": "117 existing feature IDs; static inventory only; runtime evidence tracked separately",
+  "scope": "130 tracked IDs: 117 preserved plus 13 round-2 additions; behavior parity not verified; baseline not frozen",
   "features": [
     {
       "id": "C01",
@@ -18,15 +18,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "会话类型入口可见；实际会话行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：交互、缩放、退出码、断线状态；首次主机密钥确认和变化拒绝",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C02",
@@ -41,15 +43,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "会话类型入口可见；实际会话行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：协议协商、交互和断线；匹配上游配置项",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C03",
@@ -64,15 +68,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "会话类型入口可见；实际会话行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：双向字节流、编码及关闭行为",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C04",
@@ -87,15 +93,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "会话类型入口可见；实际会话行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：设备枚举、波特率等串口配置、读写和拔插",
-      "not_tested_reason": "缺少物理串口/回环适配器；伪终端不能替代拔插和驱动验证。"
+      "not_tested_reason": "缺少物理串口/回环适配器；伪终端不能替代拔插和驱动验证。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C05",
@@ -107,13 +115,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C05)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：显式启用、执行顺序、失败及重连策略；不误重放输入",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C06",
@@ -131,7 +146,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：复用连接、主从生命周期及退出隔离",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C07",
@@ -149,7 +166,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：命令参数、代理进程关闭和错误反馈",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C08",
@@ -167,7 +186,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：跳转链路、逐跳认证和失败定位",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C09",
@@ -185,7 +206,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：agent 发现、选钥、不可用和取消",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C10",
@@ -203,7 +226,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：明确授权、转发可用、关闭后失效",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C11",
@@ -215,13 +240,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C11)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：正误密码、取消、可选安全保存和再次登录",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C12",
@@ -233,13 +265,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C12)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：带口令/无口令密钥、错误密钥及安全存储",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C13",
@@ -251,13 +290,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row C13)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：多轮提示、隐藏输入和取消",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C14",
@@ -277,15 +323,22 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "认证选项可见；实际认证未测试"
+        },
+        {
+          "type": "upstream_source_configuration",
+          "source": "https://github.com/kingToolbox/WindTerm/blob/a8336c1d1e3dd1a981500dae8ef9eb42066de95f/src/libssh/ConfigureChecks.cmake#L463",
+          "result": "GSSAPI依赖探测失败可关闭编译选项；不能推导发布二进制实际构建或应用调用"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：README 支持声明与 2.7 路线图延期冲突；实测后确定完整基线",
-      "not_tested_reason": "2.7 UI提供GSSAPI选项，但缺少受控KDC/票据；实际认证未测。"
+      "not_tested_reason": "已确认2.7 UI提供GSSAPI选项；未获发布构建配置与KDC/票据成功认证证据，README声明与延期路线图仍未消解。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C15",
@@ -303,7 +356,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：本地 X 服务依赖、远端窗口与连接清理",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C16",
@@ -321,7 +376,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：监听地址、端到端通信、端口冲突及停止",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C17",
@@ -339,7 +396,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：远端监听、服务端限制及关闭",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C18",
@@ -357,7 +416,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：SOCKS 流量、目标解析、错误和停止",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C19",
@@ -375,7 +436,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：代理连接、认证、拒绝和断线",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C20",
@@ -393,7 +456,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：代理认证、地址解析和不可达反馈",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "C21",
@@ -411,7 +476,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：可复用跳板会话配置、认证链及生命周期",
-      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。"
+      "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T01",
@@ -426,15 +493,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "会话创建入口可见；C14 GSSAPI选项可见；未证明协议成功"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "会话类型入口可见；实际会话行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：各 shell 启动、PTY、环境、缩放和退出；提示未安装依赖",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T02",
@@ -452,7 +521,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：各 shell 的 PTY、信号和生命周期",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T03",
@@ -470,7 +541,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：命令交互、编码、窗口缩放和退出",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T04",
@@ -488,7 +561,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：交互、渲染、环境和退出",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T05",
@@ -506,7 +581,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：明确提权、授权取消及权限隔离",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T06",
@@ -524,7 +601,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：明确提权、授权取消及权限隔离",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T07",
@@ -544,15 +623,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T08",
@@ -572,15 +653,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T09",
@@ -600,15 +683,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：图形/控制序列支持边界与上游逐项对照",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T10",
@@ -628,15 +713,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T11",
@@ -656,15 +743,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：针对该模式的控制序列和 vttest 用例",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T12",
@@ -684,15 +773,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：控制序列、备用屏幕和应用交互",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T13",
@@ -712,15 +803,17 @@
         },
         {
           "type": "upstream_ui_observation",
-          "source": "2026-10-11 main execution CUA isolated official 2.7 app",
-          "result": "终端下拉选项可见；模式兼容尚未实测"
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "终端下拉选项可见；模式行为未测试"
         }
       ],
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：TERM 设置、256 色及应用颜色输出",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T14",
@@ -738,7 +831,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：中英文、组合字符、列宽、选区和光标",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T15",
@@ -756,7 +851,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：字形回退、组合 emoji、宽度和复制",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T16",
@@ -774,7 +871,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：24 位颜色与重绘一致",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T17",
@@ -792,7 +891,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：点击、拖动、滚轮、应用捕获与释放",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T18",
@@ -804,13 +905,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row T18)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：边界列、长行、开关和窗口缩放",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T19",
@@ -828,7 +936,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：实测上游扩展入口、配置格式和行为，再建立等价接口",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T20",
@@ -846,7 +956,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：实测配置入口及可定制范围，验证序列行为",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T21",
@@ -864,7 +976,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：对照上游宣称的除 Tektronix 4014 外测试范围，逐项保存差异",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T22",
@@ -887,7 +1001,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：按官方演示盘点窗口/窗格映射、同步和重连，区别于仅运行 tmux",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T23",
@@ -905,7 +1021,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：Linux/macOS 提示符、图标和列宽",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "T24",
@@ -923,7 +1041,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离本地 PTY 与协议回放；逐终端类型运行同一控制序列和交互脚本，保存屏幕、响应字节与退出状态。 专项：PowerShell 提示符、字体及多平台布局",
-      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。"
+      "not_tested_reason": "尚未完成对应平台、终端模式或输入法的行为回放。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F01",
@@ -941,7 +1061,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目录、属性、权限、中文/空格路径和错误",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F02",
@@ -959,7 +1081,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件完整性、覆盖确认、取消及部分文件状态",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F03",
@@ -977,7 +1101,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件完整性、覆盖确认、取消及部分文件状态",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F04",
@@ -995,7 +1121,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：文件/目录类型、明确确认和权限失败",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F05",
@@ -1013,7 +1141,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：冲突、中文路径和失败反馈",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F06",
@@ -1031,7 +1161,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：内容/空文件、权限及名称冲突",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F07",
@@ -1049,7 +1181,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：权限、名称冲突及刷新",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F08",
@@ -1067,7 +1201,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：协议兼容、路径和完整性、取消",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F09",
@@ -1085,7 +1221,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：协议兼容、路径和完整性、覆盖",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F10",
@@ -1103,7 +1241,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发、校验、失败重试及取消",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F11",
@@ -1121,7 +1261,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发、批量和文件元信息、取消",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F12",
@@ -1139,7 +1281,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：收发协商、终端切换、完整性及取消",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F13",
@@ -1157,7 +1301,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目录、属性、中文路径和权限",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F14",
@@ -1175,7 +1321,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：目标、冲突确认及失败不误报",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F15",
@@ -1193,7 +1341,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：完整性、冲突和取消",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F16",
@@ -1211,7 +1361,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：来源选择、完整性及权限",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F17",
@@ -1229,7 +1381,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：确认、权限和上游删除语义盘点",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F18",
@@ -1247,7 +1401,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：冲突、中文路径及刷新",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F19",
@@ -1265,7 +1421,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：名称、权限及冲突",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F20",
@@ -1283,7 +1441,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：名称、权限及冲突",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "F21",
@@ -1301,7 +1461,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离临时目录及测试服务端，使用中文/空格、零字节、大文件样本；操作前后哈希、权限、取消和残留核对。 专项：盘点递归、续传等是否真实存在；确认后拆分为独立 ID",
-      "not_tested_reason": "尚未建立传输对端及故障注入夹具。"
+      "not_tested_reason": "尚未建立传输对端及故障注入夹具。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G01",
@@ -1324,7 +1486,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：盘点上游语言，切换、回退及布局无截断",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G02",
@@ -1342,7 +1506,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：来源、候选、选择、取消；敏感输入不收集",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G03",
@@ -1365,7 +1531,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：按官方演示验证编辑与发送边界",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G04",
@@ -1377,13 +1545,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G04)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：进入退出、面板状态和快捷键",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G05",
@@ -1401,7 +1576,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：目标集合清晰、显式启用、退出和断线隔离",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G06",
@@ -1419,7 +1596,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：遮罩、保存与解锁；秘密不进明文或日志",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G07",
@@ -1437,7 +1616,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：搜索、执行、快捷键和焦点返回",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G08",
@@ -1455,7 +1636,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：编辑、目标、发送与取消；按上游实测拆分细项",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G09",
@@ -1473,7 +1656,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：导航、展开折叠、定位及会话联动",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G10",
@@ -1491,7 +1676,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：面板开关、实例生命周期与焦点",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G11",
@@ -1509,7 +1696,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配置、调用、持久化及快捷操作",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G12",
@@ -1527,7 +1716,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：多行预览、编辑、确认、取消和换行处理",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G13",
@@ -1539,13 +1730,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G13)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：Shift+Enter 切换，当前模式可见且输入不误发送",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G14",
@@ -1563,7 +1761,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：本地编辑、导航及模式切换，匹配上游键表",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G15",
@@ -1581,7 +1781,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：显示、开关、格式和日志关联",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G16",
@@ -1604,7 +1806,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：折叠展开、搜索及复制边界",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G17",
@@ -1622,7 +1826,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：结构生成、导航与输出更新",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G18",
@@ -1640,7 +1846,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：创建、关闭、缩放、焦点和会话隔离",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G19",
@@ -1658,7 +1866,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配色规则、切换、持久化与渲染",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G20",
@@ -1676,7 +1886,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：命中、跳转、范围及历史输出",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G21",
@@ -1694,7 +1906,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：上下文预览、定位与主视图一致",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G22",
@@ -1712,7 +1926,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：圆/方/花括号匹配及不配对情况",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G23",
@@ -1730,7 +1946,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：配置、匹配及持久化",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G24",
@@ -1748,7 +1966,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：切换、系统缩放、各面板和可读性",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G25",
@@ -1766,7 +1986,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：设置、区分和恢复",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G26",
@@ -1784,7 +2006,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：搜索、选择和焦点切换",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G27",
@@ -1802,7 +2026,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：正确范围、连接关闭及未完成操作提示",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G28",
@@ -1820,7 +2046,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：调节、重启恢复及平台行为",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G29",
@@ -1838,7 +2066,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：选区、剪贴板、开关及应用鼠标模式冲突",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G30",
@@ -1856,7 +2086,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：设置、菜单冲突与粘贴安全确认",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G31",
@@ -1874,7 +2106,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：平台支持、设置及内容正确",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G32",
@@ -1892,7 +2126,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：Google/Bing/GitHub/StackOverflow/Wikipedia/DuckDuckGo 地址编码与用户主动触发",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G33",
@@ -1910,7 +2146,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：输入隐藏、移动恢复和设置",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "G34",
@@ -1922,13 +2160,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row G34)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中逐操作录屏并记录快捷键、焦点、设置持久化与取消路径；在新原型复现同一步骤。 专项：锁定、解锁、隐藏秘密和后台连接行为",
-      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。"
+      "not_tested_reason": "尚未完成隔离上游 UI 与本项目逐项行为对照。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S01",
@@ -1940,13 +2185,20 @@
           "type": "upstream_document_claim",
           "source": "docs/FEATURE_PARITY.zh-CN.md (row S01)",
           "result": "声明存在；不是实测支持"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-auth",
+          "result": "入口或选项已观察；尚未验证功能行为"
         }
       ],
-      "upstream_ui": "not_tested",
+      "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：创建、编辑、校验及每协议配置项盘点",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S02",
@@ -1964,7 +2216,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：层级管理、选择、持久化和批量行为盘点",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S03",
@@ -1982,7 +2236,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：冲突、引用和持久化",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S04",
@@ -2000,7 +2256,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：独立配置、命名和凭据引用策略",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S05",
@@ -2018,7 +2276,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：开始停止、保存路径、内容和秘密过滤",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S06",
@@ -2036,7 +2296,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：配置、命名、断线和重连边界",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S07",
@@ -2054,7 +2316,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：保存、选择、恢复失败与不自动重放输入",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S08",
@@ -2072,7 +2336,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：分屏、标签和面板位置",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S09",
@@ -2090,7 +2356,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：配置、认证和失败提示",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S10",
@@ -2108,7 +2376,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：集合、顺序、局部失败和取消",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "S11",
@@ -2126,7 +2396,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "隔离 profile 中创建虚构会话，检查新增、持久化、重启与失败恢复；仅脱敏 fixture。 专项：2.7 路线图标延期；与已打开标签搜索区分，实测确定基线",
-      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。"
+      "not_tested_reason": "尚未完成隔离 profile 生命周期实测。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q01",
@@ -2144,7 +2416,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：全部适用项真机回归，arm64 依赖、安装和签名公证",
-      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q02",
@@ -2162,7 +2436,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：全部适用项实机回归、安装与升级",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q03",
@@ -2180,7 +2456,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：确定发行版矩阵，全部适用项回归、包和升级",
-      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。"
+      "not_tested_reason": "当前盘点宿主为 macOS；须在对应 Windows/Linux 真机执行，不能永久排除。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q04",
@@ -2198,7 +2476,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：压缩/解压后内容、搜索一致，固定负载测量空间和 CPU",
-      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q05",
@@ -2216,7 +2496,9 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：建立同负载基线和预算；持续输出背压、交互延迟和峰值内存",
-      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
     },
     {
       "id": "Q06",
@@ -2239,20 +2521,370 @@
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "固定硬件/系统/版本/负载，记录原始字节计数、峰值内存、延迟、架构与依赖信息。 专项：盘点上游容量行为，验证检索、压缩和资源上限，不静默丢数据",
-      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。"
+      "not_tested_reason": "尚未完成固定负载/适用平台的可重复测量。",
+      "upstream_behavior": "not_tested",
+      "scope_origin": "initial_117"
+    },
+    {
+      "id": "T25",
+      "capability": "VT52",
+      "phase": "P0→P1",
+      "acceptance": "同一隔离会话输出光标移动/直接地址/擦除/反向滚屏/图形字符集/设备标识序列，记录屏幕与回复字节；再验证方向键、小键盘及退出到ANSI后的状态",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt52.term:3",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "TTY字节回放器、逐字节/跨块样本、ANSI进入前状态 fixture；标准序列独立编写，不复制资源实现。 步骤：同一隔离会话输出光标移动/直接地址/擦除/反向滚屏/图形字符集/设备标识序列，记录屏幕与回复字节；再验证方向键、小键盘及退出到ANSI后的状态",
+      "not_tested_reason": "已有下拉选项与定义文件；未完成WindTerm实际序列回放。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "T26",
+      "capability": "VT102",
+      "phase": "P0→P1",
+      "acceptance": "选择VT102，核对设备属性、插入/删除字符和行、光标/滚动区、键盘输出及vttest相关子项；与VT100分别保存差异",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/terms/vt102.term:3",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-term",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "与T07共用受控序列集并增加VT102区分用例，保存对端原始响应。 步骤：选择VT102，核对设备属性、插入/删除字符和行、光标/滚动区、键盘输出及vttest相关子项；与VT100分别保存差异",
+      "not_tested_reason": "已观察独立选项；不能因与VT100接近直接合并或判通过。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "T27",
+      "capability": "终端 Bell 与节流设置",
+      "phase": "P0→P1",
+      "acceptance": "发送单次与连续BEL；逐个实际样式检查声音/视觉行为、关闭、间隔节流、非活动标签与持久化；先盘点确有的样式",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:54",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定间隔BEL字节发生器、系统音量/通知条件记录、录屏；不能从style数字猜名称。 步骤：发送单次与连续BEL；逐个实际样式检查声音/视觉行为、关闭、间隔节流、非活动标签与持久化；先盘点确有的样式",
+      "not_tested_reason": "仅Bell设置入口与默认间隔/样式字段；没有实际鸣响或节流记录。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "T28",
+      "capability": "Big5 会话字符编码",
+      "phase": "P0→P1",
+      "acceptance": "输入输出分别验证已知Big5字节和中文样本、跨块多字节、不完整/非法序列、编码切换、复制搜索列宽；文件传输字节不经终端解码",
+      "evidence": [
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "独立编码器生成固定字节/Unicode对照，受控回显端；禁止用UTF-8文本冒充Big5输入。 步骤：输入输出分别验证已知Big5字节和中文样本、跨块多字节、不完整/非法序列、编码切换、复制搜索列宽；文件传输字节不经终端解码",
+      "not_tested_reason": "仅字符集列表入口；未确认输入编码与输出解码的具体范围。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "T29",
+      "capability": "EUC-JP 会话字符编码",
+      "phase": "P0→P1",
+      "acceptance": "输入输出分别验证EUC-JP日文/半角假名样本、跨块多字节、不完整/非法序列、编码切换、复制搜索列宽；原始文件传输不损坏",
+      "evidence": [
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-settings",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "固定EUC-JP字节样本及独立Unicode对照、受控回显端，保存发送/接收字节。 步骤：输入输出分别验证EUC-JP日文/半角假名样本、跨块多字节、不完整/非法序列、编码切换、复制搜索列宽；原始文件传输不损坏",
+      "not_tested_reason": "仅字符集列表入口；未确认转换与错误处理行为。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "S12",
+      "capability": "本地 Shell Sysmon",
+      "phase": "P0→P4",
+      "acceptance": "确认Shell侧入口及支持平台，盘点实际指标、采样来源/间隔，核对受控本地负载变化、权限失败、关闭与会话退出清理",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:37",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "无秘密本地CPU/内存受控负载、独立系统采样；不预设上游具有哪些指标。 步骤：确认Shell侧入口及支持平台，盘点实际指标、采样来源/间隔，核对受控本地负载变化、权限失败、关闭与会话退出清理",
+      "not_tested_reason": "观察记录只确认通用Sysmon入口，未区分本地/SSH；shell.sysmon默认字段仅静态候选。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "static_candidate",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "S13",
+      "capability": "SSH 远端 Sysmon",
+      "phase": "P0→P2/P4",
+      "acceptance": "确认SSH侧入口，盘点远端实际命令与指标；测试显式启用、权限不足/缺少命令、不支持系统、断线/重连、关闭后停止采样",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/session.config:47",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        }
+      ],
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "隔离SSH测试端、受限账户与命令审计；不得访问生产主机以盘点。 步骤：确认SSH侧入口，盘点远端实际命令与指标；测试显式启用、权限不足/缺少命令、不支持系统、断线/重连、关闭后停止采样",
+      "not_tested_reason": "ssh.sysmon默认字段为false；通用入口不证明远端执行行为或平台范围。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "static_candidate",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G35",
+      "capability": "Hex 编辑模式",
+      "phase": "P0→P4",
+      "acceptance": "盘点Hex针对显示/本地草稿/发送中哪些对象；使用00/7f/80/ff及中文样本切换、编辑、撤销、复制与发送，在受控端核对原始字节",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.actions:1939",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "临时输入草稿和字节捕获回显端，确认操作目标后执行，保存切换前后内容。 步骤：盘点Hex针对显示/本地草稿/发送中哪些对象；使用00/7f/80/ff及中文样本切换、编辑、撤销、复制与发送，在受控端核对原始字节",
+      "not_tested_reason": "菜单可见且存在切换动作；不能推断具备通用二进制文件编辑器能力。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G36",
+      "capability": "虚拟空间",
+      "phase": "P0→P4",
+      "acceptance": "开启/关闭后在短行末尾与空行移动、选择、插入、撤销；验证填充语义、宽字符、换行和Hex模式限制以及持久化",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.config:124",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "短行/空行/制表符/宽字符本地草稿，记录光标逻辑列、文本变化及发送字节。 步骤：开启/关闭后在短行末尾与空行移动、选择、插入、撤销；验证填充语义、宽字符、换行和Hex模式限制以及持久化",
+      "not_tested_reason": "仅菜单入口与默认开关，未执行虚拟位置插入。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G37",
+      "capability": "多插入符号 / 多光标",
+      "phase": "P0→P4",
+      "acceptance": "盘点光标创建/移除手势与快捷键，测试多点输入/删除/粘贴/撤销、选择重叠及取消；确认本地/远程输入发送次数和范围",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.config:118",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "多行本地草稿、不同长度/宽字符样本及受控发送捕获；取消后仅主光标生效。 步骤：盘点光标创建/移除手势与快捷键，测试多点输入/删除/粘贴/撤销、选择重叠及取消；确认本地/远程输入发送次数和范围",
+      "not_tested_reason": "多插入符号菜单与开关存在；不能等同多会话同步输入G05。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G38",
+      "capability": "全屏模式",
+      "phase": "P0→P4/P5",
+      "acceptance": "菜单/快捷键进入与退出全屏，检查焦点、终端行列resize、分屏/侧栏布局、窗口恢复和macOS Spaces；其他平台分别验收",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/menu.config:736",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "记录原窗口几何/PTY尺寸、进入退出录屏、各目标平台原生窗口。 步骤：菜单/快捷键进入与退出全屏，检查焦点、终端行列resize、分屏/侧栏布局、窗口恢复和macOS Spaces；其他平台分别验收",
+      "not_tested_reason": "菜单入口存在；未执行系统全屏生命周期。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G39",
+      "capability": "窗口总是置顶",
+      "phase": "P0→P4/P5",
+      "acceptance": "开启后与普通窗口切换，关闭恢复层级；核对新窗口、重启持久化、全屏/Spaces及系统模态窗口的实际边界",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/terminal/configs/menu.config:737",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "受控普通应用窗口与自身多个窗口，不推断可覆盖系统安全对话框。 步骤：开启后与普通窗口切换，关闭恢复层级；核对新窗口、重启持久化、全屏/Spaces及系统模态窗口的实际边界",
+      "not_tested_reason": "菜单入口存在；未验证层级与平台行为。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
+    },
+    {
+      "id": "G40",
+      "capability": "会话 Debug 模式",
+      "phase": "P0→P4",
+      "acceptance": "在无秘密本地回显会话启停，盘点显示内容/控制序列表示、输出是否改写、保存行为和范围；退出后回到正常显示",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "WindTerm-P0.app/Contents/MacOS/global/wind.actions:2586",
+          "result": "默认资源/动作存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_ui_observation",
+          "source": "docs/p0/BASELINE_EVIDENCE.zh-CN.md#e-ui-mode",
+          "result": "2.7隔离副本中入口可见；行为未执行"
+        }
+      ],
+      "upstream_ui": "entry_observed_only",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "合成控制序列/非秘密字节fixture，核对终端显示和对端字节，明确秘密遮罩边界。 步骤：在无秘密本地回显会话启停，盘点显示内容/控制序列表示、输出是否改写、保存行为和范围；退出后回到正常显示",
+      "not_tested_reason": "只确认针对terminal.activeView的开关；未确认是否记录协议、写日志或具备其他调试功能。",
+      "scope_origin": "p0_round_2",
+      "scope_classification": "entry_observed",
+      "implementation_status": "not_delivered"
     }
   ],
-  "new_scope_candidates": [
-    "VT52",
-    "VT102",
-    "Bell",
-    "Big5/EUC-JP and other charset modes",
-    "Sysmon",
-    "Hex editing",
-    "Virtual space",
-    "Multiple carets",
-    "Fullscreen / always on top",
-    "Debug mode"
-  ],
-  "new_scope_status": "UI entries observed; behavior untested; parent to assign additional IDs; 117 not frozen complete scope"
+  "scope_frozen": false,
+  "initial_feature_count": 117,
+  "added_feature_count": 13,
+  "round_2_summary": {
+    "added_ids": [
+      "T25",
+      "T26",
+      "T27",
+      "T28",
+      "T29",
+      "S12",
+      "S13",
+      "G35",
+      "G36",
+      "G37",
+      "G38",
+      "G39",
+      "G40"
+    ],
+    "entry_observed_count": 11,
+    "static_candidate_count": 2,
+    "upstream_behavior_tested_count": 0,
+    "open_conflicts": [
+      "C14 GSSAPI README support versus postponed roadmap; no authentication proof"
+    ],
+    "unassigned_followups": [
+      "Other charset options beyond Big5/EUC-JP require complete UI inventory; do not infer support from a charset name alone.",
+      "Sysmon metrics, supported systems, and local/remote UI mapping require separate observations."
+    ]
+  }
 }
