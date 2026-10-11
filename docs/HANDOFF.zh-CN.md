@@ -91,6 +91,7 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 这些事项已向用户说明过，不要自行绕过：
 
 - **合并**：同意把 `p0/integration` 合并到 `main`（需要在 CI 通过之后）。
+- **功能基线冻结**：对[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)中的 E1–E12 作出决定。最先要定的是：以 README 和静态证据为准直接冻结，还是先在隔离环境中运行上游 2.7.0，记录与本项目的差异。
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：需要批准安装 XQuartz，或改用 Xvfb 在 Linux 上验证。
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
