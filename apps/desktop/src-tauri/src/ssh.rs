@@ -5,6 +5,8 @@ pub mod auth;
 pub mod forward;
 #[path = "ssh_proxy.rs"]
 pub mod proxy;
+#[path = "ssh_scp.rs"]
+pub mod scp;
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
 use crate::known_hosts::{KnownHosts, Saved};
