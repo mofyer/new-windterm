@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-用 Rust + Tauri 2 + xterm.js 独立重构 WindTerm 2.7.0 的**完整**功能（Apache-2.0）。macOS Apple Silicon 优先，但 Windows/Linux 在架构与测试层面同步考虑，不能因先做 macOS 删减平台或功能。当前处于 **P0**：只有真实本地 PTY、受限交互 SSH、只读 SFTP IPC 和苹果风 UI 原型。
+用 Rust + Tauri 2 + xterm.js 独立重构 WindTerm 2.7.0 的**完整**功能（Apache-2.0）。macOS Apple Silicon 优先，但 Windows/Linux 在架构与测试层面同步考虑，不能因先做 macOS 删减平台或功能。当前处于 **P0**，已有的都是原型或探针，尚未验收：
+- 真实本地 PTY（Windows 只有 `cmd.exe` ConPTY）。
+- 受限交互 SSH。
+- 只读 SFTP 文件面板。
+- Telnet / Raw TCP 终端标签。
+- 多个 SSH 网络探针（转发、代理、SCP 等）。
+- 苹果风 UI 原型。
+
+整体集成在 `p0/integration` 分支上，合并到 `main` 需要用户同意。
 
 当前优先级与交接要点见 [docs/HANDOFF.zh-CN.md](docs/HANDOFF.zh-CN.md)；测试结果与未完成项以 [docs/p0/RESULTS.zh-CN.md](docs/p0/RESULTS.zh-CN.md) 为准。
 
@@ -13,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 文档和提交说明必须区分“已验证”与“未验证”，不得写成：
 
 - WindTerm 功能已对齐、P0/P1 已通过、产品可用；
-- SFTP 已完成（只有 Rust 只读 IPC，无前端面板、无真实 OpenSSH subsystem 验收、无写操作）；
+- SFTP 已完成（只有只读浏览面板；无写操作、下载落盘、原生 WKWebView 实测）；
 - Windows 终端已完整可用（ConPTY 只在 CI 上验证了 cmd.exe 的生命周期，未验证 PowerShell、WebView2 原生窗口和输入法）；
 - 浏览器 E2E 通过等于 Rust/原生成功（浏览器测试使用 IPC stub）；
 - loopback russh 测试服务端通过等于真实 OS shell / OpenSSH 互操作通过；
@@ -60,10 +68,9 @@ node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交�
 node --test tests/fixtures/ssh-terminal/rust-client.test.mjs  # Rust ssh_open 对真实 OpenSSH shell 的互操作（ignored 测试）
 ```
 
-P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
+VT 兼容矩阵：`tests/e2e/vt-matrix.spec.ts` 记录 xterm.js 6.0.0 的 63 项 VT 行为（结论见 `docs/p0/VT_MATRIX.zh-CN.md`）。
 
-```sh
-```
+P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
 
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
@@ -95,9 +102,15 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 主机信任：`ssh_probe` 的 Challenge 带 `trust: new | known | changed`，与应用数据目录下 OpenSSH 格式的 `known_hosts`（`known_hosts.rs`）比较；`changed` 的 challenge 不能被消费，只有独立命令 `ssh_trust_replace` 能更新，`ssh_trust_save` 只接受 `new`。前端对 `known` 自动继续。
 
-认证（`ssh_auth.rs`）：`Credential` 为 `key`（可带口令）/ `password` / `agent`，只在 `ssh_accept/ssh_open/ssh_sftp_open` 传入（probe 不认证），用 `Zeroizing` 持有。服务端拒绝凭据会吊销 SFTP 授权，本地失败（agent 不可用、口令错误）不吊销。Rust 侧保留无凭据的 `accept/open/sftp_open` 供测试使用，IPC 走 `*_with` 版本。
+认证（`ssh_auth.rs`）：`Credential` 为 `key`（可带口令）/ `password` / `agent` / `keyboardInteractive`（预填回答）/ `keyboardInteractivePrompted`（连接时经 `onAuth` 通道逐轮提示，前端用 `ssh_auth_respond` 按窗口、操作 ID、轮次作答，见 `ssh_kbdint.rs`），只在 `ssh_accept/ssh_open/ssh_sftp_open` 传入（probe 不认证），用 `Zeroizing` 持有。服务端拒绝凭据会吊销 SFTP 授权，本地失败（agent 不可用、口令错误）不吊销。Rust 侧保留无凭据的 `accept/open/sftp_open` 供测试使用，IPC 走 `*_with` 版本。
 
 约束：私钥以绝对路径指定、由 Rust 有界读取，仅 Ed25519/ECDSA（未开启 russh `rsa` 特性）；不保存凭据；russh 重协商时不会重新检查主机密钥，因此 rekey 被显式拒绝。`sftp.rs` 直接驱动 `RawSftpSession`：目录在 4096 项或 1 MiB 文件名处提前停止（只约束保留部分，每页仍会完整解码）；读取最多 64 KiB 且长度须与 `stat` 一致。
+
+### 其它模块
+
+- `net_terminal.rs`：Telnet / Raw TCP 终端标签（`net_open/write/resize/ack/close`），复用同一 `PtyEvent` 字节流和 ACK；Telnet 协商在 `telnet.rs`。
+- SSH 子模块（经 `#[path]` 挂在 `ssh` 下）：`ssh_forward.rs`（本地/动态/远端转发与跳板）、`ssh_proxy.rs`（HTTP CONNECT、SOCKS5、ProxyCommand）、`ssh_scp.rs`。`KeyCheck` 的 `Routes` 拒绝服务端主动打开的通道，只放行登记过的 `forwarded-tcpip`（最多 64 个）与显式开启的 agent。这些探针都还没有界面。
+- `modem.rs`：不依赖 I/O 的 XMODEM/YMODEM，未接入任何传输。`tmux_control.rs`：tmux 控制模式解析。
 
 ### 前端
 
