@@ -100,9 +100,9 @@ jobs:
         id: rust_check
         run: cargo check --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-check.log"
 
-      - name: Run Rust unit and platform policy tests
+      - name: Run Rust unit, platform policy and loopback SSH protocol tests
         id: rust_tests
-        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
+        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
 
       - name: Run Clippy
         id: clippy
@@ -117,6 +117,11 @@ jobs:
         if: matrix.real_pty
         run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-probe.log"
 
+      - name: Run opt-in readiness Unix PTY probe
+        id: pty_readiness
+        if: matrix.real_pty
+        run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-readiness-probe.log"
+
       - name: Record exact acceptance boundary
         if: always()
         run: |
@@ -127,12 +132,13 @@ jobs:
             printf '| Frontend assets | %s |\n' '${{ steps.frontend.outcome }}'
             printf '| Rust format | %s |\n' '${{ steps.format.outcome }}'
             printf '| Rust check | %s |\n' '${{ steps.rust_check.outcome }}'
-            printf '| Unit/platform tests | %s |\n' '${{ steps.rust_tests.outcome }}'
+            printf '| Unit/platform and controlled loopback SSH protocol tests | %s |\n' '${{ steps.rust_tests.outcome }}'
             printf '| Clippy | %s |\n' '${{ steps.clippy.outcome }}'
             printf '| Desktop executable link | %s |\n' '${{ steps.desktop_build.outcome }}'
-            printf '| Real PTY probe | %s |\n\n' '${{ steps.pty.outcome }}'
-            printf 'Windows PTY remains disabled. A green Windows job means build and rejection-policy tests only.\n\n'
-            printf 'No GUI, IME, WebView, signing, installer, SSH, SFTP or full feature-parity acceptance is implied.\n'
+            printf '| Default real PTY probe | %s |\n' '${{ steps.pty.outcome }}'
+            printf '| Opt-in readiness real PTY probe | %s |\n\n' '${{ steps.pty_readiness.outcome }}'
+            printf 'Windows local PTY remains disabled. Windows tests include PTY rejection policy and controlled loopback SSH protocol checks.\n\n'
+            printf 'SSH tests use a bounded in-memory russh server, not an OS shell. No GUI, IME, WebView, signing, installer, OpenSSH interoperability, SFTP or full feature-parity acceptance is implied.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload validation logs
