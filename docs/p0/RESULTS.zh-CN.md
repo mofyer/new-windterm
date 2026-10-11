@@ -4,7 +4,7 @@
 
 ## 最新提交：只读 SFTP 切片与 Windows shell 契约
 
-提交 `148c9b1` 已推送公开仓库。新增 `ReadOnlySftp` Rust 抽象，接收已认证 SSH channel，支持目录列表、元数据和最多 64 KiB 的普通文件读取；没有写入/删除/重命名接口，也未接 Tauri IPC。依赖 `russh-sftp 3.0.1`，`serde` pin 至 `1.0.229`。路径与控制字符边界、元数据投影单测通过；真实 OpenSSH SFTP、取消/断线、大目录内存预算和跨平台运行时仍待验收。
+提交 `148c9b1` 已推送公开仓库。新增 `ReadOnlySftp` Rust 抽象，接收已认证 SSH channel，支持目录列表、元数据和最多 64 KiB 的普通文件读取；随后已暴露 `ssh_sftp_list`、`ssh_sftp_metadata`、`ssh_sftp_read` 三个受限 IPC 命令，没有写入/删除/重命名接口。依赖 `russh-sftp 3.0.1`，`serde` pin 至 `1.0.229`。路径与控制字符边界、元数据投影单测通过；前端文件面板、真实 OpenSSH SFTP、取消/断线、大目录内存预算和跨平台运行时仍待验收。
 
 同步补充 Windows future shell contract：校验 `ComSpec` 后使用 `cmd.exe /D /Q /K`，保留 `SystemRoot`、`ComSpec`、`PATH`，但 `ensure_supported()` 仍拒绝创建 Windows PTY。三平台 CI [run 38118354445](https://github.com/mofyer/new-windterm/actions/runs/38118354445) **success**：macOS 30 passed/1 ignored、Linux 29 passed/1 ignored、Windows 10 passed；macOS/Linux 默认与 readiness PTY 通过，Windows PTY skipped。该回执证明条件编译与现有 gate 健康，不证明 ConPTY reader 生命周期。
 

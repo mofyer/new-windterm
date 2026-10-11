@@ -1,6 +1,7 @@
 //! P0 SSH verification and interactive channels. No agent, password, or persisted trust.
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
+use crate::sftp::{ReadOnlySftp, RemoteEntry};
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate},
@@ -64,6 +65,25 @@ struct Pending {
 struct Active {
     owner: String,
     cancel: watch::Sender<bool>,
+}
+
+struct AuthenticatedSftp {
+    _socket: SocketGuard,
+    session: client::Handle<KeyCheck>,
+    sftp: ReadOnlySftp,
+    rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
+}
+
+enum SftpRequest {
+    List(String),
+    Metadata(String),
+    Read(String),
+}
+
+enum SftpResult {
+    List(Vec<RemoteEntry>),
+    Metadata(RemoteEntry),
+    Read(Vec<u8>),
 }
 
 #[derive(Default)]
@@ -337,6 +357,76 @@ impl Ssh {
         }
         Ok(output)
     }
+
+    pub async fn sftp_list(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        path: String,
+    ) -> Result<Vec<RemoteEntry>, String> {
+        match self
+            .sftp_request(owner, id, token, scope, SftpRequest::List(path))
+            .await?
+        {
+            SftpResult::List(entries) => Ok(entries),
+            _ => Err("Unexpected SFTP result".into()),
+        }
+    }
+
+    pub async fn sftp_metadata(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        path: String,
+    ) -> Result<RemoteEntry, String> {
+        match self
+            .sftp_request(owner, id, token, scope, SftpRequest::Metadata(path))
+            .await?
+        {
+            SftpResult::Metadata(entry) => Ok(entry),
+            _ => Err("Unexpected SFTP result".into()),
+        }
+    }
+
+    pub async fn sftp_read(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        path: String,
+    ) -> Result<Vec<u8>, String> {
+        match self
+            .sftp_request(owner, id, token, scope, SftpRequest::Read(path))
+            .await?
+        {
+            SftpResult::Read(bytes) => Ok(bytes),
+            _ => Err("Unexpected SFTP result".into()),
+        }
+    }
+
+    async fn sftp_request(
+        &self,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        request: SftpRequest,
+    ) -> Result<SftpResult, String> {
+        let operation = self.start(owner, id, scope)?;
+        let pending = self.consume(owner, token)?;
+        let mut cancel = operation.cancel.clone();
+        let work = execute_sftp(pending, cancel.clone(), request);
+        tokio::select! {
+            biased;
+            _ = cancel.changed() => Err("SSH operation cancelled".into()),
+            result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SFTP operation timed out".to_string())?,
+        }
+    }
 }
 
 fn validate(request: &Request) -> Result<(), String> {
@@ -549,6 +639,87 @@ async fn execute(pending: Pending, cancel: watch::Receiver<bool>) -> Result<Outp
         .await;
     let _ = tokio::time::timeout(Duration::from_millis(250), session).await;
     Ok(output)
+}
+
+async fn execute_sftp(
+    pending: Pending,
+    cancel: watch::Receiver<bool>,
+    request: SftpRequest,
+) -> Result<SftpResult, String> {
+    let authenticated = connect_sftp(pending, cancel).await?;
+    let AuthenticatedSftp {
+        _socket,
+        session,
+        sftp,
+        rekey_rejected,
+    } = authenticated;
+    let result = match request {
+        SftpRequest::List(path) => sftp.list(&path).await.map(SftpResult::List),
+        SftpRequest::Metadata(path) => sftp.metadata(&path).await.map(SftpResult::Metadata),
+        SftpRequest::Read(path) => sftp.read(&path).await.map(SftpResult::Read),
+    };
+    let _ = sftp.close().await;
+    if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(REKEY_ERROR.into());
+    }
+    let _ = session
+        .disconnect(
+            russh::Disconnect::ByApplication,
+            "P0 SFTP operation finished",
+            "en",
+        )
+        .await;
+    let _ = tokio::time::timeout(Duration::from_millis(250), session).await;
+    result
+}
+
+async fn connect_sftp(
+    pending: Pending,
+    cancel: watch::Receiver<bool>,
+) -> Result<AuthenticatedSftp, String> {
+    let (socket, stream) = transport(&pending.request).await?;
+    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handler = KeyCheck {
+        expected: Some(pending.key),
+        observed: Arc::default(),
+        mismatch: mismatch.clone(),
+        kex_seen: false,
+        rekey_rejected: rekey_rejected.clone(),
+    };
+    let mut session = client::connect_stream(config(), stream, handler)
+        .await
+        .map_err(|_| {
+            if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
+                "SSH host key changed; authentication was not attempted"
+            } else {
+                "SSH handshake failed"
+            }
+        })?;
+    let path = pending.request.private_key_path;
+    let key = read_key_bounded(cancel, move || private_key(&path)).await?;
+    if !session
+        .authenticate_publickey(pending.request.username, key)
+        .await
+        .map_err(|_| "SSH authentication failed")?
+        .success()
+    {
+        return Err("SSH public key authentication rejected".into());
+    }
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|_| "SSH channel open failed")?;
+    let sftp = ReadOnlySftp::from_channel(channel).await?;
+    if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(REKEY_ERROR.into());
+    }
+    Ok(AuthenticatedSftp {
+        _socket: socket,
+        session,
+        sftp,
+        rekey_rejected,
+    })
 }
 
 fn append(output: &mut Output, bytes: &[u8], stderr: bool) -> Result<(), String> {

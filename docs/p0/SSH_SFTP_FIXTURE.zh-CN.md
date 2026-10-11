@@ -10,7 +10,9 @@
 - `metadata(path)`：单路径元数据；
 - `read(path)`：仅打开普通文件，最多读取 64 KiB；路径长度与控制字符在请求前拒绝。
 
-该切片没有写入、删除、重命名、权限修改、持久化凭据或 Tauri 命令，也没有把认证绕过为独立 SFTP 登录。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未把它接入桌面 IPC，也未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
+当前 Rust 切片已通过 Tauri 暴露三个受限命令：`ssh_sftp_list`、`ssh_sftp_metadata`、`ssh_sftp_read`。每次命令都必须携带当前窗口 scope、唯一 operation ID 和一次性主机信任 challenge；命令复用现有未加密 Ed25519 认证，操作结束即断开，不保存连接句柄或私钥。前端尚未调用这些命令，尚未形成文件面板工作流。
+
+它没有写入、删除、重命名、权限修改或持久化凭据，也没有把认证绕过为独立 SFTP 登录。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
 
 依赖选择：当前工程把 `serde` 精确 pin 升至 `1.0.229`，以满足 `russh-sftp 3.0.1` 的最小版本约束；`Cargo.lock` 已同步。macOS arm64 本地通过不等于 Windows/Linux SFTP 运行通过；三端仍需真实 subsystem、取消、错误和大文件预算验收。
 

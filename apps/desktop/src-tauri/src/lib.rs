@@ -50,6 +50,66 @@ async fn ssh_accept(
 }
 
 #[tauri::command]
+async fn ssh_sftp_list(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+    path: String,
+) -> Result<Vec<sftp::RemoteEntry>, String> {
+    service
+        .sftp_list(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+            path,
+        )
+        .await
+}
+
+#[tauri::command]
+async fn ssh_sftp_metadata(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+    path: String,
+) -> Result<sftp::RemoteEntry, String> {
+    service
+        .sftp_metadata(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+            path,
+        )
+        .await
+}
+
+#[tauri::command]
+async fn ssh_sftp_read(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+    path: String,
+) -> Result<Vec<u8>, String> {
+    service
+        .sftp_read(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+            path,
+        )
+        .await
+}
+
+#[tauri::command]
 fn ssh_reject(
     window: WebviewWindow,
     service: State<'_, Arc<ssh::Ssh>>,
@@ -214,6 +274,9 @@ pub fn run() {
             pty_close,
             ssh_probe,
             ssh_accept,
+            ssh_sftp_list,
+            ssh_sftp_metadata,
+            ssh_sftp_read,
             ssh_reject,
             ssh_cancel
         ])
