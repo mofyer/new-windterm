@@ -337,6 +337,7 @@ fn spawn_local_session(
     sink: EventSink,
 ) -> Result<Arc<Session>, String> {
     platform::ensure_supported()?;
+    let command = platform::local_command()?;
     let pair = native_pty_system()
         .openpty(size)
         .map_err(|e| e.to_string())?;
@@ -345,7 +346,7 @@ fn spawn_local_session(
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
     let child = pair
         .slave
-        .spawn_command(platform::local_command()?)
+        .spawn_command(command)
         .map_err(|e| e.to_string())?;
     drop(pair.slave);
     let (input, receiver) = sync_channel::<Vec<u8>>(16);

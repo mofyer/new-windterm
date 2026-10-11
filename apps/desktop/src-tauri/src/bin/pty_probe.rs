@@ -150,6 +150,11 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
+    println!(
+        "P0 real PTY probe: OS={} ARCH={}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
     if let Err(error) = run() {
         eprintln!("FAIL PTY probe: {error}");
         std::process::exit(1);

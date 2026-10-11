@@ -1,18 +1,19 @@
 //! Platform policy for the P0 local shell. Shared session/ACK logic stays in pty.
-//! Windows ConPTY and Linux shell/cancellation adapters are planned, not enabled.
+//! macOS and Linux use Unix PTYs. Windows awaits a cancellable ConPTY adapter.
 use portable_pty::{CommandBuilder, MasterPty};
 
-const UNSUPPORTED: &str = "P0 local PTY is currently enabled only on macOS; Windows ConPTY and Linux adapters are pending";
+const UNSUPPORTED: &str =
+    "P0 local PTY is enabled on macOS and Linux; the cancellable Windows ConPTY adapter is pending";
 
 pub(crate) fn ensure_supported() -> Result<(), String> {
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "linux")) {
         Ok(())
     } else {
         Err(UNSUPPORTED.into())
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) fn configure_io(master: &dyn MasterPty) -> Result<(), String> {
     let fd = master.as_raw_fd().ok_or("PTY has no native descriptor")?;
     // SAFETY: fd belongs to the live master. F_GETFL/F_SETFL do not retain it;
@@ -24,7 +25,7 @@ pub(crate) fn configure_io(master: &dyn MasterPty) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub(crate) fn configure_io(_master: &dyn MasterPty) -> Result<(), String> {
     Err(UNSUPPORTED.into())
 }
@@ -48,7 +49,40 @@ pub(crate) fn local_command() -> Result<CommandBuilder, String> {
     Ok(command)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub(crate) fn local_command() -> Result<CommandBuilder, String> {
+    linux_command()
+}
+
+#[cfg(any(target_os = "linux", all(test, unix)))]
+fn linux_command() -> Result<CommandBuilder, String> {
+    require_shell(std::path::Path::new("/bin/bash"))?;
+    let mut command = CommandBuilder::new("/bin/bash");
+    command.args(["--noprofile", "--norc", "-i"]);
+    command.env_clear();
+    command.env("PATH", "/usr/bin:/bin");
+    command.env("TERM", "xterm-256color");
+    command.env("LANG", "C.UTF-8");
+    command.env("LC_ALL", "C.UTF-8");
+    command.env("PS1", "P0 \\w \\$ ");
+    command.env("HISTFILE", "/dev/null");
+    command.cwd(std::env::temp_dir());
+    if let Some(home) = std::env::var_os("HOME") {
+        command.env("HOME", home);
+    }
+    Ok(command)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn require_shell(path: &std::path::Path) -> Result<(), String> {
+    if path.is_file() {
+        Ok(())
+    } else {
+        Err(format!("P0 Linux requires Bash at {}", path.display()))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub(crate) fn local_command() -> Result<CommandBuilder, String> {
     Err(UNSUPPORTED.into())
 }
@@ -85,7 +119,7 @@ mod tests {
         assert!(command.get_env("DYLD_INSERT_LIBRARIES").is_none());
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     #[test]
     fn pending_adapter_rejects_session_before_allocating_a_pty() {
         let sessions = crate::pty::Sessions::default();
@@ -94,6 +128,46 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, UNSUPPORTED);
         assert!(local_command().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linux_command_skips_profiles_and_uses_linux_locale_policy() {
+        let command = linux_command().unwrap();
+        assert_eq!(
+            command.get_argv().as_slice(),
+            &["/bin/bash", "--noprofile", "--norc", "-i"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(
+            command.get_env("LC_ALL"),
+            Some(std::ffi::OsStr::new("C.UTF-8"))
+        );
+        assert_eq!(
+            command.get_cwd().map(std::path::Path::new),
+            Some(std::env::temp_dir().as_path())
+        );
+        for name in [
+            "SSH_AUTH_SOCK",
+            "LD_PRELOAD",
+            "BASH_ENV",
+            "ENV",
+            "ZDOTDIR",
+            "LC_CTYPE",
+        ] {
+            assert!(
+                command.get_env(name).is_none(),
+                "unexpected inherited {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_linux_shell_returns_an_explicit_error() {
+        let absent =
+            std::env::temp_dir().join(format!("p0-missing-shell-{}", uuid::Uuid::new_v4()));
+        assert!(require_shell(&absent)
+            .unwrap_err()
+            .contains("requires Bash"));
     }
 
     #[test]
