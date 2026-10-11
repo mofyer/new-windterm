@@ -13,12 +13,28 @@ fn receive_until(
     session: &Session,
     marker: &[u8],
 ) -> Result<Vec<u8>, String> {
+    receive_until_with_timeout(receiver, session, marker, Duration::from_secs(10))
+}
+
+fn receive_until_with_timeout(
+    receiver: &Receiver<PtyEvent>,
+    session: &Session,
+    marker: &[u8],
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
     let started = Instant::now();
     let mut output = Vec::new();
-    while started.elapsed() < Duration::from_secs(10) {
+    while started.elapsed() < timeout {
         match receiver
-            .recv_timeout(Duration::from_secs(2))
-            .map_err(|e| e.to_string())?
+            .recv_timeout(Duration::from_secs(2).min(timeout.saturating_sub(started.elapsed())))
+            .map_err(|error| {
+                format!(
+                    "Probe receive failed waiting for {:?} after {:.2}s; received {} bytes: {error}",
+                    String::from_utf8_lossy(marker),
+                    started.elapsed().as_secs_f64(),
+                    output.len()
+                )
+            })?
         {
             PtyEvent::Data { sequence, data, .. } => {
                 let search_start = output.len().saturating_sub(marker.len() - 1);
@@ -39,8 +55,10 @@ fn receive_until(
         }
     }
     Err(format!(
-        "Probe output timed out waiting for {:?}; received {} bytes",
+        "Probe output timed out waiting for {:?} after {:.2}s (limit {:.0}s); received {} bytes",
         String::from_utf8_lossy(marker),
+        started.elapsed().as_secs_f64(),
+        timeout.as_secs_f64(),
         output.len()
     ))
 }
@@ -79,12 +97,17 @@ fn run() -> Result<(), String> {
 
         // Stop acknowledging briefly. The same production flow control must stop
         // output at 64 KiB while the producer still has 2 MiB to write.
+        // This checks byte integrity and backpressure, not a throughput target.
+        // Hosted macOS continued receiving data but exceeded the short marker deadline.
+        let load_started = Instant::now();
+        println!("START 2 MiB exact-output stage: 300 ms ACK pause, 60 s drain deadline");
         session.write(b"printf '\\nBEGIN_%s\\n' LOAD; head -c 2097152 /dev/zero | tr '\\000' x; printf '\\nEND_%s\\n' LOAD\n".to_vec())?;
         std::thread::sleep(Duration::from_millis(300));
         if session.peak_pending_bytes() > OUTPUT_BUDGET {
             return Err("Output exceeded budget".into());
         }
-        let load = receive_until(&receiver, &session, b"END_LOAD")?;
+        let load =
+            receive_until_with_timeout(&receiver, &session, b"END_LOAD", Duration::from_secs(60))?;
         let begin = load
             .windows(10)
             .position(|part| part == b"BEGIN_LOAD")
@@ -101,6 +124,11 @@ fn run() -> Result<(), String> {
         if count != 2_097_152 {
             return Err(format!("PTY output lost bytes: {count}"));
         }
+        let load_seconds = load_started.elapsed().as_secs_f64();
+        println!(
+            "PASS 2 MiB byte integrity: {count} payload bytes in {load_seconds:.2}s including ACK pause; {:.1} KiB/s observed (diagnostic only)",
+            count as f64 / 1024.0 / load_seconds
+        );
         session.write(b"sleep 30\n".to_vec())?;
         std::thread::sleep(Duration::from_millis(100));
         session.write(vec![3])?;
