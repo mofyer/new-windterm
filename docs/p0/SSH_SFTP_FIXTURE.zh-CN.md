@@ -1,6 +1,6 @@
 # 本机 SSH / SFTP 受控夹具
 
-状态：2026-10-11，macOS arm64、Node 26.0.0、系统 OpenSSH 10.3p1 / LibreSSL 3.3.6 已实跑。本夹具已用于本轮独立 Rust SSH 客户端验证，**不是交互 SSH/SFTP 已完成的证据**。普通远程会话和文件界面仍是演示；独立桌面入口、Rust 集成及本轮 CI 的验收范围见 [SSH_CLIENT](SSH_CLIENT.zh-CN.md) 和 [RESULTS](RESULTS.zh-CN.md)。下文保留既有系统 OpenSSH 6 项协议检查与 2 项生命周期测试的历史证据，不将其等同 Rust/Tauri 验收。
+状态更新：2026-10-11。本页保存 macOS arm64、Node 26.0.0、系统 OpenSSH 10.3p1 / LibreSSL 3.3.6 的历史受控夹具证据：6 项协议检查与 2 项生命周期测试，以及前一轮固定命令 Rust SSH 客户端接入。**它不提供交互 PTY/shell，也不证明应用 SFTP 完成。** 固定命令入口及历史 CI 范围见 [SSH_CLIENT](SSH_CLIENT.zh-CN.md)；当前交互 SSH 使用另一个有限命令 russh 夹具，见 [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)。最新代码、原生与 CI 验收统一见 [RESULTS](RESULTS.zh-CN.md)，不把本页旧 OpenSSH 结果当成当前轮通过。
 
 ## 运行与清理
 

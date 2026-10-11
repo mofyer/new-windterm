@@ -1,19 +1,49 @@
 # P0 结果与下一步
 
-日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮继续真实 SSH 验证与 PTY 分支计量；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
+日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
-## 当前轮：SSH 验证与 PTY 分支计量
+## 当前轮：交互 SSH 与 PTY readiness 实验
 
 | 内容 | 当前结果 | 边界与证据 |
 | --- | --- | --- |
-| 独立 SSH 入口 | 桌面已接真实指纹获取、本次信任、未加密 Ed25519 测试密钥认证及固定 `fixture-check`；实现窗口代际、重连固定主机密钥、取消与超时 | [SSH_CLIENT](SSH_CLIENT.zh-CN.md)；Rust/真实夹具已独立复验，原生成功路径由主任务实测；不代表完整 SSH 功能验收 |
-| 浏览器全套 | **84/84，24.6 秒，0 failed/skipped/flaky**；严格 TypeScript 检查与 build 通过；原 70 项上新增 14 项 SSH 界面/IPC 契约 | [WEB_QA](WEB_QA.zh-CN.md)；81 项正向/契约含隔离 PoC，另 2 项终端缺口及 1 项旧 Unicode 反例；没有真实网络或 Rust 验证 |
-| PTY 分支诊断 | 九次有界 2 MiB 样本为 5.960–7.233 秒；负载窗口 WouldBlock sleep 为 5.860–7.133 秒，预算等待约 5–74 ms，块预算停顿为 0 | [PTY_PERFORMANCE_DIAGNOSIS](PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)；显式 feature 聚合计量、默认生产策略未改；不是安静环境基准，不代表 GUI 性能解决 |
-| 本轮 Rust 独立复验 | all-targets/all-features：24 passed、0 failed、1 explicit ignored；fmt/check/clippy `-D warnings` 与 diff 检查通过；Node Rust 夹具 2/2 通过，独立审查通过 | ignored 为依赖真实对端的测试，已由 Node harness 显式激活执行；不计为常规单测通过，也不与浏览器数量相加 |
-| 本轮原生 SSH 实测 | 新 debug 构建 12.72 秒、58.47 MiB、Mach-O arm64；WKWebView 指纹与独立 known_hosts 一致，本次信任后 stdout 22 字节、stderr 0、exit 7 | 主任务经 CUA 实测：`P0_SSH_OK 中文 🌏` 加换行；关闭后仅余原演示标签，夹具正常退出并删除临时目录；不是另一独立原生审查 |
-| 本轮 CI | `84c24df` 的 [run 38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626) 三端 success；Mac 24 passed、Linux/Windows 各 23 passed，均 0 failed、1 ignored；Mac/Linux 真实 PTY 通过 | [平台回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)；Windows PTY skipped，真实 SSH 夹具三端均未运行；Windows 链接存在非阻塞 PDB 同名 warning，不代表三端 GUI/SSH 或性能通过 |
+| 交互 SSH 入口 | 确认实际指纹后请求 SSH PTY/shell，将原始输出接入 xterm；已接输入、尺寸、ACK、取消和关闭 | [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)；只支持本次信任与明确指定的未加密 Ed25519 测试密钥，不保存长期凭据 |
+| 浏览器独立全套 | **98/98，27.95 秒，0 failed/skipped/flaky**；严格 TypeScript/build 通过；新增 14 项交互 SSH 契约 | [WEB_QA](WEB_QA.zh-CN.md)；IPC stub，未运行 Rust/网络；含历史兼容缺口与隔离 PoC，不能全部计作生产功能完成 |
+| 浅深色独立复核 | 1000×650 的连接表单、指纹确认、SSH stub 终端共 6 态，无区域 overflow 或 pageerror | 本地回执 `.artifacts/p0/ssh-terminal-round/`；保持白银与中性炭灰方向，不是原生视觉/IME 验收 |
+| PTY 配对实验 | 三组交替配对 **6/6** 精确 2 MiB；负载中位数 6898.175 → 342.195 ms，含 300 ms 人工 ACK 暂停；顺序、预算、Ctrl-C、exit 7 与回收通过 | [PTY_READINESS](PTY_READINESS.zh-CN.md)；CLI 直接调用 Rust PTY，默认 feature 关闭，不代表默认 GUI 性能改善或性能出口通过 |
+| 本轮首个提交本机 Rust 独立复验 | **28 单元 passed、1 explicit ignored；9 真实 SSH 集成 passed，26.85 秒**；fmt/check all-targets/all-features/clippy `-D warnings` 通过；独立 Rust 审查 APPROVE，未发现 critical/high | 代码 `807e0eb` 已在夹具辅助模块最终路径下复验；集成测试包含主动 rekey 拒绝。后续仅测试扫描器修订已独立 APPROVE，target 10/10（9 真实协议 + 1 helper），20.34 秒，fmt/target check/clippy 通过。真实 TCP/SSH 对端为有限命令 russh 服务端，不是 OS shell/OpenSSH；ignored 不计入通过 |
+| 当前共享 SSH 回归 | 代码 `807e0eb` 的 `ssh_probe --locked` 独立构建 7.04 秒；OpenSSH Node harness **2/2 passed、0 skipped，3.507 秒**，显式运行所需对端的 ignored 测试 | 本机固定命令入口：明确指纹、UTF-8、exit 7、错误客户端密钥与重连密钥不匹配路径；两次临时材料读取均为 ENOENT，额外确认无当前夹具目录/进程；不代表交互 OpenSSH 或应用 SFTP 验收 |
+| 本轮原生 GUI | arm64 debug 构建成功；WKWebView 完成实际指纹、本次信任、中文/emoji 输出、尺寸变化、输出中 Ctrl-C、exit 7、关闭和夹具清理 | 主任务 CUA 实测，详见下节；默认 readiness 关闭。仅为有限 russh 命令状态机的真实网络/native 链路，不代表 OS shell/OpenSSH、IME 或性能验收 |
+| 本轮三平台 CI | `8ee49a4` 的 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) **success**：三端前端/fmt/check/test/clippy/link 通过；Mac/Linux 默认及 readiness PTY 通过，Windows 两种 PTY 均 skipped | 三端各 10 项 SSH target 为 9 协议 + 1 helper；Windows ConPTY 仍未实现，test/link 的非阻塞 PDB 同名 warning 保留。[最终成功及前两次失败](CROSS_PLATFORM_VALIDATION.zh-CN.md)；不代表三端 GUI、OpenSSH 交互或性能验收 |
 
-普通「新建连接」仍打开演示会话，交互 SSH shell 与 SFTP 文件界面尚未实现；独立 SSH 验证不保存长期信任，不支持密码、带口令密钥、agent 或跳板。受控夹具已被本轮 Rust 集成测试使用，其既有系统 OpenSSH 6 项协议与 2 项生命周期结果保留为独立历史证据。
+普通「新建连接」和 SFTP 文件界面仍是演示。交互 SSH 不支持长期信任、完整认证、代理/跳板、转发或 SFTP。当前接收队列有界，慢消费超过 bridge 容量时明确报错断开；尚不是前端 ACK 驱动的完整 SSH 窗口流控。russh 0.64.1 的重协商主机检查限制以显式拒绝 rekey 处理，用户需重连重新确认；不宣称透明重协商已实现。
+
+## 当前轮三平台结果（`8ee49a4`）
+
+| 平台 | Rust 单元 passed / failed / ignored | SSH target（9 协议 + 1 helper） | 默认 / readiness 真实 PTY |
+| --- | --- | --- | --- |
+| macOS arm64 | 28 / 0 / 1 | 10/10，20.88 秒 | 均通过 |
+| Linux x64 | 27 / 0 / 1 | 10/10，22.96 秒 | 均通过 |
+| Windows x64 | 25 / 0 / 1 | 10/10，25.44 秒 | 均跳过，ConPTY 未实现 |
+
+四个 Unix 探针各自通过精确 2 MiB、含 300 ms ACK 暂停、Ctrl-C、退出与 12 次关闭回收；这是功能检查，不是配对性能比较。默认策略不变。系统 OpenSSH 夹具 ignored 项未在三端 CI 激活，本机固定命令回归另列。完整耗时、峰值、原始日志和前两次 CI 失败保留于[跨平台回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)。
+
+## 当前轮原生交互 SSH 冒烟
+
+主任务使用新构建的 macOS WKWebView `.app` 经 CUA 操作。最终 debug 构建用时 8.80 秒，产物 71.12 MiB，`file` 确认为 Mach-O 64-bit arm64；默认未启用 `pty-readiness`。构建中曾发现 `src/bin/support` 被 bundler 误认为独立 binary，辅助夹具已移动至 `tests/support`，最终路径的构建和 Rust 检查均通过。
+
+- 对照独立服务端指纹后明确确认；夹具记录只有 1 次成功认证。
+- `unicode` 返回完整中文与 🌏；初始尺寸 129×23，打开文件面板后为 98×23，服务端 `size` 返回 `SIZE 98 23`，证明尺寸消息穿过原生链路。
+- `large` 已接收 229,518 B 后，下一次 CUA 操作发送 Ctrl-C 和 `unicode`；最终可见 `INTERRUPTED` 与中文/emoji，累计 1,855,662 B 小于 2 MiB，未出现 `LARGE_DONE`。这证明有限输出被中断并可继续输入；跨 CUA 调用没有量化 GUI 延迟，不能作为响应预算通过依据。
+- `exit` 返回退出码 7；关闭 SSH 标签后只剩原有 1 个演示标签。停止夹具时 `active=0/auth=1`，检查确认临时目录已删除。
+
+该服务端不启动操作系统 shell。以上不证明 OpenSSH、vim/tmux、系统中文输入法或持续高输出性能通过，也不替代独立 Rust 审查与跨平台 CI。
+
+## 前一轮历史：固定命令 SSH 与 PTY 分支计量
+
+- 浏览器 **84/84，24.6 秒**；Rust all-targets/all-features **24 passed、0 failed、1 explicit ignored**，真实 OpenSSH Node harness **2/2**。当轮 fmt/check/clippy 与独立审查通过。依赖对端的 ignored 项由 harness 显式激活，不能算作常规单测通过。
+- 原生 arm64 debug 构建 12.72 秒、58.47 MiB；WKWebView 指纹与独立 known_hosts 一致，固定 `fixture-check` 返回 `P0_SSH_OK 中文 🌏` 加换行共 22 字节、stderr 0、exit 7；正常关闭与夹具清理完成。只证明当轮固定命令成功路径。
+- 提交 `84c24df` 的 [run 38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626) 三端 success：Mac 24、Linux/Windows 各 23 passed，均 0 failed、1 ignored；Mac/Linux 真实 PTY 通过，Windows PTY skipped。未运行真实 SSH 夹具或 GUI；Windows 有非阻塞 PDB 同名 warning。[平台回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)
+- 九次 2 MiB 分支诊断为 5.960–7.233 秒，主要等待为 WouldBlock sleep；当轮没有修改默认 I/O 或 ACK。[诊断报告](PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)
 
 ## 第二轮历史交付与证据
 
@@ -28,7 +58,7 @@
 | 当轮本机 Rust | 当轮 Mac 单测为 12 项，含 Linux 命令/环境及缺失 shell 策略；检查和探针按专项报告记录 | 各目标条件测试数可不同，不把未运行的 Windows/Linux 测试计入 |
 | 界面与全套浏览器验收 | 70/70，18.5 秒，0 failed/skipped/flaky；67 正向/契约含 6 项隔离 VT52 PoC，另 2 项原始 VT 缺口及 1 项旧 Unicode 反例；build 通过 | [WEB_QA](WEB_QA.zh-CN.md)、[设计系统](DESIGN_SYSTEM.zh-CN.md)；浅深色方向均获认可，反例与 PoC 不算生产兼容通过 |
 | 当轮原生冒烟 | 当轮 arm64 debug 构建约 11.89 秒、31.76 MiB；中性灰深色下真实 PTY 粘贴中文/emoji 回显和输出完整，23 行/129 列、exit 7 | WKWebView 实测；只证明粘贴路径，不证明键盘中文/IME或高输出响应 |
-| SSH/SFTP 受控夹具 | macOS `/bin/zsh` 下 6 项真实协议检查与 2 项生命周期测试经独立复验通过；1,048,596 字节源/服务器/下载 SHA-256 一致，正常及监听器异常退出均完成清理 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md)；loopback 与临时密钥，无 chroot、保留同 UID 文件权限；这组历史证据来自系统 OpenSSH；本轮 Rust/桌面接入另见上表，交互 SSH/SFTP 仍未实现 |
+| SSH/SFTP 受控夹具 | macOS `/bin/zsh` 下 6 项真实协议检查与 2 项生命周期测试经独立复验通过；1,048,596 字节源/服务器/下载 SHA-256 一致，正常及监听器异常退出均完成清理 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md)；loopback 与临时密钥，无 chroot、保留同 UID 文件权限；这组历史证据来自系统 OpenSSH；此后用于固定命令 Rust/桌面接入，当前交互通道另见上表，应用 SFTP 仍未实现 |
 | 原生 PTY 等待诊断 | 一次本机有界 2 MiB 输出为 7.45 秒；消费阶段 99.4% 时间等待事件，ACK 调用累计 0.932 ms；报告通过独立核对 | [PTY_PERFORMANCE_DIAGNOSIS](PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)；候选为短读与两处 5 ms 轮询，尚未认定根因，未改生产策略，不是性能基准 |
 
 状态 DOM 合并不改变终端内容、ACK 或输入时序，不关闭 screenReaderMode。诊断只是观测，Chrome 单次耗时与 keydown→stub 延迟不能用于宣布 WKWebView 的 Ctrl-C 延迟已解决。详见[响应专项](RESPONSIVENESS.zh-CN.md)。
@@ -83,14 +113,15 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-tar
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe
 ```
 
 本机 debug 产物位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，不随 Git 分发，无签名公证。浏览器临时回执位于被忽略的 `apps/desktop/test-results/`，后续运行会覆盖。
 
 ## 未完成与下一步
 
-1. 在本轮 CI、Rust 独立复验与原生 SSH 成功路径实测基础上继续原生响应、Windows ConPTY 与桌面平台专项；保留原失败及修订成功记录，沿已认可的浅深色方向完善。
+1. 在当前三平台 CI、Rust 独立复验与 macOS 原生冒烟基础上继续平台专项和 Windows ConPTY；保留两次失败与修订成功记录，沿已认可的浅深色方向完善。
 2. 完成原生 IME、Ctrl-C 分层延迟、资源与可访问性专项，不能以 Chrome 状态优化代替。
 3. 继续 VT52 接入策略、其他 VT 方言、Free Type、折叠与压缩历史验证；当前台账为130项：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整基线尚未冻结、功能对齐未完成，不降低完整功能目标。
-4. 在固定命令 SSH 验证基础上继续交互 channel/PTY、长期主机信任、完整认证与 Rust SFTP；再扩展 agent、跳板/转发及 tmux 等夹具，不能将有限验证等同远程连接产品。
+4. 在交互 SSH 通道基础上继续 OpenSSH/真实系统 shell 互操作、rekey、安全主机信任持久化、完整认证、长期背压与 Rust SFTP；再扩展 agent、跳板/转发及 tmux，不能将有限命令协议测试等同远程连接产品。
 5. 完成功能基线、平台运行与风险预算后才重估工期、判断 P0 出口；当前没有正式发行版，P0 未完成。

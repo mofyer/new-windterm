@@ -2,8 +2,8 @@
 
 状态：P0 进行中，2026-10-11。**macOS、Windows、Linux 从当前阶段共同作为架构目标；Apple Silicon 优先验证和交付。** 后续平台通过适配层接入同一核心，不在 macOS 产品完成后另写一套协议与业务逻辑。
 
-当前 macOS arm64 有本机原生与 PTY 证据，Linux Bash/Unix PTY 已有 hosted 编译和运行记录；Windows 只有编译/链接与拒绝策略证据，ConPTY 尚未实现。依赖支持、代码适配、CI 编译与实机运行必须分开记录，不能直接宣称三端可用。完整范围保持[初始 117 项](FEATURE_PARITY.zh-CN.md)及新增候选。
-本轮深色和前端响应改动已完成浏览器回归及新版 macOS 原生粘贴/尺寸/退出冒烟；原生高输出仍未验收。修订后三平台 CI 任务均成功：Mac/Linux 真 PTY 通过，Windows 真 PTY 跳过，ConPTY 未实现。此前 Mac 旧总期限失败与修订后的成功统一保留在[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)；探针单次耗时不算性能验收。新旧功能证据见 [P0 结果](p0/RESULTS.zh-CN.md)。
+当前 macOS arm64 有本机原生与 PTY 证据，Linux Bash/Unix PTY 已有 hosted 编译和运行记录；Windows 已有历史编译/链接、平台拒绝策略及当前有限 loopback SSH 协议测试证据，ConPTY 尚未实现。依赖支持、代码适配、CI 编译与实机运行必须分开记录，不能直接宣称三端可用。完整范围按[功能矩阵](FEATURE_PARITY.zh-CN.md)跟踪：当前 130 项，完整基线尚未冻结。
+当前轮交互 SSH 已通过浏览器契约、macOS Rust 独立复验及 WKWebView 有限命令冒烟；PTY readiness 仍是默认关闭的实验，原生高输出性能未验收。最终提交 `8ee49a4` 的 CI 三端检查、链接、SSH target 通过，Mac/Linux 默认与 readiness PTY 通过；Windows PTY 仍跳过。前两次失败及最小修订均保留，不能将最终 CI 成功当作三端 GUI 或完整功能验收。历史 macOS 总期限失败、修订成功及各轮范围保留在[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)，最新验收统一见 [P0 结果](p0/RESULTS.zh-CN.md)。
 
 ## 共享核心与平台边界
 
@@ -26,7 +26,7 @@
 
 现有 P0 shell 是受限测试配置，不是最终 shell 发现策略；不得把固定 `/bin/zsh`、`/tmp`、Unix 环境变量或 `fcntl` 传播到共享核心。Windows 的输入与终止策略不能直接套用 Unix 信号；ConPTY 的创建、缩放、关闭与管道生命周期需单独实现和测试。[Microsoft ConPTY 说明](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)
 
-平台规则位于 `apps/desktop/src-tauri/src/platform.rs`，共享 UUID、窗口归属、页面代次与 ACK 状态保留。第二轮 Linux 检查 Bash 后使用隔离参数、环境和系统临时目录，复用 Unix I/O；Windows 仍在分配 PTY 前返回待适配错误。`libc` 限于 Unix target。Mac 的 12 项单测含 Linux 命令策略检查，其本身不能证明 Linux 已运行；另已取得 Linux runner 的编译与真实 PTY 回执，以及 Windows runner 的编译和拒绝策略回执。Windows 真实 PTY 仍未实现。
+平台规则位于 `apps/desktop/src-tauri/src/platform.rs`，共享 UUID、窗口归属、页面代次与 ACK 状态保留。第二轮 Linux 检查 Bash 后使用隔离参数、环境和系统临时目录，复用 Unix I/O；Windows 仍在分配 PTY 前返回待适配错误。`libc` 限于 Unix target。历史第二轮 Mac 的 12 项单测含 Linux 命令策略检查，其本身不能证明 Linux 已运行；当轮另取得 Linux runner 的编译与真实 PTY 回执，以及 Windows runner 的编译和拒绝策略回执。Windows 真实 PTY 仍未实现。
 
 凭据适配器只向业务层提供受控操作及引用，普通配置不保存秘密。Linux 须检测会话服务是否存在及是否锁定；未安装服务时可保持本次会话不保存凭据，并明确提示。三个候选均需锁定 Rust 接入库和核查授权，当前不声称已经接通。[Apple Keychain](https://developer.apple.com/documentation/security/keychain-services) · [Windows Credential Management API](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) · [Secret Service 规范](https://specifications.freedesktop.org/secret-service/latest/)
 
@@ -43,7 +43,7 @@ Tauri 在 macOS 使用 WKWebView，Windows 使用 WebView2，Linux 使用 WebKit
 
 ## CI 与实际验收
 
-下表仍包含后续验收计划，不是三端产品验收通过记录。第二轮已新增 `.github/workflows/p0-cross-platform.yml`：macos-15、ubuntu-24.04、windows-2022，固定工具链与锁文件，Unix 执行真实 PTY 探针、Windows 执行拒绝策略。修订后工作流已成功，逐项范围和原失败见[专项报告](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)。
+下表仍包含后续验收计划，不是三端产品验收通过记录。第二轮已新增 `.github/workflows/p0-cross-platform.yml`：macos-15、ubuntu-24.04、windows-2022，固定工具链与锁文件，Unix 执行真实 PTY 探针、Windows 执行拒绝策略。历史修订后的运行已成功；当前轮已增加 loopback SSH 协议集成与 Unix 两种 PTY 策略，执行状态、逐项范围和原失败见[专项报告](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)。
 
 | 通道 | macOS | Windows | Linux | 通过意味着什么 |
 | --- | --- | --- | --- | --- |

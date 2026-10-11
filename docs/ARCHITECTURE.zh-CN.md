@@ -1,6 +1,6 @@
 # 架构候选与原型验证
 
-状态：P0 进行中；用户已确认 Rust + Tauri 2 + xterm.js 与 Apache-2.0。`apps/desktop` 已有可运行交互原型和 Rust 本地 PTY，原型依赖已锁定，远程协议及完整产品能力尚未实现。
+状态：P0 进行中；用户已确认 Rust + Tauri 2 + xterm.js 与 Apache-2.0。`apps/desktop` 已有可运行交互原型和 Rust 本地 PTY，原型依赖已锁定，已接入受限 SSH 协议验证，完整产品能力尚未实现。
 调研日期：2026-10-11。本文保留后续架构候选与验证要求；当前实现和验证边界见 [P0 结果](p0/RESULTS.zh-CN.md)，不构成性能或全量兼容性承诺。
 浅色白银浮层与深色中性炭灰方向均已获用户认可，不代表完整功能验收。浏览器、Rust、平台 CI 与原生证据统一见 [P0 结果](p0/RESULTS.zh-CN.md)及[浏览器报告](p0/WEB_QA.zh-CN.md)，此处不重复易变化的测试数量。原生中文/emoji 粘贴冒烟不等于 IME 通过，Chrome 状态更新优化不等于原生高输出响应已解决，隔离 VT52 实验也未接生产终端。
 
@@ -33,14 +33,14 @@ GPUI/egui/Iced 自绘界面也不能自动等同于 AppKit 原生控件。
 ## 推荐候选的职责边界
 
 以下以已确认的 Tauri 路线展开；核心业务接口应避免绑定某个 UI 框架。
-当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。`ssh.rs` 已增加基于 russh 的独立固定命令验证；交互 SSH shell、SFTP、长期凭据与完整持久化层仍为计划，普通连接及文件界面仍是演示。
+当前实现集中在 `apps/desktop/src` 和 `apps/desktop/src-tauri/src`，已接入 portable-pty、Tauri Channel 与顺序 ACK；`platform.rs` 已隔离 macOS zsh 与 Linux Bash 的 shell/环境/Unix I/O/EOF，Linux 运行证据以[跨平台验证](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)为准，不能由代码适配推断通过。Windows ConPTY 未实现，创建 PTY 前明确拒绝。`ssh.rs` 管理一次性主机信任与固定命令验证，`ssh_terminal.rs` 将 SSH PTY/shell channel 接入同一终端字节流；SFTP、长期凭据与完整持久化层仍为计划，普通连接及文件界面仍是演示。`pty-readiness` 为默认关闭的 Unix poll/ACK 通知实验，不改变默认构建的 5 ms 轮询策略。
 
 | 模块 | 职责 | 不承担的职责 |
 | --- | --- | --- |
 | 桌面 UI | 会话树、标签、连接表单、传输队列、用户操作 | 私钥文件读取和长期凭据持久化 |
 | xterm.js | 终端解析、屏幕状态、选择、滚动、输入事件 | 建立 SSH 连接或启动本地 shell |
 | Rust 会话层 | 状态机、取消、超时、资源释放、会话 ID 与所属窗口校验 | 绘制终端字符 |
-| Rust SSH 层 | russh 0.64.1 已用于实际指纹、本次信任、测试密钥认证及固定命令；交互 shell/PTY 与完整认证待实现 | 把远端输出当作可信 UI 内容 |
+| Rust SSH 层 | russh 0.64.1 用于指纹、本次信任、测试密钥、固定命令及交互 PTY/shell channel；完整认证与互操作待验证 | 把远端输出当作可信 UI 内容 |
 | Rust SFTP 层 | 基于 russh-sftp 候选实现列目录、上传下载、进度、取消与失败反馈 | 默认静默覆盖或删除远端文件 |
 | Rust 本地 PTY 层 | P0 已采用 portable-pty 0.9.0，支持受限本地 shell；完整平台支持待验证 | SSH 协议或终端模拟 |
 | Rust 存储层 | 会话元数据、设置、迁移与凭据引用 | 在普通配置、日志和仓库中写入明文秘密 |
@@ -50,11 +50,13 @@ portable-pty 提供跨平台系统 PTY 接口；它不是终端模拟器。[10]
 会话元数据可采用 SQLite 或版本化配置文件，P0 根据迁移、并发和备份需求选定。
 凭据计划使用系统安全存储；具体 Rust 适配库、访问策略与失败行为待验证。
 
-## 本轮受限 SSH 验证边界
+## 本轮受限 SSH 交互边界
 
-`src/ssh-verification.ts` 通过 `ssh_context` 取得窗口代际的 `scopeToken`，再调用 `ssh_probe` 获取实际 Ed25519 主机指纹。用户确认一次性 challenge 后，`ssh_accept` 重新连接并固定校验相同主机密钥，认证后只执行 `fixture-check`。取消、拒绝、超时、页面代际与窗口/应用退出由 Rust 服务管理；前端丢弃关闭后晚到结果。私钥仅传文件路径，由 Rust 读取未加密 Ed25519 测试密钥，不写入日志或持久化配置。
+`src/ssh-verification.ts` 通过 `ssh_context` 取得窗口代际的 `scopeToken`，再调用 `ssh_probe` 获取实际 Ed25519 主机指纹。明确确认一次性 challenge 后，固定命令模式调用 `ssh_accept`，交互终端模式调用 `ssh_open`；两者都重新连接并固定校验已确认的主机密钥。未加密 Ed25519 私钥仅传绝对文件路径，由 Rust 有界读取，不写日志或持久化配置。
 
-这不是通用 SSH 会话：没有交互 shell、SSH PTY、任意远程命令或 SFTP；没有 known_hosts 持久化、密码、带口令密钥、agent 或跳板支持。真实对端、状态边界与独立验收见 [SSH 客户端验证](p0/SSH_CLIENT.zh-CN.md)，浏览器 stub 仅验证界面/IPC 契约。
+`ssh_open` 请求 PTY/shell 后返回会话 ID，复用 `PtyEvent` 和 xterm 的原始字节写入/顺序 ACK 路径；输入、尺寸、ACK、关闭分别使用 `ssh_write/resize/ack/close`。输入与输出独立驱动，关闭和取消不排在输入队列后面；归属、scope 失效、晚到打开结果、超时、窗口/应用退出均有清理路径。前端远程标签禁用演示样本与压力命令，不自动向远端发送它们。
+
+真实协议测试使用有限命令 loopback russh 服务端，与客户端同为 0.64.1；不启动 OS shell，不能据此宣称 OpenSSH、vim/tmux 或真实远端 shell 互操作通过。本轮针对 russh 重协商不重新调用主机密钥检查的问题，采用显式拒绝 rekey、提示重连重新确认的受限策略；该拒绝策略已通过真实服务端发起重协商的集成测试与独立审查，仍不支持透明 rekey。当前不支持持久化 known_hosts、密码、加密私钥、agent、代理/跳板、转发或 SFTP。[交互通道与生命周期](p0/SSH_TERMINAL.zh-CN.md) · [固定命令入口](p0/SSH_CLIENT.zh-CN.md)
 
 ## 终端状态只保留一份
 
@@ -68,11 +70,11 @@ vt100 可用于受控场景的屏幕快照或测试辅助，不作为完整现�
 
 ## 字节流、顺序与背压
 
-当前 PTY 原型的数据路径：PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK；交互 SSH 字节流仍需实现。固定命令 SSH 验证返回有界 stdout/stderr 字节与退出状态，在独立对话框显示，不接 xterm 或 PTY ACK 链。原型具体预算、超时和清理证据见 [PTY 记录](p0/PTY_PROBE.zh-CN.md)，下列要求继续约束后续实现。
+当前 PTY 数据路径：PTY → Rust 有界队列 → Tauri Channel → xterm.write → ACK。交互 SSH 复用 Channel/xterm/ACK 路径，协议接收桥接层独立管理。固定命令 SSH 验证返回有界 stdout/stderr 字节与退出状态，在独立对话框显示，不接 xterm 或 PTY ACK 链。原型具体预算、超时和清理证据见 [PTY 记录](p0/PTY_PROBE.zh-CN.md)，下列要求继续约束后续实现。
 终端输出保留字节语义，避免按网络块独立转 UTF-8 导致跨块字符损坏。
 每个会话独立维护序号、待确认字节数、上下水位及关闭状态。
-达到高水位时暂停读取或等待容量，将背压传到 PTY/SSH；不得无限缓存或静默丢字节。
-xterm 完成解析后回传累计 ACK，低于低水位再恢复生产；ACK 不混入用户输入。
+PTY 达到高水位时等待容量；不得无限缓存或静默丢字节。当前 SSH IPC 未 ACK 预算为 64 KiB/64 块，接收 bridge 为 64 条、每条数据最多 4096 字节，协议内部缓冲另计。由于 russh 自动窗口调整与共享传输循环的限制，桥接需持续读取，过载时明确报错并关闭；这尚不是由前端 ACK 驱动的端到端 SSH 窗口流控，长期慢消费可用性仍待改进。
+当前 xterm 完成每块解析后逐块顺序 ACK，释放对应预算后允许继续输出；ACK 不混入用户输入。
 Channel 保证有序交付的能力不等于应用已经具备背压，仍需显式有界队列与 ACK。
 批处理大小、水位与刷新节奏通过实测决定，不能把文档示例常量直接当作产品指标。
 Tauri 官方说明普通事件系统不适合低延迟高吞吐，流式数据应考虑 Channel。[13]
@@ -143,7 +145,7 @@ tests/fixtures/           # 终端、SSH、SFTP 验证样本
 benchmarks/               # 可复现压力和资源测量
 ```
 
-除已说明的 `apps/desktop` 和 `tests/fixtures/ssh-sftp` 外，以上为后续结构建议；通用 transport、交互 SSH、SFTP、串口、调制解调传输与 tmux 模块尚待实现。
+除已说明的 `apps/desktop` 和 `tests/fixtures/ssh-sftp` 外，以上为后续结构建议；当前交互 SSH 集中于 `apps/desktop/src-tauri/src/ssh_terminal.rs`，通用 transport 拆分、完整 SSH 能力、SFTP、串口、调制解调传输与 tmux 模块尚待实现。
 
 ## 依赖版本与官方依据
 

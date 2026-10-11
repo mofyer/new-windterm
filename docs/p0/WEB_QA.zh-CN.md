@@ -2,13 +2,27 @@
 
 日期：2026-10-11。此报告是独立测试通道的实测结果，范围为浏览器原型；不代表原生 WKWebView、Rust PTY、真实 SSH/SFTP 或 130 项功能完成。
 
-## 本轮 SSH 界面回归
+## 本轮交互 SSH 界面回归
 
-独立全套执行 **84 passed，0 failed，0 skipped，0 flaky；24.6 秒**，严格 TypeScript 检查与 Vite build 通过。原有 70 项上新增 14 项 SSH 界面/IPC 契约测试；本轮共 81 项正向/契约及隔离 PoC，仍含 2 项终端缺口确认和 1 项旧 Unicode 反例，不能全部计为生产功能完成。
+独立全套执行 **98 passed，0 failed，0 skipped，0 flaky；27.95 秒**，严格 TypeScript 检查与 Vite build 通过。新增 14 项位于 `apps/desktop/tests/e2e/ssh-terminal-contract.spec.ts`；全部使用 IPC stub，不启动 Rust、SSH 网络或 WKWebView。原有终端缺口与旧 Unicode 反例继续保留，不能把 green 总数当作功能完成数。
+
+| 覆盖组 | 本轮断言 |
+| --- | --- |
+| 信任与隔离 | 真实终端入口必须明确确认当前 challenge；固定命令验证入口保留；远端标签不发送演示样本/压力命令 |
+| 打开与取消 | 8 会话上限、打开失败、取消后晚到 ID 关闭；exit 早于 open 返回时不恢复运行状态 |
+| 字节与 ACK | 复用 xterm 原始字节写入，解析完成后顺序 ACK；输入按有界块发送，尺寸更新走 SSH IPC |
+| 关闭与错误 | 关闭失败保留重试；致命错误结束会话；迟到写入错误不覆盖已结束状态；reload 清理敏感字段与会话 |
+| 视觉与布局 | 1000×650 下浅/深色表单、指纹确认、SSH stub 终端共 6 态；未发现区域 overflow 或 pageerror |
+
+独立回执与截图位于本地忽略目录 `.artifacts/p0/ssh-terminal-round/`。样式保持已认可白银/中性炭灰方向，没有新一轮视觉确认要求；此处不代表原生 GUI、真实网络、OS shell、IME 或完整可访问性验收。当前真实后端与原生状态见 [RESULTS](RESULTS.zh-CN.md)。未采集代码覆盖率，不与 Rust/协议测试数量相加。
+
+## 前一轮历史：固定命令 SSH 界面回归（84 项）
+
+独立全套执行 **84 passed，0 failed，0 skipped，0 flaky；24.6 秒**，严格 TypeScript 检查与 Vite build 通过。原有 70 项上新增 14 项 SSH 界面/IPC 契约测试；当轮共 81 项正向/契约及隔离 PoC，仍含 2 项终端缺口确认和 1 项旧 Unicode 反例，不能全部计为生产功能完成。
 
 新增测试位于 `apps/desktop/tests/e2e/ssh-verification.spec.ts`，通过 IPC stub 驱动真实界面模块，没有启动 Rust、SSH 网络连接或 WKWebView：
 
-| 覆盖组 | 本轮断言 |
+| 覆盖组 | 当轮断言 |
 | --- | --- |
 | 浏览器限制 | 真实验证被禁用，无网络请求 |
 | 作用域与信任 | 桌面 context 失败不可检查；关闭后晚到 context 不恢复对话框；未知主机不自动认证，明确确认只提交一次准确 token 与 scopeToken |
@@ -17,7 +31,7 @@
 | 输出与生命周期 | exit 7 为命令结果；任意字节按文本显示并可查看原始 hex；页面离开取消操作并清空私钥路径 |
 | 紧凑布局 | 浅/深色 1000×650 指纹页保持在窗口内，操作可触达 |
 
-本轮未采集代码覆盖率，也未将浏览器全套与 Rust/夹具数量相加。当前真实后端与原生验收状态见 [RESULTS](RESULTS.zh-CN.md)。下方保留第二轮 70 项的历史计数、测量值与边界，不把它们重新标为本轮独立数值。
+当轮未采集代码覆盖率，也未将浏览器全套与 Rust/夹具数量相加。下方保留第二轮 70 项的历史计数、测量值与边界，不把它们重新标为当前轮独立数值。
 
 ## 第二轮历史结果（70 项）
 

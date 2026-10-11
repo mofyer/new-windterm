@@ -1,8 +1,87 @@
-# P0 第二轮：跨平台编译与 Unix PTY 验证
+# P0 跨平台编译与协议/PTY 验证
 
 日期：2026-10-11。最终目标仍是三平台完整功能一致；交付顺序保持 macOS Apple Silicon 优先，Windows/Linux 后续。本文区分代码适配、编译、真实 PTY 和 GUI 验收，不能以 CI 绿色代替整个平台可用。
 
-## 本轮 SSH 与 PTY 诊断集成回执（2026-10-11）
+## 当前轮：交互 SSH 与 readiness（第三次 CI 通过）
+
+当前提交 `8ee49a49a970fbb364c6b2ca463cd4e10fdd1acf` 的第三次 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) **success**：三端前端资源、fmt/check/test/clippy 和桌面链接均通过，Mac/Linux 默认与 readiness PTY 均通过，Windows 两项 PTY 明确跳过。Windows 最小修订已独立审查通过；前两次 failure 及各自部分通过结果继续保留于下文。
+
+最初 `807e0eb` 的本机 macOS 独立复验为 28 项单元 passed、1 explicit ignored，9 项真实 SSH 集成 passed，fmt/check/clippy 和独立审查通过；同提交首轮 hosted CI 三端标记等待超时，证明本机结果不能外推。该失败和后续修订回执均保留于下文。
+
+本次运行范围及其边界：
+
+- 三端 `cargo test --all-targets --all-features`：包含单元、平台策略和真实 loopback SSH 协议集成测试；之前的 `--lib` 不覆盖新增集成测试。
+- macOS/Linux 分别运行默认 `pty_probe` 和显式 `--features pty-readiness` 探针；Windows 两项真实 PTY 均跳过，分配前拒绝策略保留。
+- 默认桌面链接只启用 `custom-protocol`，不默认打开 readiness。SSH 协议夹具采用有限命令 russh 服务端，不启动系统 shell；不代表 OpenSSH 互操作或桌面 GUI 验收。
+- 本机 readiness 三组配对属于 macOS CLI 诊断，不外推 Linux 性能或三端 GUI。[实验报告](PTY_READINESS.zh-CN.md) · [当前结果](RESULTS.zh-CN.md)
+
+### 最终成功回执（`8ee49a4`）
+
+| 实际 host / job | 单元 passed / failed / ignored | SSH target | 前端 / fmt / check / test / clippy / link | 默认 / readiness PTY |
+| --- | --- | --- | --- | --- |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38113572772/job/114393915952) | 28 / 0 / 1 | 10/10，20.88 s | 全部 success | success / success |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38113572772/job/114393916119) | 27 / 0 / 1 | 10/10，22.96 s | 全部 success | success / success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38113572772/job/114393916089) | 25 / 0 / 1 | 10/10，25.44 s | 全部 success | skipped / skipped |
+
+每端 SSH target 的 10 项为 **9 项真实 loopback 协议 + 1 项扫描 helper**；三端 ignored 仍为依赖系统 OpenSSH 夹具的 `real_fixture_reconnect_mismatch`，并未在 CI 运行。此前本机单独激活该项的证据归属 `807e0eb`，不冒充三端 OpenSSH 验收。Windows test/link 日志仍有非阻塞 Cargo PDB 同名 warning，不称所有构建零 warning。
+
+| Unix 2 MiB 功能探针 | 完整性阶段耗时 | 观察速度 | 未 ACK 字节峰值 |
+| --- | ---: | ---: | ---: |
+| macOS 默认 | 32.39 s | 63.2 KiB/s | 18,599 B |
+| macOS readiness | 0.48 s | 4,294.1 KiB/s | 8,306 B |
+| Linux 默认 | 0.55 s | 3,730.5 KiB/s | 65,535 B |
+| Linux readiness | 0.39 s | 5,217.3 KiB/s | 65,521 B |
+
+四个探针分别通过精确 **2,097,152 B**、300 ms 人工 ACK 暂停、预算、尺寸、UTF-8、Ctrl-C、退出码及各 12 次关闭/worker 回收。它们是单次 hosted 功能检查，不是交替配对 benchmark，不能据此宣布默认应用或 GUI 性能达标；`pty-readiness` 默认关闭保持不变。
+
+运行 metadata、完整日志与 artifacts 位于本地忽略目录 `.artifacts/p0/ssh-terminal-round/ci-38113572772/`，公共 job 链接见表。该 CI 没有执行 GUI、IME、原生高输出性能、交互 OpenSSH、SFTP、签名或安装包验收，也不证明 Windows ConPTY 或完整 WindTerm 功能对齐。
+
+### 首轮失败回执与测试扫描修订
+
+运行 [38112425584](https://github.com/mofyer/new-windterm/actions/runs/38112425584)，被测 commit `807e0ebf7178fc112c1a84b5dcb3ac1951944ed3`，2026-10-11，三端均 **failure**。
+
+| 实际 host | 单元测试 passed / failed / ignored | 真实 SSH 集成 passed / failed | 失败样本 |
+| --- | --- | --- | --- |
+| aarch64-apple-darwin | 28 / 0 / 1 | 8 / 1 | `bounded_two_mib_output_recovers_after_ack_pause_and_interrupts` |
+| x86_64-unknown-linux-gnu | 27 / 0 / 1 | 7 / 2 | `bounded_two_mib_output_recovers_after_ack_pause_and_interrupts`、`burst_with_prompt_ack_is_not_false_overload` |
+| x86_64-pc-windows-msvc | 25 / 0 / 1 | 7 / 2 | `bounded_two_mib_output_recovers_after_ack_pause_and_interrupts`、`burst_with_prompt_ack_is_not_false_overload` |
+
+失败均位于该提交 `tests/ssh_terminal.rs:74` 的 `until` 标记等待，触发既有 10 秒期限。后续 clippy、桌面链接及两种 PTY 探针均 skipped，不能算通过。Windows 日志仍出现非阻塞 PDB 同名 warning。原始运行材料位于本地忽略目录 `.artifacts/p0/ssh-terminal-round/ci-38112425584/`；上方公共运行页保留对应 job 日志。
+
+排查发现测试消费者每收到一块就从头扫描累计历史，形成 O(n²) 比较。修订仅改测试 scanner：检查新字节及可能跨块的必要重叠；保留生产代码、数据完整性断言和 10 秒期限，并新增 helper 边界回归。修订后该集成测试 target 共 10 项（9 项真实协议 + 1 项扫描 helper）；作者本机执行 20.27 秒通过；独立 Rust 审查 APPROVE，target **10/10，20.34 秒**，fmt、target check 与 clippy 通过。修订仅涉及测试，生产源码及此前原生/前端证据未变；其 hosted 回执见下面第二次运行。
+
+同机有限 debug 比较使用相同 2,097,168 B 输入：旧扫描 540,012,035 次比较、3580.016 ms，增量扫描 2,097,155 次比较、13.870 ms。原始数据在 `.artifacts/p0/ssh-terminal-round/marker-scan/results.txt`。这证明该测试扫描器在所测输入下避免重复工作，不能只凭单次本机比较认定所有 hosted 失败原因或宣布三平台已修复。后续运行须单独记录，不覆盖本次失败。
+
+### 第二次运行：SSH 全通过，Windows Clippy 失败
+
+运行 [38112943897](https://github.com/mofyer/new-windterm/actions/runs/38112943897)，被测 commit `ff664ac819d5962bf91825fd889fb483d7d5fc9e`，整体 **failure**。三端 SSH target 的 10 项为 **9 项真实协议 + 1 项扫描 helper**，不能称为 10 项真实协议。
+
+| 实际 host | 单元 passed / failed / ignored | SSH target | clippy / 桌面链接 | 默认 / readiness PTY | job |
+| --- | --- | --- | --- | --- | --- |
+| aarch64-apple-darwin | 28 / 0 / 1 | 10/10，21.38 s | success / success | success / success | success |
+| x86_64-unknown-linux-gnu | 27 / 0 / 1 | 10/10，22.71 s | success / success | success / success | success |
+| x86_64-pc-windows-msvc | 25 / 0 / 1 | 10/10，25.21 s | failure / skipped | skipped / skipped | failure |
+
+Windows Clippy 的两项错误为该提交 `pty.rs:516` 的 `drop_non_drop`（非 Unix 占位类型）与 `platform.rs:102` 的 `items_after_test_module`（非 Unix 定义位于测试模块之后）。后续修订范围限于条件编译与条目位置，独立审查已通过；第三次 CI 修订成功见文首，不改写本次失败。Windows ConPTY 仍未实现，真实 PTY 本来就不在该平台执行。
+
+| Unix 2 MiB 功能探针 | 完整性阶段耗时 | 观察速度 | 未 ACK 字节峰值 |
+| --- | ---: | ---: | ---: |
+| macOS 默认 | 43.02 s | 47.6 KiB/s | 13,479 B |
+| macOS readiness | 0.56 s | 3,650.3 KiB/s | 19,483 B |
+| Linux 默认 | 0.49 s | 4,184.3 KiB/s | 65,533 B |
+| Linux readiness | 0.36 s | 5,621.7 KiB/s | 65,535 B |
+
+四个探针均精确接收 2,097,152 B，并分别完成 12 次关闭/worker 回收。全部包含 300 ms 人工 ACK 暂停，未 ACK 峰值不超过 65,536 B。这是 hosted 功能检查，不是交替配对 benchmark；不能据单次耗时宣称 GUI 加速或平台性能达标。此运行支持增量 scanner 在三端的协议回归与两种 Unix PTY 的完整性，但 Windows Clippy 未通过、链接未执行；也不覆盖 GUI/IME、交互 OpenSSH 或应用 SFTP。
+
+### Windows 最小修订与第三次运行
+
+提交 `8ee49a49a970fbb364c6b2ca463cd4e10fdd1acf`：`pty.rs` 将显式 `drop` 限于 Unix；`platform.rs` 将平台定义移动至测试模块之前。测试模块 2680 B 字节完全相同，没有删改测试或放宽 lint。Unix 描述符释放顺序、Windows 创建 PTY 前拒绝策略、默认功能与 SSH 语义保持。
+
+修复作者本机全量检查通过：28 项 unit passed、1 explicit ignored，集成 target 10/10（9 协议 + 1 helper），fmt/check/clippy 通过。独立审查 **APPROVE**，另执行 fmt/check/clippy 与定向 platform 测试 **5/5** 通过。这是本机及代码审查证据；Windows hosted 编译与 Clippy 另由文首第三次 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) 成功回执确认。
+
+本修订未改变本机默认编译的运行语义，保留先前明确版本的原生/浏览器证据，没有把它们重新标为该提交的原生重测。
+
+## 前一轮历史：SSH 固定命令与 PTY 诊断（2026-10-11）
 
 运行 [38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626)，被测 commit `84c24df697a6ee0858f4654368e35ec146746174`，整体 **success**。三端前端构建、Rust fmt/check/test/clippy 与桌面可执行文件链接成功；check/clippy 使用 `--all-targets --all-features`，test 使用 `--lib --all-features`，clippy 保留 `-D warnings`。默认桌面构建与真实 PTY 探针未启用诊断计时。
 
@@ -48,15 +127,15 @@ Linux 证据仅覆盖本次 Ubuntu runner 的生产 PTY 层，不表示所有发
 
 ## CI 执行内容
 
-工作流：`.github/workflows/p0-cross-platform.yml`。公开仓库 Actions 已启用。当前验证运行已启动，最终结论见下方回执；运行中步骤不能计为通过。
+工作流：`.github/workflows/p0-cross-platform.yml`。公开仓库 Actions 已启用。当前轮状态见文首；下方历史回执只覆盖各自提交，运行中步骤不能计为通过。
 
 | Runner | 预期 Rust host | 真实 PTY |
 | --- | --- | --- |
 | `macos-15` | `aarch64-apple-darwin` | 执行 |
 | `ubuntu-24.04` | `x86_64-unknown-linux-gnu` | 执行 |
-| `windows-2022` | `x86_64-pc-windows-msvc` | 明确跳过；仅运行未实现适配器拒绝测试 |
+| `windows-2022` | `x86_64-pc-windows-msvc` | 明确跳过；另运行平台拒绝策略与 loopback SSH 协议测试 |
 
-每个任务记录实际 Node/Rust/OS/架构并校验 host；固定 Rust 1.99.0、Node 26.0.0，使用 npm/Cargo 锁文件。顺序执行前端资源构建、Rust format/check/unit tests/clippy、含本地资源的桌面可执行文件链接。Unix 任务另执行 `pty_probe`：尺寸、Unicode 字节、2 MiB 完整输出、背压、Ctrl-C、退出码、越权拒绝及 12 轮关闭回收。
+每个任务记录实际 Node/Rust/OS/架构并校验 host；固定 Rust 1.99.0、Node 26.0.0，使用 npm/Cargo 锁文件。顺序执行前端资源构建、Rust format/check/all-targets tests/clippy、含本地资源的桌面可执行文件链接。Unix 任务分别执行默认与 readiness `pty_probe`：尺寸、Unicode 字节、2 MiB 完整输出、背压、Ctrl-C、退出码、越权拒绝及 12 轮关闭回收。
 
 Ubuntu 通过 Tauri 官方清单安装 `libwebkit2gtk-4.1-dev`、编译工具、`libxdo-dev`、`libssl-dev`、`libayatana-appindicator3-dev`、`librsvg2-dev` 等。探针直接调用生产 PTY 层，不启动 GTK 窗口；不需要伪造 GUI 成功，也不通过 xvfb 掩盖显示环境问题。
 
@@ -66,13 +145,14 @@ Ubuntu 通过 Tauri 官方清单安装 `libwebkit2gtk-4.1-dev`、编译工具、
 
 ```sh
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
-cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
-cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
-cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
+cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
+cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe
 ```
 
-当前 Mac 单测为 12 项，新增 Linux 命令/环境配置及缺失 shell 错误测试；各平台条件编译会使数量不同。平台专属测试只有在对应 runner 实际运行后才有该平台证据。
+各平台条件编译会使测试数量不同；当前代码的实际计数见文首 `8ee49a4` 成功回执，不沿用历史 12 项。平台专属测试只有在对应 runner 实际运行后才有该平台证据。
 
 ## 回执补录要求
 

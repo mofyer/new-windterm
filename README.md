@@ -4,7 +4,7 @@
 
 An independent Rust-based reimplementation targeting full WindTerm feature parity, starting with Apple Silicon Macs.
 
-**当前状态：P0 进行中，已有本地交互、真实 PTY 与独立 SSH 固定命令验证入口；尚未完成 P0 验收，也没有正式发行版。** 项目名称暂定，与 WindTerm 上游没有隶属关系。
+**当前状态：P0 进行中，已有真实本地 PTY、独立 SSH 固定命令验证与交互终端入口；尚未完成 P0 验收，也没有正式发行版。** 项目名称暂定，与 WindTerm 上游没有隶属关系。
 
 ## 目标与范围
 
@@ -33,9 +33,11 @@ npm run tauri dev   # 桌面窗口，点击「本地终端」启动真实本机 
 
 本机已生成的 debug 应用位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，属于本地构建产物，不随 Git 分发，也不是签名公证后的发行包。
 
-本轮新增独立真实 SSH 验证入口：桌面程序从受控对端取得实际主机指纹，经本次信任后使用未加密 Ed25519 测试密钥执行固定命令 `fixture-check`。普通连接表单、交互 SSH shell、文件列表与 SFTP 传输仍是演示；不保存长期信任或凭据。入口、复核步骤与限制见 [SSH 客户端验证](docs/p0/SSH_CLIENT.zh-CN.md)。
+本轮将真实 SSH 接入 xterm 标签页：从实际主机指纹确认进入交互通道，支持输入、输出、尺寸更新、取消和关闭。原固定 `fixture-check` 验证入口保留。普通「新建连接」与 SFTP 文件界面仍是演示；当前认证仅支持明确指定的未加密 Ed25519 测试密钥，不保存长期信任或凭据。[交互 SSH 的边界与夹具](docs/p0/SSH_TERMINAL.zh-CN.md) · [固定命令验证](docs/p0/SSH_CLIENT.zh-CN.md)
 
-浏览器本轮新增 SSH 界面契约回归；Rust 已通过独立复验，原生 SSH 成功路径完成实测，本轮三平台 CI 通过。各自范围及 Windows 构建警告统一记录在 [P0 结果](docs/p0/RESULTS.zh-CN.md)，不代表三端 GUI 或真实 SSH 全部通过。PTY 新增可公开复现的分支计量，默认读取与 ACK 策略未改，尚无性能达标结论。[性能诊断](docs/p0/PTY_PERFORMANCE_DIAGNOSIS.zh-CN.md)
+独立浏览器回归 **98/98**，TypeScript/build 与浅深色紧凑布局复核通过；浏览器使用 IPC stub。真实协议验证采用 loopback russh 有限命令服务端，不启动操作系统 shell。当前轮 `807e0eb` 的本机 Rust 独立复验通过（28 项单元、9 项协议集成，另 1 项显式 ignored）；macOS arm64 WKWebView 已实测指纹确认、中文/emoji 输出、resize、输出中 Ctrl-C、exit 7 与关闭回收。最终 `8ee49a4` 的三平台 CI 通过：每端 SSH target 为 9 项真实协议加 1 项 helper，Mac/Linux 默认与 readiness PTY 均通过；Windows PTY 仍跳过。前两次 CI 失败均保留，各层结果以 [P0 结果](docs/p0/RESULTS.zh-CN.md) 为准。
+
+PTY 新增默认关闭的 `pty-readiness` 实验：本机三组配对均通过精确 2 MiB 与回收检查，负载中位数从 6898.175 ms 降为 342.195 ms（含 300 ms 人工 ACK 暂停）。这是直接调用 Rust PTY 的 CLI 实验，不代表默认应用或 WebView 性能达标；默认仍使用原读取策略。[实验方法与限制](docs/p0/PTY_READINESS.zh-CN.md)
 
 此前已完成状态 DOM 合并、开发模式聚合诊断、隔离 VT52 实验、Linux Bash/Unix PTY 适配与三平台 CI 验证；Windows ConPTY 仍未实现。原生 IME、高输出响应、完整功能和发行验收仍待完成。
 
@@ -54,7 +56,7 @@ Rust 负责协议、PTY、文件传输和状态管理，Tauri 2 提供桌面集�
 - [界面与交互设计方向](docs/DESIGN.zh-CN.md)
 - [现状核查与技术依据](docs/RESEARCH.zh-CN.md)
 - [P0 本轮结果与未完成项](docs/p0/RESULTS.zh-CN.md)
-- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为独立 Rust SSH 验证提供受控对端，交互 SSH 与应用 SFTP 尚未实现。
+- [本机 SSH/SFTP 受控夹具](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：为固定命令 Rust SSH 验证提供 OpenSSH 受控对端；交互终端使用另一个有限命令夹具，应用 SFTP 尚未实现。
 
 完整工期需在功能盘点、原型验证和人力确定后估算，当前不承诺全项目交付日期。
 

@@ -1,6 +1,6 @@
-# P0 原生 SSH 验证入口
+# P0 固定命令 SSH 验证入口
 
-本轮增加独立的“SSH 验证”入口：Rust 直接建立 SSH 连接，展示 Ed25519 主机指纹，用户明确选择“仅本次信任”后重新核对同一主机公钥、读取指定私钥并认证，只执行固定的 `fixture-check`。这不是交互终端；现有 SSH 演示会话、SFTP 面板和会话持久化未因此成为真实客户端。
+更新日期：2026-10-11。本页记录前一轮新增且继续保留的独立“SSH 验证”入口：Rust 直接建立 SSH 连接，展示 Ed25519 主机指纹，用户明确选择“仅本次信任”后重新核对同一主机公钥、读取指定私钥并认证，只执行固定的 `fixture-check`。此入口不打开交互终端；当前轮新增的独立交互入口见 [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)。普通连接表单、SFTP 面板和会话持久化仍为演示。本文末尾的 `84c24df` 验收是历史固定命令证据，最新代码/CI 状态见 [RESULTS](RESULTS.zh-CN.md)。
 
 ## 信任与数据边界
 
@@ -19,7 +19,7 @@
 - 每个操作由窗口和 UUID 绑定。取消、reload、destroy 和退出撤销当前操作，清理相应挑战。底层保留独立 TCP descriptor，在 future 被丢弃时执行 `shutdown(Both)`，不依赖 russh `Handle::drop` 终止其内部任务。正常完成还尝试 disconnect，并最多等待 250 ms；已完整收到的命令结果不被优雅关闭失败覆盖。
 - 私钥读取在 blocking pool 上执行。取消不能强杀已经开始的操作系统文件读取，例如失去响应的网络挂载；独立的 4 个读取 permit 由后台闭包一直持有到真实结束，防止反复取消积累无界读取。尚未开始的闭包会检查取消状态，晚到结果不继续认证。
 - 已注册操作和最近 128 个已完成操作的取消不消耗抢先取消记录；未知 UUID 的“先取消、后分派”记录最多 128 条，达到上限后该窗口拒绝新操作直到重启。该极端保护不影响连续正常打开/取消/关闭，已有 256 次回归覆盖。
-- 64 KiB 是应用输出收集上限，不是 russh、网络缓冲和密钥解析的全部内存上限。当前 russh 使用默认 channel/window 队列；本轮没有宣称硬实时期限、整个进程内存上限或所有 OS 文件读取均可强制终止。
+- 64 KiB 是应用输出收集上限，不是 russh、网络缓冲和密钥解析的全部内存上限。固定命令模式的 russh 使用默认 channel/window 队列；此入口没有宣称硬实时期限、整个进程内存上限或所有 OS 文件读取均可强制终止。
 
 ## 复现与验证
 
@@ -52,18 +52,28 @@ node --test tests/fixtures/ssh-sftp/rust-client.test.mjs
 - `russh = 0.64.1`，关闭默认 features，仅启用 `ring`；Tokio 保持现有锁版本 1.50.0，zeroize 1.9.1。
 - russh-cryptovec 的 nix 依赖要求 libc 0.2.180，因此从 0.2.177 升至 0.2.180；需要同时保留既有 PTY 回归和跨平台编译检查。
 - 官方依据：[russh 0.64.1 client](https://github.com/Eugeny/russh/blob/v0.64.1/russh/src/client/mod.rs)、[Cargo features](https://github.com/Eugeny/russh/blob/v0.64.1/russh/Cargo.toml)、[Handler API](https://docs.rs/russh/0.64.1/russh/client/trait.Handler.html)。示例中的无条件接受主机公钥不适用于本实现。
-- 下一步才是可复用受信连接、真实 SSH 终端流、SFTP、加密密钥/agent、跳板机及持久化 known-hosts。完整 WindTerm 功能对齐目标保持不变。
+- 当前交互终端流另见 [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)；可复用受信连接、SFTP、加密密钥/agent、跳板机及持久化 known-hosts 仍需继续实现。完整 WindTerm 功能对齐目标保持不变。
 
 
-## 本轮本机验收回执（2026-10-11）
+## 前一轮历史验收回执（2026-10-11，`84c24df`）
 
 Rust 独立复验与代码审查通过：fmt、check、clippy（all-targets/all-features，`-D warnings`）及 diff 检查均通过；常规测试 24 passed、0 failed、1 explicit ignored。Node 真实夹具 harness 2/2 通过，并显式执行上述 ignored 的真实重连密钥不匹配测试。它们与浏览器 84 项契约回归属于不同证据层，不相加为产品功能完成数。
 
-主任务另行通过 CUA 实测本轮新构建的原生应用，以下是主任务直接观察，不称为独立原生复验：
+主任务当时通过 CUA 实测该轮新构建的原生应用，以下是主任务直接观察，不称为独立原生复验：
 
 - debug 构建耗时 12.72 秒，产物 58.47 MiB，架构为 Mach-O arm64；未签名公证。
 - 在 `tauri://localhost` WKWebView 依次打开「新建连接」→「SSH 验证」，输入该次 loopback 夹具的临时连接材料。显示的主机指纹与独立 known_hosts 计算结果一致后，选择「仅本次信任并验证」。
 - 实际返回 stdout 22 字节：`P0_SSH_OK 中文 🌏` 加换行，stderr 0 字节，退出码 7；界面正确显示 UTF-8 文本与退出状态。使用临时测试密钥，没有使用个人密钥或 SSH 配置。
 - 关闭验证后返回工作台，仅保留原有 1 个演示标签。向该次夹具发送 TERM 后正常退出 0，临时目录已不存在。
 
-本次覆盖真实指纹核对、显式信任、认证、固定命令与正常清理这一条原生成功路径，不替代原生取消/超时/重载等完整矩阵、交互 SSH、SFTP 或 IME 验收。本轮 `84c24df` 的 [run 38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626) 三平台构建与各自测试范围均 success；三端真实 SSH 夹具测试仍为 ignored，本机 Node harness 的 2/2 不外推为三端真实 SSH/GUI 通过。Windows 真实 PTY skipped，桌面链接存在非阻塞 PDB 同名 warning；完整计数、Unix PTY 与警告记录见 [跨平台回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)。
+该轮覆盖真实指纹核对、显式信任、认证、固定命令与正常清理这一条原生成功路径，不替代原生取消/超时/重载等完整矩阵、交互 SSH、SFTP 或 IME 验收。历史提交 `84c24df` 的 [run 38110885626](https://github.com/mofyer/new-windterm/actions/runs/38110885626) 三平台构建与各自测试范围均 success；三端真实 SSH 夹具测试仍为 ignored，本机 Node harness 的 2/2 不外推为三端真实 SSH/GUI 通过。Windows 真实 PTY skipped，桌面链接存在非阻塞 PDB 同名 warning；完整计数、Unix PTY 与警告记录见 [跨平台回执](CROSS_PLATFORM_VALIDATION.zh-CN.md)。
+
+## 当前代码的固定命令回归（`807e0eb`）
+
+2026-10-11，独立 Rust 审查通道再次构建 `ssh_probe --locked`（7.04 秒）并执行 `tests/fixtures/ssh-sftp/rust-client.test.mjs`：**2/2 passed、0 skipped，3.507 秒**。覆盖明确指纹信任、UTF-8、exit 7、错误客户端密钥，且显式激活常规测试中 ignored 的 `real_fixture_reconnect_mismatch`。两次 finally 检查临时材料均返回 ENOENT，额外检查未见当前夹具目录或进程残留。
+
+这是当前共享 SSH 代码的本机 OpenSSH **固定命令**回归，不是交互 shell、三平台 OpenSSH 或应用 SFTP 验收；当前轮其他证据见 [RESULTS](RESULTS.zh-CN.md)。
+
+## 后续交互通道与重协商边界
+
+后续新增的独立 `ssh_open` 入口见 [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)；本页所述 `ssh_accept` 固定命令语义保持不变。核对 russh 0.64.1 源码发现主机 key 回调仅在初始交换调用，因此当前共享 handler 在第二次 `kex_done` 时明确拒绝 rekey 并关闭连接，不默许未重新核验的主机 key；长期交互会话需要重新连接。此为 P0 临时限制，并非最终功能范围缩减。
