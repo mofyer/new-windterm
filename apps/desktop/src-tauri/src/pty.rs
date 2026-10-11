@@ -1,5 +1,7 @@
 //! P0 local PTY transport. No terminal decoding or remote/file APIs live here.
 use crate::platform;
+#[cfg(windows)]
+use portable_pty::ChildKiller;
 use portable_pty::{native_pty_system, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -136,6 +138,8 @@ pub struct Session {
     capacity: Condvar,
     #[cfg(feature = "pty-readiness")]
     cancel_readiness: platform::CancelReadiness,
+    #[cfg(windows)]
+    killer: Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     input: SyncSender<Vec<u8>>,
     done: (Mutex<bool>, Condvar),
@@ -265,6 +269,8 @@ impl Session {
             self.capacity.notify_all();
             self.cancel_readiness.cancel();
         }
+        #[cfg(windows)]
+        kill_child(&self.killer);
         self.master
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -453,6 +459,8 @@ fn spawn_local_session(
         .slave
         .spawn_command(command)
         .map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    let killer = child.clone_killer();
     drop(pair.slave);
     let (input, receiver) = sync_channel::<Vec<u8>>(16);
     let session = Arc::new(Session {
@@ -464,6 +472,8 @@ fn spawn_local_session(
         capacity: Condvar::new(),
         #[cfg(feature = "pty-readiness")]
         cancel_readiness,
+        #[cfg(windows)]
+        killer: Mutex::new(Some(killer)),
         master: Mutex::new(Some(pair.master)),
         input,
         done: (Mutex::new(false), Condvar::new()),
@@ -791,6 +801,20 @@ fn cleanup_child(
                 }
             }
         }
+    }
+}
+
+#[cfg(windows)]
+fn kill_child(killer: &Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>) {
+    if let Some(mut killer) = killer
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take()
+    {
+        // portable-pty's ConPTY reader is backed by a blocking pipe. Closing
+        // the master does not wake a cloned reader, so terminate the child
+        // before releasing the master and let the reader/cleanup worker reap it.
+        let _ = killer.kill();
     }
 }
 

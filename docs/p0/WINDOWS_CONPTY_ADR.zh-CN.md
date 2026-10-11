@@ -6,6 +6,8 @@
 
 当前不解除 `platform::ensure_supported()` 的 Windows 拒绝。`portable-pty 0.9.0` 已提供 ConPTY 创建、缩放、读写和子进程接口，但这不等于现有 P0 会话生命周期已经支持 Windows。
 
+当前代码已加入 Windows-only 的 `ChildKiller` 生命周期钩子：`Session::close()` 会在释放 master 前尝试终止直接子进程，Unix 构建和行为不变。这只是为后续验证准备的取消入口，尚未证明同步 reader 会返回，也没有解除平台拒绝或声称 Windows PTY 可用。
+
 现有 `pty.rs` 的 reader worker 在 Unix 上依靠非阻塞描述符、`WouldBlock` 和 EIO EOF 约定运行。portable-pty 的 Windows ConPTY reader 使用匿名管道上的同步 `ReadFile`；`filedescriptor` 文档也明确指出 Windows 的 readiness 检查只适用于 socket。当前 `Session::close()` 会释放 master、标记 flow 并唤醒 Unix readiness，但 reader 可能仍阻塞在同步读，随后 `cleanup_child()` 才会执行。因此仅把 `configure_io()` 改成 no-op、或让 readiness 在 Windows 睡眠轮询，都会产生关闭超时、worker 残留或把未验证路径误报为支持。
 
 ## 允许的实现方向
