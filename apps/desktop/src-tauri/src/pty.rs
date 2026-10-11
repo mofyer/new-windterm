@@ -1,7 +1,5 @@
 //! P0 local PTY transport. No terminal decoding or remote/file APIs live here.
 use crate::platform;
-#[cfg(windows)]
-use portable_pty::ChildKiller;
 use portable_pty::{native_pty_system, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -139,7 +137,7 @@ pub struct Session {
     #[cfg(feature = "pty-readiness")]
     cancel_readiness: platform::CancelReadiness,
     #[cfg(windows)]
-    killer: Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>,
+    tree: platform::windows::ProcessTree,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     input: SyncSender<Vec<u8>>,
     done: (Mutex<bool>, Condvar),
@@ -269,12 +267,35 @@ impl Session {
             self.capacity.notify_all();
             self.cancel_readiness.cancel();
         }
-        #[cfg(windows)]
-        kill_child(&self.killer);
+        // Releasing a Unix master wakes the nonblocking reader. On Windows the
+        // blocking ConPTY reader returns only once the pseudoconsole is closed,
+        // which the waiter does after the terminated shell has exited; closing
+        // it here could block this caller while conhost flushes output.
+        #[cfg(unix)]
         self.master
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        #[cfg(windows)]
+        self.tree.terminate();
+    }
+
+    /// Closes the pseudoconsole outside the master lock: conhost flushes the
+    /// remaining output and closes its pipe end, so the reader observes EOF.
+    #[cfg(windows)]
+    fn release_console(&self) {
+        let master = self
+            .master
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        drop(master);
+    }
+
+    /// Live processes left in the shell's job, for lifecycle verification.
+    #[cfg(windows)]
+    pub fn live_processes(&self) -> Result<u32, String> {
+        self.tree.active_processes()
     }
 
     pub fn wait_closed(&self, timeout: Duration) -> bool {
@@ -460,7 +481,18 @@ fn spawn_local_session(
         .spawn_command(command)
         .map_err(|e| e.to_string())?;
     #[cfg(windows)]
-    let killer = child.clone_killer();
+    let tree = match child
+        .as_raw_handle()
+        .ok_or_else(|| "Windows shell has no process handle".to_string())
+        .and_then(platform::windows::ProcessTree::adopt)
+    {
+        Ok(tree) => tree,
+        Err(error) => {
+            // Without a job the tree cannot be bounded; refuse the session.
+            let _ = child.clone_killer().kill();
+            return Err(error);
+        }
+    };
     drop(pair.slave);
     let (input, receiver) = sync_channel::<Vec<u8>>(16);
     let session = Arc::new(Session {
@@ -473,7 +505,7 @@ fn spawn_local_session(
         #[cfg(feature = "pty-readiness")]
         cancel_readiness,
         #[cfg(windows)]
-        killer: Mutex::new(Some(killer)),
+        tree,
         master: Mutex::new(Some(pair.master)),
         input,
         done: (Mutex::new(false), Condvar::new()),
@@ -501,7 +533,7 @@ fn launch_workers(
     #[cfg(feature = "pty-readiness")] readiness: platform::Readiness,
     writer: Box<dyn Write + Send>,
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
-    mut child: Box<dyn portable_pty::Child + Send + Sync>,
+    #[cfg_attr(windows, allow(unused_mut))] mut child: Box<dyn portable_pty::Child + Send + Sync>,
 ) {
     let write_session = session.clone();
     let write_sink = sink.clone();
@@ -509,6 +541,18 @@ fn launch_workers(
     let writer_worker =
         thread::spawn(move || writer_loop(write_session, writer, receiver, write_sink, write_id));
     let read_id = id;
+    // Windows: a waiter owns the child. When the shell exits (naturally or via
+    // job termination) it closes the pseudoconsole, which ends the blocking
+    // reader with EOF after conhost flushes the remaining output.
+    #[cfg(windows)]
+    let waiter = {
+        let session = session.clone();
+        thread::spawn(move || {
+            let status = child.wait();
+            session.release_console();
+            status
+        })
+    };
     thread::spawn(move || {
         if let Err(message) = reader_loop(
             &session,
@@ -520,8 +564,27 @@ fn launch_workers(
         ) {
             terminal_error(&sink, &read_id, message);
         }
+        #[cfg(unix)]
         let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
+        // Reader errors (ACK timeout, sink failure) end the tree too; after a
+        // natural exit this only reaps detached children left in the job.
+        #[cfg(windows)]
+        session.close();
+        // Drop the read end before joining the waiter: conhost may be blocked
+        // writing into a full pipe, and closing the pseudoconsole waits for it.
         drop(reader);
+        #[cfg(windows)]
+        let status = match waiter.join() {
+            Ok(Ok(status)) => Some(status),
+            Ok(Err(error)) => {
+                terminal_error(&sink, &read_id, format!("PTY reaping failed: {error}"));
+                None
+            }
+            Err(_) => {
+                terminal_error(&sink, &read_id, "PTY child waiter panicked".into());
+                None
+            }
+        };
         #[cfg(all(feature = "pty-readiness", unix))]
         drop(readiness);
         let writer_reaped = writer_worker.join().is_ok();
@@ -771,6 +834,7 @@ fn reader_loop(
     }
 }
 
+#[cfg(unix)]
 fn cleanup_child(
     session: &Session,
     child: &mut dyn portable_pty::Child,
@@ -801,20 +865,6 @@ fn cleanup_child(
                 }
             }
         }
-    }
-}
-
-#[cfg(windows)]
-fn kill_child(killer: &Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>) {
-    if let Some(mut killer) = killer
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .take()
-    {
-        // portable-pty's ConPTY reader is backed by a blocking pipe. Closing
-        // the master does not wake a cloned reader, so terminate the child
-        // before releasing the master and let the reader/cleanup worker reap it.
-        let _ = killer.kill();
     }
 }
 
@@ -988,6 +1038,251 @@ mod tests {
                 "capacity cancellation did not reap"
             );
             sessions.shutdown();
+        }
+    }
+}
+
+/// Windows ConPTY lifecycle acceptance, run on the `windows-2022` CI runner.
+/// Markers use `%OS%` so the shell's echo of the typed command never matches.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
+
+    const DEADLINE: Duration = Duration::from_secs(10);
+    const LOOP: &str = "for /L %i in (1,1,200000) do @echo %i P0 bounded ConPTY output line\r\n";
+
+    struct Probe {
+        sessions: Sessions,
+        session: Arc<Session>,
+        events: Receiver<PtyEvent>,
+        output: Vec<u8>,
+        exit: Option<Option<u32>>,
+        errors: Vec<String>,
+    }
+
+    impl Probe {
+        fn open() -> Self {
+            let sessions = Sessions::default();
+            let (sender, events) = channel();
+            let id = sessions
+                .open(
+                    "win",
+                    100,
+                    30,
+                    Arc::new(move |event| sender.send(event).map_err(|e| e.to_string())),
+                )
+                .unwrap();
+            let session = sessions.get("win", &id).unwrap();
+            Self {
+                sessions,
+                session,
+                events,
+                output: Vec::new(),
+                exit: None,
+                errors: Vec::new(),
+            }
+        }
+
+        /// Drains events in order, acknowledging data when `ack`, until `done`.
+        fn pump(&mut self, limit: Duration, ack: bool, done: impl Fn(&Self) -> bool) -> bool {
+            let started = Instant::now();
+            loop {
+                if done(self) {
+                    return true;
+                }
+                let Some(left) = limit.checked_sub(started.elapsed()) else {
+                    return false;
+                };
+                match self
+                    .events
+                    .recv_timeout(left.min(Duration::from_millis(100)))
+                {
+                    Ok(PtyEvent::Data { sequence, data, .. }) => {
+                        self.output.extend_from_slice(&data);
+                        if ack {
+                            let _ = self.session.ack(sequence);
+                        }
+                    }
+                    Ok(PtyEvent::Exit { code, .. }) => self.exit = Some(code),
+                    Ok(PtyEvent::Error { message, .. }) => self.errors.push(message),
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => return done(self),
+                }
+            }
+        }
+
+        fn text(&self) -> String {
+            String::from_utf8_lossy(&self.output).into_owned()
+        }
+
+        fn tail(&self) -> String {
+            let text = self.text();
+            let start = text
+                .char_indices()
+                .rev()
+                .nth(800)
+                .map_or(0, |(index, _)| index);
+            text[start..].to_string()
+        }
+
+        fn send(&self, text: &str) {
+            self.session.write(text.as_bytes().to_vec()).unwrap();
+        }
+
+        fn expect(&mut self, marker: &str) {
+            let found = self.pump(DEADLINE, true, |probe| probe.text().contains(marker));
+            assert!(found, "missing {marker:?}; output tail: {}", self.tail());
+        }
+
+        fn ready(&mut self) {
+            self.send("echo P0_%OS%_READY\r\n");
+            self.expect("P0_Windows_NT_READY");
+        }
+
+        /// Reader returned, writer joined, child waited, job empty, within 2 s.
+        fn assert_reaped(&mut self) {
+            assert!(
+                self.session.wait_closed(Duration::from_secs(2)),
+                "session not reaped within 2 s; errors: {:?}",
+                self.errors
+            );
+            assert!(
+                self.pump(Duration::from_secs(2), true, |probe| probe.exit.is_some()),
+                "no exit event"
+            );
+            assert_eq!(self.session.live_processes().unwrap(), 0, "job not empty");
+        }
+    }
+
+    #[test]
+    fn cmd_runs_commands_and_reports_exit_code_7() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send("exit 7\r\n");
+        assert!(probe.pump(DEADLINE, true, |probe| probe.exit.is_some()));
+        assert_eq!(probe.exit, Some(Some(7)), "errors: {:?}", probe.errors);
+        probe.assert_reaped();
+        assert!(probe.errors.is_empty(), "{:?}", probe.errors);
+        probe.sessions.shutdown();
+    }
+
+    #[test]
+    fn utf8_input_and_output_round_trip() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send("echo P0_%OS%_中文\r\n");
+        probe.expect("P0_Windows_NT_中文");
+        probe.session.close();
+        probe.assert_reaped();
+    }
+
+    #[test]
+    fn resize_reaches_the_console() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.session.resize(123, 41).unwrap();
+        probe.send("mode con\r\n");
+        probe.expect("123");
+        probe.session.close();
+        probe.assert_reaped();
+    }
+
+    #[test]
+    fn idle_close_and_repeated_close_converge() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.session.close();
+        probe.session.close();
+        probe.assert_reaped();
+        assert_eq!(probe.exit, Some(Some(1)));
+        assert!(probe.session.write(b"echo late\r\n".to_vec()).is_err());
+    }
+
+    #[test]
+    fn close_during_output_converges_within_budget() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send(LOOP);
+        assert!(probe.pump(DEADLINE, true, |probe| probe.output.len() > 128 * 1024));
+        probe.session.close();
+        probe.assert_reaped();
+        assert!(probe.session.peak_pending_bytes() <= OUTPUT_BUDGET);
+    }
+
+    #[test]
+    fn ctrl_c_interrupts_running_output() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send(LOOP);
+        assert!(probe.pump(DEADLINE, true, |probe| probe.output.len() > 64 * 1024));
+        probe.send("\x03");
+        probe.send("echo P0_%OS%_AFTER_CTRL_C\r\n");
+        probe.expect("P0_Windows_NT_AFTER_CTRL_C");
+        probe.session.close();
+        probe.assert_reaped();
+    }
+
+    #[test]
+    fn unacknowledged_output_stops_at_budget_then_times_out() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send(LOOP);
+        let full = probe.pump(DEADLINE, false, |probe| {
+            !probe.session.flow_state().has_room()
+        });
+        assert!(full, "producer never reached the ACK budget");
+        assert!(probe.session.peak_pending_bytes() <= OUTPUT_BUDGET);
+        let timed_out = probe.pump(ACK_TIMEOUT + Duration::from_secs(5), false, |probe| {
+            probe.errors.iter().any(|error| error.contains("timed out"))
+        });
+        assert!(timed_out, "errors: {:?}", probe.errors);
+        probe.assert_reaped();
+    }
+
+    #[test]
+    fn reload_closes_and_reaps_the_shell() {
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.sessions.reload_owner("win");
+        probe.assert_reaped();
+    }
+
+    #[test]
+    fn detached_children_are_reaped_on_close_and_natural_exit() {
+        for natural in [false, true] {
+            let mut probe = Probe::open();
+            probe.ready();
+            probe.send("start \"\" /B ping -n 60 127.0.0.1 >NUL\r\n");
+            probe.send("echo P0_%OS%_STARTED\r\n");
+            probe.expect("P0_Windows_NT_STARTED");
+            let spawned = probe.pump(DEADLINE, true, |probe| {
+                probe.session.live_processes().unwrap() >= 2
+            });
+            assert!(spawned, "detached child never joined the job");
+            if natural {
+                probe.send("exit 7\r\n");
+                assert!(probe.pump(DEADLINE, true, |probe| probe.exit.is_some()));
+                assert_eq!(probe.exit, Some(Some(7)));
+            } else {
+                probe.session.close();
+            }
+            probe.assert_reaped();
+        }
+    }
+
+    #[test]
+    fn twelve_open_output_close_reap_cycles() {
+        for cycle in 0..12 {
+            let mut probe = Probe::open();
+            probe.ready();
+            probe.session.close();
+            probe.assert_reaped();
+            assert!(
+                probe.sessions.registry.lock().unwrap().sessions.len() <= 1,
+                "cycle {cycle}"
+            );
+            probe.sessions.shutdown();
         }
     }
 }

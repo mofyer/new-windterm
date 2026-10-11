@@ -1,12 +1,20 @@
 //! Platform policy for the P0 local shell. Shared session/ACK logic stays in pty.
-//! macOS and Linux use Unix PTYs. Windows awaits a cancellable ConPTY adapter.
+//! macOS and Linux use Unix PTYs. Windows uses ConPTY with blocking pipes, a
+//! kill-on-close Job Object and pseudoconsole release after the shell exits.
 use portable_pty::{CommandBuilder, MasterPty};
 
-const UNSUPPORTED: &str =
-    "P0 local PTY is enabled on macOS and Linux; the cancellable Windows ConPTY adapter is pending";
+#[cfg(windows)]
+#[path = "platform_windows.rs"]
+pub(crate) mod windows;
+
+const UNSUPPORTED: &str = "P0 local PTY is enabled on macOS, Linux and Windows only";
 
 pub(crate) fn ensure_supported() -> Result<(), String> {
-    if cfg!(any(target_os = "macos", target_os = "linux")) {
+    if cfg!(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows"
+    )) {
         Ok(())
     } else {
         Err(UNSUPPORTED.into())
@@ -25,9 +33,28 @@ pub(crate) fn configure_io(master: &dyn MasterPty) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// ConPTY pipes stay blocking: Windows readiness polling only works for
+/// sockets. The session unblocks the reader by releasing the pseudoconsole.
+#[cfg(target_os = "windows")]
+pub(crate) fn configure_io(_master: &dyn MasterPty) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub(crate) fn configure_io(_master: &dyn MasterPty) -> Result<(), String> {
     Err(UNSUPPORTED.into())
+}
+
+/// Windows device-namespace paths (`\\.\pipe\…`, `\\.\COM1`, `\\?\GLOBALROOT…`)
+/// name pipes and devices rather than files; opening one can consume a pipe
+/// instance or block. Always false on Unix, where paths have no prefix.
+pub(crate) fn is_device_path(path: &std::path::Path) -> bool {
+    use std::path::{Component, Prefix};
+    matches!(
+        path.components().next(),
+        Some(Component::Prefix(prefix))
+            if matches!(prefix.kind(), Prefix::DeviceNS(_) | Prefix::Verbatim(_))
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -216,13 +243,15 @@ pub(crate) struct CancelReadiness;
 impl CancelReadiness {
     pub(crate) fn cancel(&self) {}
 }
+// Blocking ConPTY reads never report WouldBlock, so `wait` is unreachable in
+// practice; it fails closed rather than spinning if that ever changes.
 #[cfg(all(feature = "pty-readiness", not(unix)))]
 impl Readiness {
     pub(crate) fn new(_master: &dyn MasterPty) -> Result<(Self, CancelReadiness), String> {
-        Err(UNSUPPORTED.into())
+        Ok((Self, CancelReadiness))
     }
     pub(crate) fn wait(&self, _timeout: std::time::Duration) -> Result<(), String> {
-        Err(UNSUPPORTED.into())
+        Err("PTY readiness waiting is not available for blocking ConPTY pipes".into())
     }
 }
 
@@ -264,12 +293,27 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn pending_adapter_still_rejects_windows_before_allocating_a_pty() {
-        let sessions = crate::pty::Sessions::default();
-        let error = sessions
-            .open("main", 80, 24, std::sync::Arc::new(|_| Ok(())))
-            .unwrap_err();
-        assert_eq!(error, UNSUPPORTED);
+    fn device_namespace_paths_are_not_files() {
+        for path in [
+            r"\\.\pipe\p0-key",
+            r"\\.\COM1",
+            r"\\?\GLOBALROOT\Device\Null",
+        ] {
+            assert!(is_device_path(std::path::Path::new(path)), "{path}");
+        }
+        for path in [
+            r"C:\Users\p0\key",
+            r"\\?\C:\Users\p0\key",
+            r"\\server\share\key",
+        ] {
+            assert!(!is_device_path(std::path::Path::new(path)), "{path}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_paths_never_have_a_device_prefix() {
+        assert!(!is_device_path(std::path::Path::new("/dev/null")));
     }
 
     #[cfg(unix)]
@@ -316,7 +360,7 @@ mod tests {
     #[test]
     fn windows_command_disables_autorun_and_echoes() {
         let command = local_command().unwrap();
-        assert!(ensure_supported().is_err());
+        assert!(ensure_supported().is_ok());
         assert_eq!(
             command.get_argv().as_slice(),
             &[
