@@ -2,7 +2,19 @@
 
 日期：2026-10-11。最终目标仍是三平台完整功能一致；交付顺序保持 macOS Apple Silicon 优先，Windows/Linux 后续。本文区分代码适配、编译、真实 PTY 和 GUI 验收，不能以 CI 绿色代替整个平台可用。
 
-## 当前轮：交互 SSH 与 readiness（第三次 CI 通过）
+## 当前轮：Windows 取消钩子预备代码（第四次 CI 通过）
+
+提交 `9dbf8acb8cd14f3590087f7fbdd218255acaa8a1` 的 [run 38116705227](https://github.com/mofyer/new-windterm/actions/runs/38116705227) **success**：三端前端资源、fmt/check/test/clippy 和桌面链接均通过；macOS/Linux 默认与 readiness PTY 通过，Windows 两项真实 PTY 继续 skipped。Windows-only `ChildKiller` 仅作为未来 ConPTY 取消生命周期的预备钩子，Windows 平台拒绝策略没有解除。
+
+| 实际 host / job | 单元 passed / failed / ignored | SSH target | 前端 / fmt / check / test / clippy / link | 默认 / readiness PTY |
+| --- | ---: | ---: | --- | --- |
+| [aarch64-apple-darwin](https://github.com/mofyer/new-windterm/actions/runs/38116705227/job/114402901901) | 28 / 0 / 1 | 10/10 | 全部 success | success / success |
+| [x86_64-unknown-linux-gnu](https://github.com/mofyer/new-windterm/actions/runs/38116705227/job/114402901871) | 27 / 0 / 1 | 10/10 | 全部 success | success / success |
+| [x86_64-pc-windows-msvc](https://github.com/mofyer/new-windterm/actions/runs/38116705227/job/114402901784) | 25 / 0 / 1 | 10/10 | 全部 success | skipped / skipped |
+
+本次回执只证明 Windows 条件编译和现有拒绝策略保持健康；没有证明同步 ConPTY reader 可在关闭后收敛、子进程树可完整回收或 Windows 真实终端可用。下一步仍需按[ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)增加 Windows idle close、reader join 和进程树验收。
+
+## 历史当前轮：交互 SSH 与 readiness（第三次 CI 通过）
 
 当前提交 `8ee49a49a970fbb364c6b2ca463cd4e10fdd1acf` 的第三次 [run 38113572772](https://github.com/mofyer/new-windterm/actions/runs/38113572772) **success**：三端前端资源、fmt/check/test/clippy 和桌面链接均通过，Mac/Linux 默认与 readiness PTY 均通过，Windows 两项 PTY 明确跳过。Windows 最小修订已独立审查通过；前两次 failure 及各自部分通过结果继续保留于下文。
 
