@@ -180,3 +180,132 @@ mod tests {
         assert!(is_pty_eof(&std::io::Error::from_raw_os_error(libc::EIO)));
     }
 }
+
+/// Experimental cancellation socket, independent of the PTY descriptor lifetime.
+#[cfg(all(feature = "pty-readiness", unix))]
+pub(crate) struct Readiness {
+    descriptor: std::os::fd::OwnedFd,
+    cancel: std::os::unix::net::UnixStream,
+}
+
+#[cfg(all(feature = "pty-readiness", unix))]
+pub(crate) struct CancelReadiness(std::os::unix::net::UnixStream);
+
+#[cfg(all(feature = "pty-readiness", unix))]
+impl CancelReadiness {
+    pub(crate) fn cancel(&self) {
+        // Shutdown is idempotent, cannot fill a pipe, and wakes poll via HUP/EOF.
+        let _ = self.0.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+#[cfg(all(feature = "pty-readiness", unix))]
+impl Readiness {
+    pub(crate) fn new(master: &dyn MasterPty) -> Result<(Self, CancelReadiness), String> {
+        use std::os::fd::FromRawFd;
+        let fd = master.as_raw_fd().ok_or("PTY has no native descriptor")?;
+        // SAFETY: master owns fd for this call. CLOEXEC prevents the duplicate
+        // from keeping the master alive in the spawned shell.
+        let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+        if duplicate < 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        // SAFETY: fcntl returned a new descriptor, owned exactly once here.
+        let descriptor = unsafe { std::os::fd::OwnedFd::from_raw_fd(duplicate) };
+        let (cancel, sender) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
+        Ok((Self { descriptor, cancel }, CancelReadiness(sender)))
+    }
+
+    pub(crate) fn wait(&self, timeout: std::time::Duration) -> Result<(), String> {
+        use std::os::fd::AsRawFd;
+        let mut descriptors = [
+            libc::pollfd {
+                fd: self.descriptor.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: self.cancel.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: both descriptors and the array remain live for the call. A
+        // bounded wait allows the shared reader loop to recheck the ACK deadline.
+        // Round sub-millisecond deadlines up to avoid a zero-timeout spin.
+        let result = unsafe {
+            libc::poll(
+                descriptors.as_mut_ptr(),
+                2,
+                timeout.as_millis().clamp(1, i32::MAX as u128) as i32,
+            )
+        };
+        if result < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                return Err(format!("PTY readiness failed: {error}"));
+            }
+        }
+        if descriptors
+            .iter()
+            .any(|fd| fd.revents & libc::POLLNVAL != 0)
+        {
+            return Err("PTY readiness descriptor invalid".into());
+        }
+        // POLLHUP/POLLERR return to read, which retains the existing EOF policy.
+        Ok(())
+    }
+}
+
+#[cfg(all(feature = "pty-readiness", not(unix)))]
+pub(crate) struct Readiness;
+#[cfg(all(feature = "pty-readiness", not(unix)))]
+pub(crate) struct CancelReadiness;
+#[cfg(all(feature = "pty-readiness", not(unix)))]
+impl CancelReadiness {
+    pub(crate) fn cancel(&self) {}
+}
+#[cfg(all(feature = "pty-readiness", not(unix)))]
+impl Readiness {
+    pub(crate) fn new(_master: &dyn MasterPty) -> Result<(Self, CancelReadiness), String> {
+        Err(UNSUPPORTED.into())
+    }
+    pub(crate) fn wait(&self, _timeout: std::time::Duration) -> Result<(), String> {
+        Err(UNSUPPORTED.into())
+    }
+}
+
+#[cfg(all(test, feature = "pty-readiness", unix))]
+mod readiness_tests {
+    use super::*;
+    use std::{io::Write, os::fd::OwnedFd, os::unix::net::UnixStream, sync::mpsc, time::Duration};
+
+    #[test]
+    fn poll_wakes_for_input_and_idempotent_cancellation() {
+        for cancel_instead_of_input in [false, true] {
+            let (input, mut output) = UnixStream::pair().unwrap();
+            let (cancel, sender) = UnixStream::pair().unwrap();
+            let readiness = Readiness {
+                descriptor: OwnedFd::from(input),
+                cancel,
+            };
+            let cancellation = CancelReadiness(sender);
+            let (done, receiver) = mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                done.send(readiness.wait(Duration::from_secs(5))).unwrap();
+            });
+            std::thread::sleep(Duration::from_millis(30));
+            if cancel_instead_of_input {
+                cancellation.cancel();
+                cancellation.cancel();
+            } else {
+                output.write_all(b"x").unwrap();
+            }
+            receiver
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap();
+            worker.join().unwrap();
+        }
+    }
+}

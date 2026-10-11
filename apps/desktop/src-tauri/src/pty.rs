@@ -30,6 +30,10 @@ struct Diagnostics {
     budget_sleeps: AtomicU64,
     budget_sleep_ns: AtomicU64,
     read_sleep_ns: AtomicU64,
+    readiness_waits: AtomicU64,
+    readiness_wait_ns: AtomicU64,
+    capacity_waits: AtomicU64,
+    capacity_wait_ns: AtomicU64,
     sink_ns: AtomicU64,
     flow_locks: AtomicU64,
     flow_lock_wait_ns: AtomicU64,
@@ -128,6 +132,10 @@ pub struct Session {
     #[cfg(feature = "pty-diagnostics")]
     diagnostics: Diagnostics,
     flow: Mutex<Flow>,
+    #[cfg(feature = "pty-readiness")]
+    capacity: Condvar,
+    #[cfg(feature = "pty-readiness")]
+    cancel_readiness: platform::CancelReadiness,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     input: SyncSender<Vec<u8>>,
     done: (Mutex<bool>, Condvar),
@@ -171,6 +179,16 @@ impl Session {
             ("budget_sleeps", d.budget_sleeps.load(Ordering::Relaxed)),
             ("budget_sleep_ns", d.budget_sleep_ns.load(Ordering::Relaxed)),
             ("read_sleep_ns", d.read_sleep_ns.load(Ordering::Relaxed)),
+            ("readiness_waits", d.readiness_waits.load(Ordering::Relaxed)),
+            (
+                "readiness_wait_ns",
+                d.readiness_wait_ns.load(Ordering::Relaxed),
+            ),
+            ("capacity_waits", d.capacity_waits.load(Ordering::Relaxed)),
+            (
+                "capacity_wait_ns",
+                d.capacity_wait_ns.load(Ordering::Relaxed),
+            ),
             ("sink_ns", d.sink_ns.load(Ordering::Relaxed)),
             ("flow_locks", d.flow_locks.load(Ordering::Relaxed)),
             (
@@ -225,7 +243,10 @@ impl Session {
     }
 
     pub fn ack(&self, sequence: u64) -> Result<(), String> {
-        self.flow_state().ack(sequence)
+        let result = self.flow_state().ack(sequence);
+        #[cfg(feature = "pty-readiness")]
+        self.capacity.notify_one();
+        result
     }
 
     pub fn is_closed(&self) -> bool {
@@ -239,6 +260,11 @@ impl Session {
     /// Idempotent cancellation. The reader worker owns wait/reaping.
     pub fn close(&self) {
         self.flow_state().close();
+        #[cfg(feature = "pty-readiness")]
+        {
+            self.capacity.notify_all();
+            self.cancel_readiness.cancel();
+        }
         self.master
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -419,6 +445,8 @@ fn spawn_local_session(
         .openpty(size)
         .map_err(|e| e.to_string())?;
     platform::configure_io(pair.master.as_ref())?;
+    #[cfg(feature = "pty-readiness")]
+    let (readiness, cancel_readiness) = platform::Readiness::new(pair.master.as_ref())?;
     let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
     let child = pair
@@ -432,6 +460,10 @@ fn spawn_local_session(
         #[cfg(feature = "pty-diagnostics")]
         diagnostics: Diagnostics::default(),
         flow: Mutex::new(Flow::default()),
+        #[cfg(feature = "pty-readiness")]
+        capacity: Condvar::new(),
+        #[cfg(feature = "pty-readiness")]
+        cancel_readiness,
         master: Mutex::new(Some(pair.master)),
         input,
         done: (Mutex::new(false), Condvar::new()),
@@ -441,6 +473,8 @@ fn spawn_local_session(
         id.to_owned(),
         sink,
         reader,
+        #[cfg(feature = "pty-readiness")]
+        readiness,
         writer,
         receiver,
         child,
@@ -448,11 +482,13 @@ fn spawn_local_session(
     Ok(session)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn launch_workers(
     session: Arc<Session>,
     id: String,
     sink: EventSink,
     mut reader: Box<dyn Read + Send>,
+    #[cfg(feature = "pty-readiness")] readiness: platform::Readiness,
     writer: Box<dyn Write + Send>,
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
@@ -464,11 +500,20 @@ fn launch_workers(
         thread::spawn(move || writer_loop(write_session, writer, receiver, write_sink, write_id));
     let read_id = id;
     thread::spawn(move || {
-        if let Err(message) = reader_loop(&session, reader.as_mut(), &sink, &read_id) {
+        if let Err(message) = reader_loop(
+            &session,
+            reader.as_mut(),
+            &sink,
+            &read_id,
+            #[cfg(feature = "pty-readiness")]
+            &readiness,
+        ) {
             terminal_error(&sink, &read_id, message);
         }
         let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
         drop(reader);
+        #[cfg(feature = "pty-readiness")]
+        drop(readiness);
         let writer_reaped = writer_worker.join().is_ok();
         if !writer_reaped {
             terminal_error(
@@ -542,6 +587,7 @@ fn reader_loop(
     reader: &mut dyn Read,
     sink: &EventSink,
     read_id: &str,
+    #[cfg(feature = "pty-readiness")] readiness: &platform::Readiness,
 ) -> Result<(), String> {
     let mut buffer = [0; CHUNK_BYTES];
     loop {
@@ -564,20 +610,51 @@ fn reader_loop(
                         u64::from(flow.pending.len() >= MAX_IN_FLIGHT),
                         Ordering::Relaxed,
                     );
+                    #[cfg(not(feature = "pty-readiness"))]
                     session
                         .diagnostics
                         .budget_sleeps
                         .fetch_add(1, Ordering::Relaxed);
                 }
-                drop(flow);
                 #[cfg(feature = "pty-diagnostics")]
                 let started = Instant::now();
-                thread::sleep(Duration::from_millis(5));
-                #[cfg(feature = "pty-diagnostics")]
-                session
-                    .diagnostics
-                    .budget_sleep_ns
-                    .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                #[cfg(feature = "pty-readiness")]
+                {
+                    // Predicate is tested under the same mutex as ACK/close;
+                    // no notification can be lost between test and sleep.
+                    let timeout = flow.pending.front().map_or(ACK_TIMEOUT, |(_, _, at)| {
+                        ACK_TIMEOUT.saturating_sub(at.elapsed())
+                    });
+                    drop(
+                        session
+                            .capacity
+                            .wait_timeout_while(flow, timeout, |flow| {
+                                !flow.closed && !flow.has_room() && !flow.timed_out()
+                            })
+                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    );
+                    #[cfg(feature = "pty-diagnostics")]
+                    {
+                        session
+                            .diagnostics
+                            .capacity_waits
+                            .fetch_add(1, Ordering::Relaxed);
+                        session
+                            .diagnostics
+                            .capacity_wait_ns
+                            .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                    }
+                }
+                #[cfg(not(feature = "pty-readiness"))]
+                {
+                    drop(flow);
+                    thread::sleep(Duration::from_millis(5));
+                    #[cfg(feature = "pty-diagnostics")]
+                    session
+                        .diagnostics
+                        .budget_sleep_ns
+                        .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                }
                 continue;
             }
         }
@@ -640,13 +717,38 @@ fn reader_loop(
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 #[cfg(feature = "pty-diagnostics")]
                 let started = Instant::now();
+                #[cfg(feature = "pty-readiness")]
+                {
+                    let timeout = session.flow_state().pending.front().map_or(
+                        Duration::from_millis(250),
+                        |(_, _, at)| {
+                            ACK_TIMEOUT
+                                .saturating_sub(at.elapsed())
+                                .min(Duration::from_millis(250))
+                        },
+                    );
+                    readiness.wait(timeout)?;
+                }
+                #[cfg(not(feature = "pty-readiness"))]
                 thread::sleep(Duration::from_millis(5));
                 #[cfg(feature = "pty-diagnostics")]
                 {
+                    #[cfg(feature = "pty-readiness")]
+                    {
+                        session
+                            .diagnostics
+                            .readiness_waits
+                            .fetch_add(1, Ordering::Relaxed);
+                        session
+                            .diagnostics
+                            .readiness_wait_ns
+                            .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                    }
                     session
                         .diagnostics
                         .would_block
                         .fetch_add(1, Ordering::Relaxed);
+                    #[cfg(not(feature = "pty-readiness"))]
                     session
                         .diagnostics
                         .read_sleep_ns
@@ -808,5 +910,60 @@ mod tests {
         assert!(checked_size(0, 24).is_err());
         assert!(checked_size(80, 501).is_err());
         assert!(checked_size(120, 40).is_ok());
+    }
+    #[cfg(all(
+        feature = "pty-readiness",
+        any(target_os = "macos", target_os = "linux")
+    ))]
+    #[test]
+    fn capacity_wait_resumes_on_ack_and_cancels_while_full() {
+        for acknowledge in [true, false] {
+            let sessions = Sessions::default();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let id = sessions
+                .open(
+                    "readiness-test",
+                    80,
+                    24,
+                    Arc::new(move |event| sender.send(event).map_err(|e| e.to_string())),
+                )
+                .unwrap();
+            let session = sessions.get("readiness-test", &id).unwrap();
+            session
+                .write(b"head -c 131072 /dev/zero\n".to_vec())
+                .unwrap();
+            let started = Instant::now();
+            while session.flow_state().has_room() && started.elapsed() < Duration::from_secs(3) {
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert!(
+                !session.flow_state().has_room(),
+                "fixture did not reach capacity"
+            );
+            let before = session.flow_state().sent;
+            if acknowledge {
+                while let Ok(event) = receiver.try_recv() {
+                    if let PtyEvent::Data { sequence, .. } = event {
+                        session.ack(sequence).unwrap();
+                    }
+                }
+                let resumed = Instant::now();
+                while session.flow_state().sent == before
+                    && resumed.elapsed() < Duration::from_secs(1)
+                {
+                    thread::sleep(Duration::from_millis(2));
+                }
+                assert!(
+                    session.flow_state().sent > before,
+                    "ACK did not resume producer"
+                );
+            }
+            session.close();
+            assert!(
+                session.wait_closed(Duration::from_secs(2)),
+                "capacity cancellation did not reap"
+            );
+            sessions.shutdown();
+        }
     }
 }

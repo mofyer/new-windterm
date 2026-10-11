@@ -28,6 +28,7 @@ libc = "=0.2.180"
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 pty-diagnostics = []
+pty-readiness = []
 
 [[bin]]
 name = "pty_diagnose"
