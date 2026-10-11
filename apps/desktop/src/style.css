@@ -296,3 +296,13 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 .ssh-changed p { margin: 0; }
 .ssh-changed button { justify-self: start; }
 #ssh-verification-dialog select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }
+
+/* Telnet / Raw TCP connection sheet (desktop only). */
+#net-terminal-dialog [hidden] { display: none; }
+#net-terminal-dialog fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+#net-terminal-dialog .dialog-heading h2 { margin-bottom: 0; }
+#net-terminal-dialog #net-close { align-self: flex-start; min-width: 36px; min-height: 36px; }
+#net-terminal-dialog select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }
+#net-error { margin: 10px 0 0; color: #ad3f46; overflow-wrap: anywhere; }
+#net-error:empty { display: none; }
+[data-theme="dark"] #net-error { color: #e7aaaa; }

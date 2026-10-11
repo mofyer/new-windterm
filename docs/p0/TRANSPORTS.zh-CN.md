@@ -1,6 +1,6 @@
 # 其它连接类型：Telnet、Raw TCP、串口（C02、C03、C04）
 
-日期：2026-10-11。状态：**Telnet 编解码器有单元测试；Raw TCP 与串口只有方案。均无界面，不代表验收。**
+日期：2026-10-11。状态：**Telnet 与 Raw TCP 已接入桌面终端标签（见 [NET_TERMINAL](NET_TERMINAL.zh-CN.md)），只用测试内 TCP 服务器和 IPC stub 验证；串口只有方案。均不代表验收。**
 
 ## Telnet（C02）
 
@@ -13,11 +13,11 @@
 
 单元测试（3 项）：一段混合了协商、文本、0xFF、`CR NUL`、TTYPE 请求、未知选项和 UTF-8 的服务端数据，在每个切分点和逐字节输入下结果完全一致，应答序列逐字节符合预期；重复请求不循环、ECHO 状态可跟踪、NAWS 只在协商后发送；输出转义正确，超长子协商被忽略。
 
-未完成：TCP 传输与终端标签接入、对真实 telnetd 与网络设备（交换机、路由器登录）的互操作、Linemode、编码选项，以及 WindTerm 2.7.0 的 Telnet 配置项对照。
+TCP 传输与终端标签已由 `net_terminal.rs` 接入，见 [NET_TERMINAL](NET_TERMINAL.zh-CN.md)。未完成：对真实 telnetd 与网络设备（交换机、路由器登录）的互操作、Linemode、编码选项，以及 WindTerm 2.7.0 的 Telnet 配置项对照。
 
 ## Raw TCP（C03）
 
-Raw TCP 是在 TCP 连接与终端之间原样搬运字节，不做协议处理。实现会复用现有终端数据路径（有界队列、Channel、逐块 ACK）和本地转发中的双向搬运与半关闭处理，本轮没有单独编写代码。验收需要覆盖编码、关闭行为（对端关闭时提示、本地关闭时发送 FIN）与二进制数据完整性。
+Raw TCP 是在 TCP 连接与终端之间原样搬运字节，不做协议处理。`net_terminal.rs` 复用现有终端数据路径（有界队列、Channel、逐块 ACK），对 0x00–0xFF 的二进制完整性、对端关闭提示和本地关闭发送 FIN 有测试内服务器验证，见 [NET_TERMINAL](NET_TERMINAL.zh-CN.md)。仍未完成：UTF-8 以外的编码、会话保存，以及与真实服务的互操作。
 
 ## 串口（C04）
 
