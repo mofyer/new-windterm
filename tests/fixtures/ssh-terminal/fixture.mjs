@@ -102,6 +102,20 @@ async function cleanup() {
         await delay(25);
       }
       for (const pid of [...descendants].reverse()) signal(pid, 'SIGKILL');
+      // A channel process can be reparented by sshd before the tree walk. Its
+      // command line still contains only this private fixture root, so reap
+      // those exact wrapper/generator/config matches without broad UID kills.
+      const ownedMarkers = [join(root, 'interactive.sh'), join(root, 'generator.mjs'), join(root, 'dispatch.sh'), join(root, 'sshd_config')];
+      const ownedListing = spawnSync('/bin/ps', ['-axo', 'pid=,uid=,command='], { encoding: 'utf8', timeout: 2000, maxBuffer: 1024 * 1024 });
+      if (ownedListing.status === 0) {
+        for (const line of ownedListing.stdout.split('\n')) {
+          const fields = line.trim().split(/\s+/);
+          const pid = Number(fields.shift());
+          const uid = Number(fields.shift());
+          const command = fields.join(' ');
+          if (pid > 1 && pid !== process.pid && uid === process.getuid?.() && ownedMarkers.some(marker => command.includes(marker))) signal(pid, 'SIGKILL');
+        }
+      }
       const deadline = Date.now() + 2500;
       while (daemon.exitCode === null && daemon.signalCode === null && Date.now() < deadline) await delay(25);
       if (daemon.exitCode === null && daemon.signalCode === null) signal(daemon.pid, 'SIGKILL');
