@@ -25,8 +25,18 @@
 
 初次运行时转发数据往返失败。排查发现原因在测试夹具：russh 服务端会把**所有通道**的数据都交给 `Handler::data`，而夹具的行式 shell 把转发字节当作命令处理，单行超过 256 字节时断开整个会话。修复后夹具只处理交互 shell 所在通道的数据，原有 SSH 集成测试仍为 13/13。转发代码使用与终端相同的 `wait`/`data` 读写两半，并显式处理 EOF 与关闭。
 
+## 经代理连接与 ProxyCommand（C07、C19、C20）
+
+[`ssh_proxy.rs`](../../apps/desktop/src-tauri/src/ssh_proxy.rs) 把三种连接方式都变成一条字节流，再交给与直连相同的“固定主机密钥 + 认证”流程：
+
+- **HTTP CONNECT 代理**：可选 Basic 认证；逐字节读取响应头（≤ 8 KiB），不会吞掉隧道里的数据；非 200 响应原样报告状态行。
+- **SOCKS5 代理**：无认证或用户名/密码（RFC 1929）；IPv4、IPv6、域名目标；失败时报告代理返回的错误码。
+- **ProxyCommand**：**不经过 shell**，自行按空白与引号拆分参数（单引号原样、双引号支持 `\"` 与 `\\`），只替换 `%h`、`%p`、`%r`、`%%`，其它 `%` 序列直接拒绝；`;` 等 shell 语法只是普通参数。子进程的 stdin/stdout 经阻塞线程桥接为异步流，进程对象释放时结束并回收子进程。没有为此启用 tokio 的 `process` 特性，避免引入新依赖。
+
+实测（`cargo test --lib proxy`）：经 HTTP 代理读到的主机密钥与真实密钥一致，并能完成认证、在 shell 中 exit 7；带认证的 HTTP 代理在缺少凭据时返回 407，提供凭据后成功；SOCKS5 有/无登录都成功，密码错误被拒；`/usr/bin/nc %h %p` 作为 ProxyCommand 完成会话，释放后子进程不再存在，不存在的命令报错。ProxyCommand 测试只在有 `/usr/bin/nc` 的 Unix 上运行。
+
 ## 未完成
 
-- 远端转发（`ssh -R`，C17）、agent 转发（C10）、X11（C15）、HTTP/SOCKS5 代理连接（C19/C20）、ProxyCommand（C07）、ControlMaster（C06）。
+- 远端转发（`ssh -R`，C17）、agent 转发（C10）、X11（C15）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。代理与 ProxyCommand 尚无界面和配置，代理只在本机测试代理上验证。
 - 转发与跳板没有界面、配置保存、状态显示和错误提示；监听地址只允许回环。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

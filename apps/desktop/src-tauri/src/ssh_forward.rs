@@ -271,7 +271,7 @@ pub(crate) async fn through(
 #[cfg(test)]
 #[path = "../tests/support/ssh_terminal_fixture.rs"]
 #[allow(dead_code)]
-mod fixture;
+pub(crate) mod fixture;
 
 #[cfg(test)]
 mod tests {
