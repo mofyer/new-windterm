@@ -31,9 +31,15 @@ async function probe(page: Page) {
       terminal.reset();
       let response = '';
       const listener = terminal.onData((data: string) => response += data);
-      await write('\x1b[62;1"p\x1b[c'); // DECSCL selects VT200; primary DA should identify class 62.
+      await write('\x1bP$q"p\x1b\\');
+      const before = response;
+      response = '';
+      await write('\x1b[62;1"p\x1bP$q"p\x1b\\'); // Select VT200, then query conformance.
+      const after = response;
+      response = '';
+      await write('\x1b[c'); // Device identity alone does not establish DECSCL support.
       listener.dispose();
-      return { utf8, color, alternate, restored, vt52, decsclPrimaryDA: response };
+      return { utf8, color, alternate, restored, vt52, decscl: { before, after, primaryDA: response } };
     } finally {
       terminal.dispose(); holder.remove();
     }
@@ -57,8 +63,9 @@ test('known gap: xterm VT52 cursor addressing does not match requested row and c
   await testInfo.attach('vt52-gap.json', { body: JSON.stringify({ actual: result.vt52, expected: { row: 1, col: 4 } }, null, 2), contentType: 'application/json' });
   expect(result.vt52).not.toMatchObject({ row: 1, col: 4 });
 });
-test('known gap: DECSCL selecting VT200 does not change primary DA to class 62', async ({ page }, testInfo) => {
+test('known gap: DECSCL selecting VT200 leaves conformance query fixed at VT100', async ({ page }, testInfo) => {
   const result = await probe(page);
-  await testInfo.attach('decscl-gap.json', { body: JSON.stringify({ actual: result.decsclPrimaryDA, expectedPrefix: '\\x1b[?62' }, null, 2), contentType: 'application/json' });
-  expect(result.decsclPrimaryDA).not.toMatch(/^\x1b\[\?62[;c]/);
+  await testInfo.attach('decscl-gap.json', { body: JSON.stringify({ ...result.decscl, requestedConformance: '62;1"p', note: 'xterm 6 InputHandler.requestStatusString hardcodes 61;1"p and documents DECSCL unsupported; DA is identity only.' }, null, 2), contentType: 'application/json' });
+  expect(result.decscl.before).toBe('\x1bP1$r61;1"p\x1b\\');
+  expect(result.decscl.after).toBe(result.decscl.before);
 });

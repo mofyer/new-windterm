@@ -1,5 +1,6 @@
 import type { Terminal, ITheme } from "@xterm/xterm";
 import { createWorkspaceTerminal } from "./terminal";
+import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { FitAddon } from "@xterm/addon-fit";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
@@ -82,12 +83,12 @@ if (!["light", "dark", "system"].includes(themeChoice)) themeChoice = "light";
 const colors = (): ITheme =>
   document.documentElement.dataset.theme === "dark"
     ? {
-        background: "#112626", foreground: "#e0eeeb", cursor: "#85dcba",
-        selectionBackground: "#315b50", black: "#4c6863", red: "#f3a4a1",
-        green: "#9ed5b2", yellow: "#e7d394", blue: "#9ec6e6", magenta: "#ceb3d6",
-        cyan: "#92d7d3", white: "#e0eeeb", brightBlack: "#9fb7b1", brightRed: "#ffc0b5",
-        brightGreen: "#b8e8c6", brightYellow: "#f3e2b0", brightBlue: "#c0def2",
-        brightMagenta: "#e7c7ea", brightCyan: "#b6e9e1", brightWhite: "#ffffff",
+        background: "#111315", foreground: "#dce0e6", cursor: "#a5c5cc",
+        selectionBackground: "#34434c", black: "#757c87", red: "#d99999",
+        green: "#a4bfa2", yellow: "#c7b78c", blue: "#a2b7d2", magenta: "#b7a4c6",
+        cyan: "#9fbdc4", white: "#dce0e6", brightBlack: "#a1a8b3", brightRed: "#e7aaaa",
+        brightGreen: "#b7cfb4", brightYellow: "#d9c99e", brightBlue: "#b5c8df",
+        brightMagenta: "#cbb6d8", brightCyan: "#b5d1d7", brightWhite: "#f0f2f5",
       }
     : {
         background: "#ffffff", foreground: "#2d3748", cursor: "#16834b",
@@ -130,22 +131,42 @@ let toastTimer = 0;
 function active() {
   return sessions.get(activeKey);
 }
+const statusElements = {
+  state: $("#terminal-state"),
+  size: $("#terminal-size"),
+  detail: $("#session-detail"),
+  sample: $("#sample-run") as HTMLButtonElement,
+  stress: $("#stress-run") as HTMLButtonElement,
+};
+let statusTimer: number | undefined;
+function scheduleStatusUpdate() {
+  if (statusTimer !== undefined) return;
+  statusTimer = window.setTimeout(updateStatus, 100);
+}
 function updateStatus() {
+  window.clearTimeout(statusTimer);
+  statusTimer = undefined;
+  if (diagnostics) diagnostics.statusFlushes++;
   const s = active();
-  $("#terminal-state").textContent = s
+  const state = s
     ? `${s.mode === "demo" ? "◌ 演示" : "● 本机 PTY"} · ${s.status}`
     : "无打开的会话";
-  $("#terminal-size").textContent = s
+  const size = s
     ? `${s.terminal.cols} × ${s.terminal.rows} · ${s.bytes.toLocaleString()} B 接收`
     : "";
-  $("#session-detail").textContent = s
+  const detail = s
     ? s.mode === "demo"
       ? "演示环境 / 不执行系统命令"
       : "本机 shell / 输入将实际执行"
     : "";
-  ($("#sample-run") as HTMLButtonElement).disabled = !s || s.mode !== "demo";
-  ($("#stress-run") as HTMLButtonElement).disabled = !s || s.mode !== "demo";
+  if (statusElements.state.textContent !== state) statusElements.state.textContent = state;
+  if (statusElements.size.textContent !== size) statusElements.size.textContent = size;
+  if (statusElements.detail.textContent !== detail) statusElements.detail.textContent = detail;
+  const disabled = !s || s.mode !== "demo";
+  if (statusElements.sample.disabled !== disabled) statusElements.sample.disabled = disabled;
+  if (statusElements.stress.disabled !== disabled) statusElements.stress.disabled = disabled;
 }
+
 function paintSessions() {
   const query = ($("#session-search") as HTMLInputElement).value.toLowerCase();
   $("#tabs").replaceChildren();
@@ -223,7 +244,7 @@ function stress(s: Session) {
     const bytes = encoder.encode(block);
     s.bytes += bytes.length;
     s.terminal.write(bytes, () => {
-      updateStatus();
+      if (s.key === activeKey) scheduleStatusUpdate();
       if (n < 20000 && s.outputRun === run) window.setTimeout(step, 8);
       else if (s.outputRun === run) {
         s.status = `20,000 行样本结束 · ${(performance.now() - start).toFixed(0)} ms（非性能验收）`;
@@ -292,10 +313,18 @@ function sendInput(s: Session, bytes: Uint8Array) {
     return;
   }
   s.pendingInput += bytes.length;
+  const enqueuedAt = diagnostics ? performance.now() : 0;
+  if (diagnostics) {
+    diagnostics.inputEvents++;
+    diagnostics.pendingInputBytes += bytes.length;
+    diagnostics.maxPendingInputBytes = Math.max(diagnostics.maxPendingInputBytes, diagnostics.pendingInputBytes);
+  }
   s.input = s.input
     .then(async () => {
+      if (diagnostics) diagnostics.maxInputWaitMs = Math.max(diagnostics.maxInputWaitMs, performance.now() - enqueuedAt);
       for (let offset = 0; offset < bytes.length; offset += 4096) {
         if (s.disposed || s.ended) return;
+        if (diagnostics) diagnostics.inputCalls++;
         await invoke("pty_write", {
           id,
           data: Array.from(bytes.subarray(offset, offset + 4096)),
@@ -305,6 +334,7 @@ function sendInput(s: Session, bytes: Uint8Array) {
     .catch((error) => backendError(s, error))
     .finally(() => {
       s.pendingInput -= bytes.length;
+      if (diagnostics) diagnostics.pendingInputBytes -= bytes.length;
     });
 }
 function backendError(s: Session, error: unknown) {
@@ -400,14 +430,29 @@ async function openPty(s: Session) {
     if (s.disposed) return;
     if (event.kind === "data") {
       s.bytes += event.data.length;
+      const receivedAt = diagnostics ? performance.now() : 0;
+      if (diagnostics) {
+        diagnostics.receivedChunks++;
+        diagnostics.receivedBytes += event.data.length;
+      }
       s.terminal.write(new Uint8Array(event.data), () => {
         if (s.disposed) return;
+        const parsedAt = diagnostics ? performance.now() : 0;
+        if (diagnostics) {
+          diagnostics.parsedChunks++;
+          diagnostics.maxParseWaitMs = Math.max(diagnostics.maxParseWaitMs, parsedAt - receivedAt);
+        }
         s.ack = s.ack
-          .then(() =>
-            invoke("pty_ack", { id: event.id, sequence: event.sequence }),
-          )
+          .then(async () => {
+            if (diagnostics) {
+              diagnostics.ackSubmitted++;
+              diagnostics.maxAckQueueWaitMs = Math.max(diagnostics.maxAckQueueWaitMs, performance.now() - parsedAt);
+            }
+            await invoke("pty_ack", { id: event.id, sequence: event.sequence });
+            if (diagnostics) diagnostics.ackCompleted++;
+          })
           .catch((error) => backendError(s, error));
-        updateStatus();
+        if (s.key === activeKey) scheduleStatusUpdate();
       });
     } else if (event.kind === "exit") {
       s.ended = true;
@@ -720,6 +765,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 window.addEventListener("beforeunload", () => {
+  window.clearTimeout(statusTimer);
   for (const s of sessions.values()) {
     s.disposed = true;
     s.outputRun++;
