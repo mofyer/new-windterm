@@ -25,6 +25,15 @@
 
 初次运行时转发数据往返失败。排查发现原因在测试夹具：russh 服务端会把**所有通道**的数据都交给 `Handler::data`，而夹具的行式 shell 把转发字节当作命令处理，单行超过 256 字节时断开整个会话。修复后夹具只处理交互 shell 所在通道的数据，原有 SSH 集成测试仍为 13/13。转发代码使用与终端相同的 `wait`/`data` 读写两半，并显式处理 EOF 与关闭。
 
+## 远端转发与 agent 转发（C17、C10）
+
+服务端主动打开的通道过去会被 russh 客户端的默认实现**全部接受**（session、direct-tcpip、forwarded-tcpip、agent、X11）。现在 `KeyCheck` 持有每条连接的路由表，只接受两类通道：
+
+- **远端转发（`ssh -R`）**：`remote()` 向服务端申请监听并登记“远端地址:端口 → 本地目标”；只有登记过的 `forwarded-tcpip` 通道会被接受并连到本地目标（5 秒连接期限），其余一律拒绝。固定端口先登记再申请，服务端选择的端口在应答后登记；`cancel_remote()` 移除路由并取消监听。
+- **agent 转发**：只有该连接显式开启后，才接受服务端的 agent 通道并连到本机 agent（Unix `SSH_AUTH_SOCK`，Windows OpenSSH agent 命名管道）；默认拒绝。
+
+其余服务端主动打开的通道一律拒绝。实测（russh 夹具）：远端转发 2 路往返一致；移除路由后服务端打开的通道被拒绝、服务端连接无数据关闭；取消后服务端不再监听；绑定 `0.0.0.0` 被拒绝。agent 转发未开启时服务端得到 `AGENT REFUSED`；开启后经转发通道查到临时 agent 中的 1 把公钥。
+
 ## 经代理连接与 ProxyCommand（C07、C19、C20）
 
 [`ssh_proxy.rs`](../../apps/desktop/src-tauri/src/ssh_proxy.rs) 把三种连接方式都变成一条字节流，再交给与直连相同的“固定主机密钥 + 认证”流程：
@@ -37,6 +46,6 @@
 
 ## 未完成
 
-- 远端转发（`ssh -R`，C17）、agent 转发（C10）、X11（C15）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。代理与 ProxyCommand 尚无界面和配置，代理只在本机测试代理上验证。
+- X11 转发（C15，需要本机 X 服务）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。远端与 agent 转发尚无界面，远端监听只在回环地址上验证。代理与 ProxyCommand 尚无界面和配置，代理只在本机测试代理上验证。
 - 转发与跳板没有界面、配置保存、状态显示和错误提示；监听地址只允许回环。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

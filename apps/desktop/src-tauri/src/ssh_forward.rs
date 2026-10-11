@@ -3,7 +3,7 @@
 //! local port forwarding, a SOCKS5 dynamic forward and jump-host hops. Every
 //! hop is a separate SSH session pinned to its own confirmed host key. No UI
 //! or persistence yet; callers own the sessions.
-use super::{connect_pinned, observe_host_key, Credential, KeyCheck, Request};
+use super::{connect_pinned, observe_host_key, Credential, KeyCheck, Request, Routes};
 use russh::{client, keys::PublicKey};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -131,7 +131,7 @@ async fn relay(
 /// write side, and the channel closes once both directions finished. Uses the
 /// split `wait`/`data` halves, the same I/O path as the terminal, so EOF and
 /// close are explicit rather than implied by stream shutdown.
-async fn pump<S>(channel: russh::Channel<client::Msg>, io: S)
+pub(crate) async fn pump<S>(channel: russh::Channel<client::Msg>, io: S)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send,
 {
@@ -237,6 +237,55 @@ async fn socks5_request(client: &mut TcpStream) -> Result<(String, u16), String>
         return Err("Only SOCKS5 CONNECT is supported".into());
     }
     Ok((host, u16::from_be_bytes(port)))
+}
+
+/// `ssh -R`: asks the server to listen on `bind_address:bind_port` (0 lets
+/// it choose) and relays each connection to `host:port` on this side. Only
+/// routed connections are accepted; returns the port the server bound.
+pub(crate) async fn remote(
+    session: &client::Handle<KeyCheck>,
+    routes: &Routes,
+    bind_address: &str,
+    bind_port: u32,
+    host: &str,
+    port: u16,
+) -> Result<u32, String> {
+    let route = (host.to_string(), port);
+    let key = |port: u32| (bind_address.to_string(), port);
+    let table = || routes.remote.lock().unwrap_or_else(|e| e.into_inner());
+    // A fixed port is routed before the request so no early connection is
+    // refused; a server-chosen port is known only from the reply.
+    if bind_port != 0 {
+        table().insert(key(bind_port), route.clone());
+    }
+    match session.tcpip_forward(bind_address, bind_port).await {
+        Ok(bound) => {
+            let bound = if bind_port == 0 { bound } else { bind_port };
+            table().insert(key(bound), route);
+            Ok(bound)
+        }
+        Err(_) => {
+            table().remove(&key(bind_port));
+            Err("Server refused the remote forward".into())
+        }
+    }
+}
+
+pub(crate) async fn cancel_remote(
+    session: &client::Handle<KeyCheck>,
+    routes: &Routes,
+    bind_address: &str,
+    port: u32,
+) -> Result<(), String> {
+    routes
+        .remote
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&(bind_address.to_string(), port));
+    session
+        .cancel_tcpip_forward(bind_address, port)
+        .await
+        .map_err(|_| "Server refused to cancel the remote forward".into())
 }
 
 /// Reads the next hop's host key through `jump`, for the user to confirm.
@@ -524,6 +573,123 @@ mod tests {
             .await;
             assert!(ended.is_ok(), "channel survived the master disconnect");
         }
+        server.stop().await;
+    }
+
+    async fn routed(server: &fixture::Fixture) -> (Arc<client::Handle<KeyCheck>>, Arc<Routes>) {
+        let routes = Arc::new(Routes::default());
+        let stream = TcpStream::connect(("127.0.0.1", server.port))
+            .await
+            .unwrap();
+        let (_, cancel) = watch::channel(false);
+        let ssh = super::super::connect_routed(
+            stream,
+            &request(server),
+            pin(server),
+            &Credential::default(),
+            cancel,
+            routes.clone(),
+        )
+        .await
+        .unwrap();
+        (Arc::new(ssh), routes)
+    }
+
+    #[tokio::test]
+    async fn remote_forward_routes_only_registered_ports() {
+        let mut server = fixture::Fixture::start().await;
+        let target = echo().await;
+        let (ssh, routes) = routed(&server).await;
+        let bound = remote(&ssh, &routes, "127.0.0.1", 0, "127.0.0.1", target)
+            .await
+            .unwrap();
+        assert!(bound > 0);
+        let results = futures_join(SocketAddr::from(([127, 0, 0, 1], bound as u16)), 2).await;
+        assert_eq!(results, vec![true; 2]);
+
+        // Without a route the client refuses the server's channel; the
+        // server-side connection closes without data.
+        routes.remote.lock().unwrap().clear();
+        let mut orphan = TcpStream::connect(("127.0.0.1", bound as u16))
+            .await
+            .unwrap();
+        let mut byte = [0; 1];
+        let read = tokio::time::timeout(Duration::from_secs(5), orphan.read(&mut byte))
+            .await
+            .unwrap();
+        assert_eq!(read.unwrap_or(0), 0);
+
+        routes
+            .remote
+            .lock()
+            .unwrap()
+            .insert(("127.0.0.1".into(), bound), ("127.0.0.1".into(), target));
+        cancel_remote(&ssh, &routes, "127.0.0.1", bound)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            TcpStream::connect(("127.0.0.1", bound as u16))
+                .await
+                .is_err(),
+            "server still listening"
+        );
+        assert!(remote(&ssh, &routes, "0.0.0.0", 0, "127.0.0.1", target)
+            .await
+            .is_err());
+        assert!(routes.remote.lock().unwrap().is_empty());
+        server.stop().await;
+    }
+
+    /// Agent forwarding is refused unless enabled for the connection, and
+    /// then reaches a private temporary ssh-agent (never the user's).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agent_forwarding_requires_explicit_enablement() {
+        if !std::path::Path::new("/usr/bin/ssh-agent").exists() {
+            eprintln!("skipped: /usr/bin/ssh-agent is not installed");
+            return;
+        }
+        let mut server = fixture::Fixture::start().await;
+        let socket = std::env::temp_dir().join(format!(
+            "p0-fwd-agent-{}.sock",
+            &uuid::Uuid::new_v4().to_string()[..8]
+        ));
+        let mut agent = std::process::Command::new("/usr/bin/ssh-agent")
+            .args(["-D", "-a"])
+            .arg(&socket)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        for _ in 0..100 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let added = std::process::Command::new("/usr/bin/ssh-add")
+            .arg(&server.key_path)
+            .env("SSH_AUTH_SOCK", &socket)
+            .output()
+            .unwrap();
+        assert!(added.status.success());
+        let previous = std::env::var_os("SSH_AUTH_SOCK");
+        std::env::set_var("SSH_AUTH_SOCK", &socket);
+        let (ssh, routes) = routed(&server).await;
+        let mut channel = shell(&ssh, 80).await;
+        channel.agent_forward(true).await.unwrap();
+        let refused = ask(&mut channel, b"agent\n", "AGENT REFUSED").await;
+        routes.agent.store(true, Ordering::SeqCst);
+        let forwarded = ask(&mut channel, b"agent\n", "AGENT 1 KEYS").await;
+        match previous {
+            Some(value) => std::env::set_var("SSH_AUTH_SOCK", value),
+            None => std::env::remove_var("SSH_AUTH_SOCK"),
+        }
+        let _ = agent.kill();
+        let _ = agent.wait();
+        let _ = std::fs::remove_file(&socket);
+        assert!(refused, "agent channel accepted while disabled");
+        assert!(forwarded, "forwarded agent did not answer");
         server.stop().await;
     }
 

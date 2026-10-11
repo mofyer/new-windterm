@@ -246,6 +246,7 @@ async fn connect(
             mismatch: mismatch.clone(),
             kex_seen: false,
             rekey_rejected: rekey_rejected.clone(),
+            routes: Arc::default(),
         };
         let config = Arc::new(client::Config {
             inactivity_timeout: None,

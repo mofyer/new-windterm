@@ -107,7 +107,7 @@ impl Fixture {
                             auth_rejection_time_initial: Some(Duration::ZERO),
                             ..Default::default()
                         });
-                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shells: Default::default(), round: 0, output: None };
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shells: Default::default(), round: 0, listeners: Default::default(), agent_requested: false, output: None };
                         count.fetch_add(1, Ordering::SeqCst);
                         connections.spawn(async move {
                             let _guard = guard;
@@ -171,10 +171,17 @@ struct Handler {
     shells: std::collections::HashMap<ChannelId, ((u32, u32), Vec<u8>)>,
     /// Keyboard-interactive progress: 0 none, 1 password asked, 2 code asked.
     round: u8,
+    /// Remote-forward listeners by bound port.
+    listeners: std::collections::HashMap<u32, JoinHandle<()>>,
+    /// Whether the client asked for agent forwarding on a session channel.
+    agent_requested: bool,
     output: Option<JoinHandle<()>>,
 }
 impl Drop for Handler {
     fn drop(&mut self) {
+        for (_, listener) in self.listeners.drain() {
+            listener.abort();
+        }
         if let Some(output) = self.output.take() {
             output.abort();
         }
@@ -196,6 +203,71 @@ impl server::Handler for Handler {
                 server::Auth::reject()
             },
         )
+    }
+    /// Remote forwarding on loopback: each accepted connection is offered back
+    /// to the client as a forwarded-tcpip channel and relayed.
+    async fn tcpip_forward(
+        &mut self,
+        address: &str,
+        port: &mut u32,
+        session: &mut server::Session,
+    ) -> Result<bool, Self::Error> {
+        let Ok(requested) = u16::try_from(*port) else {
+            return Ok(false);
+        };
+        if address != "127.0.0.1" {
+            return Ok(false);
+        }
+        let Ok(listener) = TcpListener::bind(("127.0.0.1", requested)).await else {
+            return Ok(false);
+        };
+        let bound = u32::from(listener.local_addr().unwrap().port());
+        *port = bound;
+        let handle = session.handle();
+        let address = address.to_string();
+        self.listeners.insert(
+            bound,
+            tokio::spawn(async move {
+                while let Ok((mut stream, peer)) = listener.accept().await {
+                    let (handle, address) = (handle.clone(), address.clone());
+                    tokio::spawn(async move {
+                        let opened = handle
+                            .channel_open_forwarded_tcpip(
+                                address,
+                                bound,
+                                peer.ip().to_string(),
+                                u32::from(peer.port()),
+                            )
+                            .await;
+                        if let Ok(channel) = opened {
+                            let mut channel = channel.into_stream();
+                            let _ = tokio::io::copy_bidirectional(&mut channel, &mut stream).await;
+                        }
+                    });
+                }
+            }),
+        );
+        Ok(true)
+    }
+    async fn cancel_tcpip_forward(
+        &mut self,
+        _address: &str,
+        port: u32,
+        _session: &mut server::Session,
+    ) -> Result<bool, Self::Error> {
+        Ok(self
+            .listeners
+            .remove(&port)
+            .map(|listener| listener.abort())
+            .is_some())
+    }
+    async fn agent_request(
+        &mut self,
+        _channel: ChannelId,
+        _session: &mut server::Session,
+    ) -> Result<bool, Self::Error> {
+        self.agent_requested = true;
+        Ok(true)
     }
     /// Two rounds: password (no echo), then a verification code (echo).
     async fn auth_keyboard_interactive<'a>(
@@ -411,6 +483,34 @@ impl server::Handler for Handler {
                         }
                         let _ = handle.data(channel, b"\r\nLARGE_DONE\r\n> ".to_vec()).await;
                     }));
+                }
+                b"agent" => {
+                    // Asks the client's agent, through a forwarded agent
+                    // channel, how many identities it holds.
+                    let handle = session.handle();
+                    let requested = self.agent_requested;
+                    tokio::spawn(async move {
+                        let reply = if !requested {
+                            "AGENT OFF".to_string()
+                        } else {
+                            match handle.channel_open_agent().await {
+                                Ok(agent) => {
+                                    let mut client =
+                                        russh::keys::agent::client::AgentClient::connect(
+                                            agent.into_stream(),
+                                        );
+                                    match client.request_identities().await {
+                                        Ok(keys) => format!("AGENT {} KEYS", keys.len()),
+                                        Err(_) => "AGENT ERROR".into(),
+                                    }
+                                }
+                                Err(_) => "AGENT REFUSED".into(),
+                            }
+                        };
+                        let _ = handle
+                            .data(channel, format!("{reply}\r\n> ").into_bytes())
+                            .await;
+                    });
                 }
                 b"exit" => {
                     self.shells.remove(&channel);

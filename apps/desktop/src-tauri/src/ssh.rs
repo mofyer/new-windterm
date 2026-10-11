@@ -448,6 +448,7 @@ impl Ssh {
                 mismatch: Arc::default(),
                 kex_seen: false,
                 rekey_rejected: Arc::default(),
+                routes: Arc::default(),
             };
             // Deliberately reject every unknown key. No user authentication occurs.
             let _ = client::connect_stream(config(), stream, handler).await;
@@ -829,12 +830,23 @@ fn config() -> Arc<client::Config> {
 }
 
 type Observed = Arc<Mutex<Option<PublicKey>>>;
+/// Server-initiated channels this connection may accept. Everything not
+/// listed here (sessions, direct-tcpip, X11, streamlocal) is refused.
+#[derive(Default)]
+pub(crate) struct Routes {
+    /// Remote forwards: (bind address, bound port) → local host and port.
+    pub(crate) remote: Mutex<HashMap<(String, u32), (String, u16)>>,
+    /// Agent forwarding, enabled per connection by an explicit user choice.
+    pub(crate) agent: std::sync::atomic::AtomicBool,
+}
+
 pub(crate) struct KeyCheck {
     expected: Option<Vec<u8>>,
     observed: Observed,
     mismatch: Arc<std::sync::atomic::AtomicBool>,
     kex_seen: bool,
     rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
+    routes: Arc<Routes>,
 }
 impl client::Handler for KeyCheck {
     type Error = russh::Error;
@@ -853,6 +865,89 @@ impl client::Handler for KeyCheck {
             return Err(russh::Error::UnknownKey);
         }
         self.kex_seen = true;
+        Ok(())
+    }
+    // russh accepts server-initiated channels by default; dropping the reply
+    // refuses them. Only registered routes are accepted.
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let route = self
+            .routes
+            .remote
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&(connected_address.to_string(), connected_port))
+            .cloned();
+        let Some((host, port)) = route else {
+            return Ok(());
+        };
+        let connect = TcpStream::connect((host.as_str(), port));
+        let Ok(Ok(target)) = tokio::time::timeout(Duration::from_secs(5), connect).await else {
+            return Ok(());
+        };
+        reply.accept().await;
+        tokio::spawn(forward::pump(channel, target));
+        Ok(())
+    }
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        if !self.routes.agent.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(());
+        }
+        #[cfg(unix)]
+        let agent = match std::env::var_os("SSH_AUTH_SOCK") {
+            Some(path) => tokio::net::UnixStream::connect(path).await.ok(),
+            None => None,
+        };
+        #[cfg(windows)]
+        let agent = tokio::net::windows::named_pipe::ClientOptions::new()
+            .open(r"\\.\pipe\openssh-ssh-agent")
+            .ok();
+        let Some(agent) = agent else { return Ok(()) };
+        reply.accept().await;
+        tokio::spawn(forward::pump(channel, agent));
+        Ok(())
+    }
+    async fn server_channel_open_session(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn server_channel_open_direct_tcpip(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _host_to_connect: &str,
+        _port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn server_channel_open_x11(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _originator_address: &str,
+        _originator_port: u32,
+        _reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn check_server_key(
@@ -956,6 +1051,7 @@ async fn execute(
         mismatch: mismatch.clone(),
         kex_seen: false,
         rekey_rejected: rekey_rejected.clone(),
+        routes: Arc::default(),
     };
     let mut session = client::connect_stream(config(), stream, handler)
         .await
@@ -1064,6 +1160,7 @@ async fn connect_sftp(
         mismatch: mismatch.clone(),
         kex_seen: false,
         rekey_rejected: rekey_rejected.clone(),
+        routes: Arc::default(),
     };
     let mut session = client::connect_stream(config(), stream, handler)
         .await
@@ -1111,6 +1208,23 @@ pub(crate) async fn connect_pinned<S>(
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    connect_routed(stream, request, key, credential, cancel, Arc::default()).await
+}
+
+/// As [`connect_pinned`], with the caller keeping `routes` to register
+/// remote and agent forwarding for this connection later.
+#[cfg_attr(not(test), allow(dead_code))] // P0 probe; no UI consumer yet
+pub(crate) async fn connect_routed<S>(
+    stream: S,
+    request: &Request,
+    key: Vec<u8>,
+    credential: &Credential,
+    cancel: watch::Receiver<bool>,
+    routes: Arc<Routes>,
+) -> Result<client::Handle<KeyCheck>, String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
         expected: Some(key),
@@ -1118,6 +1232,7 @@ where
         mismatch: mismatch.clone(),
         kex_seen: false,
         rekey_rejected: Arc::default(),
+        routes,
     };
     let mut session = client::connect_stream(config(), stream, handler)
         .await
@@ -1147,6 +1262,7 @@ where
         mismatch: Arc::default(),
         kex_seen: false,
         rekey_rejected: Arc::default(),
+        routes: Arc::default(),
     };
     let _ = client::connect_stream(config(), stream, handler).await;
     let key = observed.lock().map_err(|_| "SSH state unavailable")?.take();
@@ -1474,6 +1590,7 @@ mod tests {
             mismatch: mismatch.clone(),
             kex_seen: false,
             rekey_rejected: Arc::default(),
+            routes: Arc::default(),
         };
         assert!(!handler.check_server_key(&public).await.unwrap());
         assert!(mismatch.load(std::sync::atomic::Ordering::Relaxed));
