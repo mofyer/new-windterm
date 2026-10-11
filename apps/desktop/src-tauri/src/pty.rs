@@ -1136,6 +1136,11 @@ mod windows_tests {
         }
 
         fn ready(&mut self) {
+            // ConPTY (PSEUDOCONSOLE_INHERIT_CURSOR) asks for the cursor position
+            // and waits for the reply before rendering; xterm.js answers this
+            // in the app, so the probe answers as a terminal would.
+            self.expect("\x1b[6n");
+            self.send("\x1b[1;1R");
             self.send("echo P0_%OS%_READY\r\n");
             self.expect("P0_Windows_NT_READY");
         }
