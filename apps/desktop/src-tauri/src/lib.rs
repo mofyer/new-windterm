@@ -1,5 +1,6 @@
 mod platform;
 pub mod pty;
+pub mod ssh;
 
 use pty::{PtyEvent, Sessions};
 use serde::Serialize;
@@ -9,6 +10,60 @@ use tauri::{ipc::Channel, Manager, State, WebviewWindow};
 #[derive(Serialize)]
 struct Opened {
     id: String,
+}
+
+#[tauri::command]
+fn ssh_context(window: WebviewWindow, service: State<'_, Arc<ssh::Ssh>>) -> Result<String, String> {
+    service.context(window.label())
+}
+
+#[tauri::command]
+async fn ssh_probe(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    request: ssh::Request,
+    operation_id: String,
+    scope_token: String,
+) -> Result<ssh::Challenge, String> {
+    service
+        .probe(window.label(), &operation_id, request, &scope_token)
+        .await
+}
+
+#[tauri::command]
+async fn ssh_accept(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+) -> Result<ssh::Output, String> {
+    service
+        .accept(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+        )
+        .await
+}
+
+#[tauri::command]
+fn ssh_reject(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+) -> Result<(), String> {
+    service.reject(window.label(), &challenge_token)
+}
+
+#[tauri::command]
+fn ssh_cancel(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    operation_id: String,
+) -> Result<(), String> {
+    service.cancel(window.label(), &operation_id)
 }
 
 #[tauri::command]
@@ -80,19 +135,33 @@ async fn pty_close(
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(Sessions::default()))
+        .manage(Arc::new(ssh::Ssh::default()))
         .invoke_handler(tauri::generate_handler![
-            pty_open, pty_write, pty_resize, pty_ack, pty_close
+            ssh_context,
+            pty_open,
+            pty_write,
+            pty_resize,
+            pty_ack,
+            pty_close,
+            ssh_probe,
+            ssh_accept,
+            ssh_reject,
+            ssh_cancel
         ])
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
                 webview
                     .state::<Arc<Sessions>>()
                     .reload_owner(webview.label());
+                webview
+                    .state::<Arc<ssh::Ssh>>()
+                    .close_owner(webview.label());
             }
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_owner(window.label());
+                window.state::<Arc<ssh::Ssh>>().close_owner(window.label());
             }
         })
         .build(tauri::generate_context!())
@@ -100,6 +169,7 @@ pub fn run() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 app.state::<Arc<Sessions>>().shutdown();
+                app.state::<Arc<ssh::Ssh>>().shutdown();
             }
         });
 }

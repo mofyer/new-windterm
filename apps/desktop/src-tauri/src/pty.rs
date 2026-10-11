@@ -13,6 +13,33 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "pty-diagnostics")]
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Aggregate-only instrumentation, compiled out of normal application builds.
+#[cfg(feature = "pty-diagnostics")]
+#[derive(Default)]
+struct Diagnostics {
+    read_calls: AtomicU64,
+    read_ns: AtomicU64,
+    read_bytes: AtomicU64,
+    read_sizes: [AtomicU64; 7],
+    would_block: AtomicU64,
+    byte_stalls: AtomicU64,
+    chunk_stalls: AtomicU64,
+    budget_sleeps: AtomicU64,
+    budget_sleep_ns: AtomicU64,
+    read_sleep_ns: AtomicU64,
+    sink_ns: AtomicU64,
+    flow_locks: AtomicU64,
+    flow_lock_wait_ns: AtomicU64,
+}
+
+#[cfg(feature = "pty-diagnostics")]
+fn elapsed_ns(start: Instant) -> u64 {
+    start.elapsed().as_nanos().min(u64::MAX as u128) as u64
+}
+
 pub const CHUNK_BYTES: usize = 4096;
 pub const OUTPUT_BUDGET: usize = 64 * 1024;
 const MAX_IN_FLIGHT: usize = 64;
@@ -98,6 +125,8 @@ impl Flow {
 
 pub struct Session {
     owner: String,
+    #[cfg(feature = "pty-diagnostics")]
+    diagnostics: Diagnostics,
     flow: Mutex<Flow>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     input: SyncSender<Vec<u8>>,
@@ -106,7 +135,17 @@ pub struct Session {
 
 impl Session {
     fn flow_state(&self) -> std::sync::MutexGuard<'_, Flow> {
-        match self.flow.lock() {
+        #[cfg(feature = "pty-diagnostics")]
+        let started = Instant::now();
+        let locked = self.flow.lock();
+        #[cfg(feature = "pty-diagnostics")]
+        {
+            self.diagnostics.flow_locks.fetch_add(1, Ordering::Relaxed);
+            self.diagnostics
+                .flow_lock_wait_ns
+                .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+        }
+        match locked {
             Ok(flow) => flow,
             Err(poisoned) => {
                 // Do not continue producing from potentially inconsistent counters.
@@ -116,6 +155,44 @@ impl Session {
                 flow
             }
         }
+    }
+
+    /// Cumulative counters since session creation; read after reaping for a stable snapshot.
+    #[cfg(feature = "pty-diagnostics")]
+    pub fn diagnostics(&self) -> std::collections::BTreeMap<&'static str, u64> {
+        let d = &self.diagnostics;
+        let mut result = std::collections::BTreeMap::from([
+            ("read_calls", d.read_calls.load(Ordering::Relaxed)),
+            ("read_ns", d.read_ns.load(Ordering::Relaxed)),
+            ("read_bytes", d.read_bytes.load(Ordering::Relaxed)),
+            ("would_block", d.would_block.load(Ordering::Relaxed)),
+            ("byte_stalls", d.byte_stalls.load(Ordering::Relaxed)),
+            ("chunk_stalls", d.chunk_stalls.load(Ordering::Relaxed)),
+            ("budget_sleeps", d.budget_sleeps.load(Ordering::Relaxed)),
+            ("budget_sleep_ns", d.budget_sleep_ns.load(Ordering::Relaxed)),
+            ("read_sleep_ns", d.read_sleep_ns.load(Ordering::Relaxed)),
+            ("sink_ns", d.sink_ns.load(Ordering::Relaxed)),
+            ("flow_locks", d.flow_locks.load(Ordering::Relaxed)),
+            (
+                "flow_lock_wait_ns",
+                d.flow_lock_wait_ns.load(Ordering::Relaxed),
+            ),
+        ]);
+        for (name, count) in [
+            "read_1_64",
+            "read_65_256",
+            "read_257_512",
+            "read_513_1024",
+            "read_1025_2048",
+            "read_2049_4095",
+            "read_4096",
+        ]
+        .into_iter()
+        .zip(&d.read_sizes)
+        {
+            result.insert(name, count.load(Ordering::Relaxed));
+        }
+        result
     }
 
     pub fn write(&self, data: Vec<u8>) -> Result<(), String> {
@@ -352,6 +429,8 @@ fn spawn_local_session(
     let (input, receiver) = sync_channel::<Vec<u8>>(16);
     let session = Arc::new(Session {
         owner: owner.to_owned(),
+        #[cfg(feature = "pty-diagnostics")]
+        diagnostics: Diagnostics::default(),
         flow: Mutex::new(Flow::default()),
         master: Mutex::new(Some(pair.master)),
         input,
@@ -475,14 +554,67 @@ fn reader_loop(
                 return Err("PTY output acknowledgement timed out (15 seconds)".into());
             }
             if !flow.has_room() {
+                #[cfg(feature = "pty-diagnostics")]
+                {
+                    session.diagnostics.byte_stalls.fetch_add(
+                        u64::from(flow.bytes + CHUNK_BYTES > OUTPUT_BUDGET),
+                        Ordering::Relaxed,
+                    );
+                    session.diagnostics.chunk_stalls.fetch_add(
+                        u64::from(flow.pending.len() >= MAX_IN_FLIGHT),
+                        Ordering::Relaxed,
+                    );
+                    session
+                        .diagnostics
+                        .budget_sleeps
+                        .fetch_add(1, Ordering::Relaxed);
+                }
                 drop(flow);
+                #[cfg(feature = "pty-diagnostics")]
+                let started = Instant::now();
                 thread::sleep(Duration::from_millis(5));
+                #[cfg(feature = "pty-diagnostics")]
+                session
+                    .diagnostics
+                    .budget_sleep_ns
+                    .fetch_add(elapsed_ns(started), Ordering::Relaxed);
                 continue;
             }
         }
-        match reader.read(&mut buffer) {
+        #[cfg(feature = "pty-diagnostics")]
+        let started = Instant::now();
+        let result = reader.read(&mut buffer);
+        #[cfg(feature = "pty-diagnostics")]
+        {
+            session
+                .diagnostics
+                .read_calls
+                .fetch_add(1, Ordering::Relaxed);
+            session
+                .diagnostics
+                .read_ns
+                .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+        }
+        match result {
             Ok(0) => return Ok(()),
             Ok(n) => {
+                #[cfg(feature = "pty-diagnostics")]
+                {
+                    let bucket = match n {
+                        1..=64 => 0,
+                        65..=256 => 1,
+                        257..=512 => 2,
+                        513..=1024 => 3,
+                        1025..=2048 => 4,
+                        2049..=4095 => 5,
+                        _ => 6,
+                    };
+                    session.diagnostics.read_sizes[bucket].fetch_add(1, Ordering::Relaxed);
+                    session
+                        .diagnostics
+                        .read_bytes
+                        .fetch_add(n as u64, Ordering::Relaxed);
+                }
                 let sequence = {
                     let mut flow = session.flow_state();
                     if flow.closed {
@@ -490,15 +622,36 @@ fn reader_loop(
                     }
                     flow.reserve(n)?
                 };
-                sink(PtyEvent::Data {
+                #[cfg(feature = "pty-diagnostics")]
+                let started = Instant::now();
+                let result = sink(PtyEvent::Data {
                     id: read_id.to_owned(),
                     sequence,
                     data: buffer[..n].to_vec(),
-                })?;
+                });
+                #[cfg(feature = "pty-diagnostics")]
+                session
+                    .diagnostics
+                    .sink_ns
+                    .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                result?;
             }
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(5))
+                #[cfg(feature = "pty-diagnostics")]
+                let started = Instant::now();
+                thread::sleep(Duration::from_millis(5));
+                #[cfg(feature = "pty-diagnostics")]
+                {
+                    session
+                        .diagnostics
+                        .would_block
+                        .fetch_add(1, Ordering::Relaxed);
+                    session
+                        .diagnostics
+                        .read_sleep_ns
+                        .fetch_add(elapsed_ns(started), Ordering::Relaxed);
+                }
             }
             Err(error) if platform::is_pty_eof(&error) => return Ok(()),
             Err(_) => return Err("PTY output read failed".into()),

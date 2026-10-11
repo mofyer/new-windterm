@@ -146,7 +146,7 @@ test('user supplied markup stays inert in host confirmation and session names', 
   const input = '<img src=x onerror=window.qaInjected=1>';
   await page.locator('#connect-open').click();
   await page.locator('[name=name]').fill(input);
-  await page.locator('[name=host]').fill(input);
+  await page.locator('#connect-form [name=host]').fill(input);
   await page.getByRole('button', { name: '预览主机确认', exact: true }).click();
   await expect(page.locator('#host-name')).toContainText(input);
   await page.locator('#host-confirm').click();
@@ -157,7 +157,7 @@ test('user supplied markup stays inert in host confirmation and session names', 
 for (const invalid of ['0', '65536', '']) {
   test(`port ${invalid || 'empty'} prevents confirmation`, async ({ page }) => {
     await page.locator('#connect-open').click();
-    await page.locator('[name=port]').fill(invalid);
+    await page.locator('#connect-form [name=port]').fill(invalid);
     await page.getByRole('button', { name: '预览主机确认', exact: true }).click();
     await expect(page.locator('#connect-dialog')).toBeVisible();
     await expect(page.locator('#host-dialog')).not.toBeVisible();
@@ -165,7 +165,7 @@ for (const invalid of ['0', '65536', '']) {
 }
 test('empty host prevents confirmation', async ({ page }) => {
   await page.locator('#connect-open').click();
-  await page.locator('[name=host]').fill('');
+  await page.locator('#connect-form [name=host]').fill('');
   await page.getByRole('button', { name: '预览主机确认', exact: true }).click();
   await expect(page.locator('#host-dialog')).not.toBeVisible();
 });

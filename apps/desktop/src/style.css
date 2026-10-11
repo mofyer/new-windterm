@@ -246,3 +246,24 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media (prefers-reduced-transparency: reduce) { dialog::backdrop { backdrop-filter: none; background: #18191ce6; } }
 @media (prefers-contrast: more) { :root { --muted: #45474b; --line: #83868b; } [data-theme="dark"] { --muted: #d4d6dc; --line: #858a93; } }
+
+/* The real SSH probe is separate from the demonstration connection sheet. */
+.ssh-verification-entry { width: 100%; min-height: 36px; color: var(--accent); }
+#ssh-verification-dialog { width: min(540px, calc(100% - 32px)); }
+#ssh-verification-dialog [hidden] { display: none; }
+#ssh-verification-dialog fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+#ssh-verification-dialog .dialog-heading h2 { margin-bottom: 0; }
+#ssh-verification-dialog .dialog-actions { flex-wrap: wrap; }
+#ssh-verification-dialog .dialog-actions button { min-height: 36px; }
+#ssh-verification-dialog #ssh-close { align-self: flex-start; min-width: 36px; min-height: 36px; }
+.ssh-identity { display: grid; gap: 10px; padding: 18px; margin-bottom: 16px; border-radius: 16px; background: var(--surface); box-shadow: var(--inset-shadow); overflow-wrap: anywhere; }
+.ssh-identity span { color: var(--muted); font-size: 12px; }
+.ssh-identity code { font-size: 12px; line-height: 1.7; user-select: all; }
+#ssh-status, #ssh-error { margin: 14px 0 0; overflow-wrap: anywhere; }
+#ssh-status:empty, #ssh-error:empty { display: none; }
+#ssh-error { color: #ad3f46; }
+[data-theme="dark"] #ssh-error { color: #e7aaaa; }
+#ssh-result h3 { font-size: 12px; font-weight: 600; margin: 14px 0 6px; }
+#ssh-result pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; padding: 12px; margin: 0 0 8px; border-radius: 12px; background: var(--surface); font-size: 12px; line-height: 1.6; user-select: text; }
+#ssh-result summary { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 8px; }
+#ssh-result summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

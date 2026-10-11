@@ -98,15 +98,15 @@ jobs:
 
       - name: Check all Rust targets
         id: rust_check
-        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-check.log"
+        run: cargo check --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-check.log"
 
       - name: Run Rust unit and platform policy tests
         id: rust_tests
-        run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
+        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
 
       - name: Run Clippy
         id: clippy
-        run: cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/p0-logs/clippy.log"
+        run: cargo clippy --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/p0-logs/clippy.log"
 
       - name: Link desktop executable (unsigned, no installer)
         id: desktop_build
