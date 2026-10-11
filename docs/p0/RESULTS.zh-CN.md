@@ -2,6 +2,10 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
+## X11 转发与 GSSAPI（C15/C14）决策记录
+
+russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项都不阻断当前路线。X11 将作为显式开启的第三种路由，采用不可信转发（假 cookie 替换）；GSSAPI 需要接系统 GSS（macOS GSS.framework、Linux libgssapi、Windows SSPI）。验证分别需要 XQuartz/Xvfb 与测试 Kerberos 领域，本机均不具备，未写实现代码。[决策记录与所需条件](X11_GSSAPI_ADR.zh-CN.md)
+
 ## Windows ConPTY 本地终端（工作分支 `p0/windows-conpty`）
 
 `platform::ensure_supported()` 不再拒绝 Windows。按 [ConPTY 决策记录](WINDOWS_CONPTY_ADR.zh-CN.md) 实现的生命周期：shell（`cmd.exe /D /Q /K`）启动后立即加入 kill-on-close Job Object；等待线程持有子进程，子进程退出后关闭 pseudoconsole，使阻塞的 `ReadFile` 在 conhost 刷完输出后得到 EOF；关闭会话即终止整个 Job；reader 结束后继续读取并丢弃输出直到 EOF，避免 portable-pty 自持读句柄时 conhost 卡在写满的管道上；启动 shell 前恢复正常 Ctrl+C 处理，防止继承“忽略 Ctrl+C”属性。前端在会话 ID 到达前暂存输入（≤ 4 KiB），保证 xterm 对 ConPTY 启动时光标位置查询（`ESC[6n`）的回复不会丢失，否则 Windows shell 会卡在启动阶段。私钥读取在 Windows 上拒绝设备命名空间路径，并要求打开后 `GetFileType == FILE_TYPE_DISK`。
