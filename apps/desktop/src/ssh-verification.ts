@@ -10,25 +10,28 @@ type Challenge = {
 };
 type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number };
 
-// A deliberately separate, one-command verification flow. It creates no session.
-export function createSshVerification() {
+export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string };
+
+// Trust is always explicit. The terminal callback synchronously reserves a tab
+// before consuming the one-use challenge; verification remains a separate flow.
+export function createSshVerification(openTerminal: (request: SshTerminalRequest) => boolean) {
   const dialog = document.createElement("dialog");
   dialog.id = "ssh-verification-dialog";
   dialog.setAttribute("aria-labelledby", "ssh-verification-title");
   dialog.innerHTML = `
-    <div class="dialog-heading"><div><span class="eyebrow">SSH · P0 验证</span><h2 id="ssh-verification-title">验证真实连接</h2></div><button type="button" id="ssh-close" aria-label="关闭 SSH 验证">✕</button></div>
-    <p>连接受控测试服务器，核对主机指纹后执行固定命令 <code>fixture-check</code>。此入口不提供交互终端或 SFTP。</p>
-    <p id="ssh-browser-note" hidden>真实 SSH 验证仅在 Tauri 桌面程序中可用。浏览器不会发起连接。</p>
+    <div class="dialog-heading"><div><span class="eyebrow">SSH · P0</span><h2 id="ssh-verification-title">验证真实连接</h2></div><button type="button" id="ssh-close" aria-label="关闭 SSH 连接窗口">✕</button></div>
+    <p id="ssh-description"></p>
+    <p id="ssh-browser-note" hidden>真实 SSH 仅在 Tauri 桌面程序中可用。浏览器不会发起连接。</p>
     <form id="ssh-verification-form" autocomplete="off">
-      <fieldset id="ssh-fields"><div class="form-row"><label>测试主机<input id="ssh-host" name="host" placeholder="127.0.0.1" maxlength="253" required spellcheck="false"/></label><label class="port">端口<input id="ssh-port" name="port" type="number" value="22" min="1" max="65535" required/></label></div>
+      <fieldset id="ssh-fields"><div class="form-row"><label>主机<input id="ssh-host" name="host" placeholder="127.0.0.1" maxlength="253" required spellcheck="false"/></label><label class="port">端口<input id="ssh-port" name="port" type="number" value="22" min="1" max="65535" required/></label></div>
       <label>SSH 用户名<input id="ssh-username" name="username" maxlength="64" required spellcheck="false"/></label>
-      <label>临时私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
-      <p class="caption">仅支持未加密的 Ed25519 测试密钥。输入文件路径，不粘贴私钥；路径不保存，密钥由桌面后端读取。</p></fieldset>
+      <label>私钥路径<input id="ssh-key-path" name="privateKeyPath" required spellcheck="false"/></label>
+      <p class="caption">P0 仅支持未加密的 Ed25519 密钥。输入文件路径，不粘贴私钥；路径不保存，密钥由桌面后端读取。</p></fieldset>
       <div class="dialog-actions"><button type="submit" id="ssh-probe" class="primary">检查主机指纹</button></div>
     </form>
     <section id="ssh-challenge" hidden aria-label="真实主机指纹">
       <div class="ssh-identity"><strong id="ssh-endpoint"></strong><span id="ssh-algorithm"></span><code id="ssh-fingerprint"></code></div>
-      <p>请通过可信渠道核对以上指纹。信任仅用于本次验证，不写入 known_hosts。</p>
+      <p>请通过可信渠道核对以上指纹。信任仅用于本次连接，不写入 known_hosts。</p>
       <p id="ssh-expiry"></p>
       <div class="dialog-actions"><button type="button" id="ssh-reject">拒绝并关闭</button><button type="button" id="ssh-accept" class="primary">仅本次信任并验证</button></div>
     </section>
@@ -48,6 +51,7 @@ export function createSshVerification() {
   const status = get("ssh-status");
   const error = get("ssh-error");
   const desktop = isTauri();
+  let purpose: "verification" | "terminal" = "verification";
   let revision = 0;
   let scopeToken: string | undefined;
   let operationId: string | undefined;
@@ -173,6 +177,19 @@ export function createSshVerification() {
     if (!scopeToken || !challenge || operationId || !dialog.open) return;
     if (Date.now() >= expiresAt) { expire(); return; }
     const token = challenge.challengeToken;
+    if (purpose === "terminal") {
+      const started = openTerminal({
+        challengeToken: token, scopeToken, operationId: crypto.randomUUID(),
+        name: `${challenge.host}:${challenge.port}`,
+      });
+      if (!started) {
+        error.textContent = "P0 最多同时打开 8 个会话。请先关闭一个会话，再信任并连接。";
+        return;
+      }
+      challenge = undefined; // Ownership moves to the terminal tab, including cancellation.
+      close();
+      return;
+    }
     const version = ++revision;
     const id = crypto.randomUUID();
     operationId = id;
@@ -229,8 +246,14 @@ export function createSshVerification() {
   });
   window.addEventListener("beforeunload", () => { release(); clear(); });
   return {
-    open() {
+    open(mode: "verification" | "terminal" = "verification") {
       if (dialog.open) return;
+      purpose = mode;
+      get("ssh-verification-title").textContent = mode === "terminal" ? "连接 SSH 终端" : "验证真实连接";
+      get("ssh-description").textContent = mode === "terminal"
+        ? "核对真实主机指纹后，建立交互式远端终端。输入会在服务器实际执行；文件面板与 SFTP 仍为演示。"
+        : "连接受控测试服务器，核对主机指纹后执行固定命令 fixture-check。此入口不提供交互终端或 SFTP。";
+      accept.textContent = mode === "terminal" ? "仅本次信任并打开终端" : "仅本次信任并验证";
       clear();
       resetView();
       get("ssh-browser-note").hidden = desktop;

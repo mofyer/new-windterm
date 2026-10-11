@@ -1,6 +1,6 @@
 import type { Terminal, ITheme } from "@xterm/xterm";
 import { createWorkspaceTerminal } from "./terminal";
-import { createSshVerification } from "./ssh-verification";
+import { createSshVerification, type SshTerminalRequest } from "./ssh-verification";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { FitAddon } from "@xterm/addon-fit";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
@@ -14,12 +14,14 @@ type PtyEvent =
 type Session = {
   key: number;
   name: string;
-  mode: "demo" | "pty";
+  mode: "demo" | "pty" | "ssh";
   terminal: Terminal;
   fit: FitAddon;
   element: HTMLElement;
   observer: ResizeObserver;
   ptyId?: string;
+  operationId?: string;
+  closing: boolean;
   line: string;
   disposed: boolean;
   outputRun: number;
@@ -60,10 +62,10 @@ $("#app").innerHTML = `
   <aside class="sidebar"><div class="sidebar-top"><span>会话</span><button id="sidebar-add" class="icon-button" aria-label="新建演示会话">${icon("plus")}</button></div><label class="session-search">${icon("search")}<input id="session-search" aria-label="筛选会话" placeholder="筛选会话"/></label><div class="section-label">已打开 <span id="session-count"></span></div><div id="session-list"></div><div class="sidebar-bottom"><label>${icon("settings")}外观<select id="theme" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><button id="compact-toggle">紧凑布局 <span>关</span></button></div></aside>
   <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")} /home/demo/project</div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性。</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">不读取本机或服务器文件。</p></aside></div><div class="terminal-status"><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列 <span class="badge" id="transfer-count">0</span></span><span id="transfer-summary">暂无任务 · 模拟交互 ${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
 </div>
-<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程。</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接。<br/>完整 SSH / SFTP 会话仍待实现。</span></div><button type="button" id="ssh-verification-open" class="ssh-verification-entry">打开真实 SSH 验证 · 仅桌面</button><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
+<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程。</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接。<br/>真实 SSH 请使用下方独立入口；SFTP 仍为演示。</span></div><button type="button" id="ssh-terminal-open" class="ssh-verification-entry">打开真实 SSH 终端 · 仅桌面</button><button type="button" id="ssh-verification-open" class="ssh-verification-entry">打开真实 SSH 验证 · 仅桌面</button><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
 <dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">HOST VERIFICATION · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
 <dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="你想执行什么操作？"/><kbd>ESC</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
-<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>一个可交互的起点</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>普通 SSH、SFTP 连接和文件传输仍为演示；独立 SSH 验证入口可在桌面核对真实指纹、认证并执行固定测试命令，不提供交互 SSH 或 SFTP。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
+<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>一个可交互的起点</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。演示会话、SFTP 与文件传输仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
 const sessions = new Map<number, Session>();
 let nextKey = 1,
   activeKey = 0,
@@ -150,7 +152,7 @@ function updateStatus() {
   if (diagnostics) diagnostics.statusFlushes++;
   const s = active();
   const state = s
-    ? `${s.mode === "demo" ? "◌ 演示" : "● 本机 PTY"} · ${s.status}`
+    ? `${s.mode === "demo" ? "◌ 演示" : s.mode === "ssh" ? "● SSH" : "● 本机 PTY"} · ${s.status}`
     : "无打开的会话";
   const size = s
     ? `${s.terminal.cols} × ${s.terminal.rows} · ${s.bytes.toLocaleString()} B 接收`
@@ -158,7 +160,7 @@ function updateStatus() {
   const detail = s
     ? s.mode === "demo"
       ? "演示环境 / 不执行系统命令"
-      : "本机 shell / 输入将实际执行"
+      : s.mode === "ssh" ? "远端 SSH / 输入将实际执行 · SFTP 仍为演示" : "本机 shell / 输入将实际执行"
     : "";
   if (statusElements.state.textContent !== state) statusElements.state.textContent = state;
   if (statusElements.size.textContent !== size) statusElements.size.textContent = size;
@@ -178,7 +180,7 @@ function paintSessions() {
     const button = document.createElement("button");
     button.setAttribute("role", "tab");
     button.setAttribute("aria-selected", String(s.key === activeKey));
-    button.textContent = `${s.mode === "pty" ? "›_" : "◌"}  ${s.name}`;
+    button.textContent = `${s.mode !== "demo" ? "›_" : "◌"}  ${s.name}`;
     button.onclick = () => selectSession(s.key);
     const close = document.createElement("button");
     close.className = "tab-close";
@@ -190,7 +192,7 @@ function paintSessions() {
     if (s.name.toLowerCase().includes(query)) {
       const row = document.createElement("button");
       row.className = `session-item ${s.key === activeKey ? "selected" : ""}`;
-      row.innerHTML = `${icon("terminal")}<span></span><small>${s.mode === "demo" ? "演示" : "本机"}</small>`;
+      row.innerHTML = `${icon("terminal")}<span></span><small>${s.mode === "demo" ? "演示" : s.mode === "ssh" ? "SSH" : "本机"}</small>`;
       row.querySelector("span")!.textContent = s.name;
       row.onclick = () => selectSession(s.key);
       $("#session-list").append(row);
@@ -308,7 +310,7 @@ function demoInput(s: Session, data: string) {
 }
 function sendInput(s: Session, bytes: Uint8Array) {
   const id = s.ptyId;
-  if (!id || s.disposed || s.ended) return;
+  if (!id || s.disposed || s.ended || s.closing) return;
   if (s.pendingInput + bytes.length > 65536) {
     toast("输入队列已满（64 KiB）；请等待后分段发送。");
     return;
@@ -324,15 +326,15 @@ function sendInput(s: Session, bytes: Uint8Array) {
     .then(async () => {
       if (diagnostics) diagnostics.maxInputWaitMs = Math.max(diagnostics.maxInputWaitMs, performance.now() - enqueuedAt);
       for (let offset = 0; offset < bytes.length; offset += 4096) {
-        if (s.disposed || s.ended) return;
+        if (s.disposed || s.ended || s.closing) return;
         if (diagnostics) diagnostics.inputCalls++;
-        await invoke("pty_write", {
+        await invoke(s.mode === "ssh" ? "ssh_write" : "pty_write", {
           id,
           data: Array.from(bytes.subarray(offset, offset + 4096)),
         });
       }
     })
-    .catch((error) => backendError(s, error))
+    .catch((error) => { if (!s.ended) backendError(s, error); })
     .finally(() => {
       s.pendingInput -= bytes.length;
       if (diagnostics) diagnostics.pendingInputBytes -= bytes.length;
@@ -345,7 +347,7 @@ function backendError(s: Session, error: unknown) {
 }
 function createSession(
   name: string,
-  mode: "demo" | "pty",
+  mode: "demo" | "pty" | "ssh",
 ): Session | undefined {
   if (sessions.size >= 8) {
     toast("P0 最多同时打开 8 个会话。");
@@ -371,6 +373,7 @@ function createSession(
     }),
     line: "",
     disposed: false,
+    closing: false,
     outputRun: 0,
     status: mode === "demo" ? "演示就绪" : "正在启动…",
     ended: false,
@@ -397,10 +400,10 @@ function createSession(
   });
   terminal.onResize(({ cols, rows }) => {
     updateStatus();
-    if (s.ptyId)
-      void invoke("pty_resize", { id: s.ptyId, cols, rows }).catch((error) =>
-        backendError(s, error),
-      );
+    if (s.ptyId && !s.ended && !s.closing)
+      void invoke(s.mode === "ssh" ? "ssh_resize" : "pty_resize", { id: s.ptyId, cols, rows }).catch((error) => {
+        if (!s.ended) backendError(s, error);
+      });
   });
   terminal.attachCustomKeyEventHandler(
     (event) =>
@@ -421,11 +424,11 @@ function createSession(
       "\r\n  \x1b[1mNew WindTerm\x1b[0m\r\n\r\n  Terminal workspace  /  P0 preview\r\n\r\n  \x1b[34mP0 交互原型\x1b[0m\r\n  这是本地演示，不会连接远端或执行系统命令。\r\n  输入 \x1b[32mhelp\x1b[0m 查看命令，或从上方运行字符与输出样本。\r\n",
     );
     prompt(s);
-  } else void openPty(s);
+  } else if (mode === "pty") void openPty(s);
   terminal.focus();
   return s;
 }
-async function openPty(s: Session) {
+function terminalChannel(s: Session) {
   const onEvent = new Channel<PtyEvent>();
   onEvent.onmessage = (event) => {
     if (s.disposed) return;
@@ -449,10 +452,11 @@ async function openPty(s: Session) {
               diagnostics.ackSubmitted++;
               diagnostics.maxAckQueueWaitMs = Math.max(diagnostics.maxAckQueueWaitMs, performance.now() - parsedAt);
             }
-            await invoke("pty_ack", { id: event.id, sequence: event.sequence });
+            if (s.disposed) return;
+            await invoke(s.mode === "ssh" ? "ssh_ack" : "pty_ack", { id: event.id, sequence: event.sequence });
             if (diagnostics) diagnostics.ackCompleted++;
           })
-          .catch((error) => backendError(s, error));
+          .catch((error) => { if (!s.ended) backendError(s, error); });
         if (s.key === activeKey) scheduleStatusUpdate();
       });
     } else if (event.kind === "exit") {
@@ -460,8 +464,19 @@ async function openPty(s: Session) {
       s.status = `已退出 · code ${event.code ?? "unknown"}`;
       s.ptyId = undefined;
       updateStatus();
-    } else backendError(s, event.message);
+    } else {
+      // SSH errors are terminal lifecycle events; the backend releases the session.
+      if (s.mode === "ssh") {
+        s.ended = true;
+        s.ptyId = undefined;
+      }
+      backendError(s, event.message);
+    }
   };
+  return onEvent;
+}
+async function openPty(s: Session) {
+  const onEvent = terminalChannel(s);
   try {
     const { id } = await invoke<{ id: string }>("pty_open", {
       onEvent,
@@ -487,17 +502,55 @@ async function openPty(s: Session) {
     s.terminal.write("\r\n本地 PTY 启动失败。请查看底部状态。\r\n");
   }
 }
-async function closeSession(key: number) {
-  const s = sessions.get(key);
-  if (!s) return;
-  if (s.ptyId) {
-    try {
-      await invoke("pty_close", { id: s.ptyId });
-    } catch (error) {
-      backendError(s, error);
-      toast("会话关闭失败，请重试。");
+function startSshTerminal(request: SshTerminalRequest): boolean {
+  if (!native) return false;
+  const s = createSession(request.name, "ssh");
+  if (!s) return false;
+  s.operationId = request.operationId;
+  s.status = "正在认证并打开 SSH…";
+  updateStatus();
+  void openSsh(s, request);
+  return true;
+}
+async function openSsh(s: Session, request: SshTerminalRequest) {
+  try {
+    const { id } = await invoke<{ id: string }>("ssh_open", {
+      challengeToken: request.challengeToken, operationId: request.operationId,
+      scopeToken: request.scopeToken, onEvent: terminalChannel(s),
+      cols: s.terminal.cols, rows: s.terminal.rows,
+    });
+    if (s.disposed || s.ended) {
+      await invoke("ssh_close", { id });
       return;
     }
+    s.ptyId = id;
+    s.status = "SSH 已连接";
+    if (!s.closing) await invoke("ssh_resize", { id, cols: s.terminal.cols, rows: s.terminal.rows });
+    updateStatus();
+  } catch (error) {
+    if (s.disposed || s.ended) return;
+    s.ended = true;
+    backendError(s, error);
+    s.terminal.write("\r\nSSH 连接失败。请查看底部状态，再从真实 SSH 入口重新连接。\r\n");
+  } finally {
+    s.operationId = undefined;
+  }
+}
+async function closeSession(key: number) {
+  const s = sessions.get(key);
+  if (!s || s.closing) return;
+  s.closing = true;
+  try {
+    if (s.mode === "ssh" && s.operationId) {
+      await invoke("ssh_cancel", { operationId: s.operationId });
+    } else if (s.ptyId) {
+      await invoke(s.mode === "ssh" ? "ssh_close" : "pty_close", { id: s.ptyId });
+    }
+  } catch (error) {
+    s.closing = false;
+    backendError(s, error);
+    toast("会话关闭失败，请重试。");
+    return;
   }
   s.disposed = true;
   s.outputRun++;
@@ -511,7 +564,7 @@ async function closeSession(key: number) {
 function showDialog(id: string) {
   ($(id) as HTMLDialogElement).showModal();
 }
-const sshVerification = createSshVerification();
+const sshVerification = createSshVerification(startSshTerminal);
 for (const button of document.querySelectorAll<HTMLButtonElement>(
   ".dialog-close",
 ))
@@ -520,6 +573,10 @@ for (const dialog of document.querySelectorAll("dialog"))
   dialog.addEventListener("close", () => {
     if (!document.querySelector("dialog[open]")) active()?.terminal.focus();
   });
+$("#ssh-terminal-open").onclick = () => {
+  ($("#connect-dialog") as HTMLDialogElement).close();
+  sshVerification.open("terminal");
+};
 $("#ssh-verification-open").onclick = () => {
   ($("#connect-dialog") as HTMLDialogElement).close();
   sshVerification.open();
@@ -718,6 +775,7 @@ const commands = [
     action: () => ($("#compact-toggle") as HTMLButtonElement).click(),
   },
   { name: "查看 P0 验证边界", action: () => showDialog("#about-dialog") },
+  { name: "打开真实 SSH 终端 · 仅桌面", action: () => sshVerification.open("terminal") },
   { name: "SSH 验证 · 真实指纹与固定命令 · 仅桌面", action: () => sshVerification.open() },
 ];
 let commandIndex = 0;
@@ -780,11 +838,12 @@ window.addEventListener("beforeunload", () => {
     s.outputRun++;
     s.observer.disconnect();
     s.terminal.dispose();
-    if (s.ptyId) void invoke("pty_close", { id: s.ptyId });
+    if (s.mode === "ssh" && s.operationId) void invoke("ssh_cancel", { operationId: s.operationId }).catch(() => {});
+    else if (s.ptyId) void invoke(s.mode === "ssh" ? "ssh_close" : "pty_close", { id: s.ptyId }).catch(() => {});
   }
   for (const t of transfers) clearInterval(t.timer);
 });
 $("#runtime-note").textContent = native
-  ? "桌面原型 · 本地终端会执行真实命令；演示会话、文件与传输仍为模拟数据。"
+  ? "桌面原型 · 本地与真实 SSH 终端会执行命令；演示会话、文件与传输仍为模拟数据。"
   : "交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。";
 createSession("Getting started", "demo");
