@@ -27,7 +27,7 @@
 | VT102 | T26 | IL/DL/ICH/DCH/IRM（E01–E03） | DA1 不能报告 VT102（`?6c`），见 D01 | 编辑功能原样可用；身份需适配 |
 | VT220 | T08 | DECSCA/DECSEL、ECH、DECSTR 主体、DEC 图形 | NRCS 不受 DECNRCM 控制（G03）、SS2/SS3（G04）、LS1R 等落到 GL（G05）、S8C1T（D04）、DECSCL/DA（D01/D02）、DECDSR 打印机/键盘（D05）、DECSTR 后自动换行仍开启（X01） | 部分；身份、8 位 C1、单次切换需适配 |
 | VT320（无独立 ID） | — | 本表未单独区分 VT320 引入的序列；报告类结果见 D06（DECRQM 已识别模式）、S01（DECRQSS 边距） | DECRQSS SGR/光标样式/一致性等级（R06、K02、D02）、多个模式回 0（D07、G03、S04）；状态行 DECSSDT/DECSASD 未测 | 未单独判定，按 VT220/VT420 结论处理 |
-| VT340 | T09 | — | SIXEL 被吞掉不绘制、DA1 不含 `4`（P01）；ReGIS 未测 | 需 `@xterm/addon-image`（未安装、未锁版本）或自研 |
+| VT340 | T09 | — | SIXEL 被吞掉不绘制、DA1 不含 `4`（P01）；ReGIS 未测 | 需 `@xterm/addon-image`：0.9.0 已作为开发依赖做隔离原型，生产 CSP 会阻止其 WebAssembly 解码器，见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md) |
 | VT420 | T10 | DECIC/DECDC（E06） | DECSLRM/DECLRMM（S04）、矩形操作（E07）、DECSC 不保存 DECOM/换行（C03）、DA3（D03） | 需内核改动 |
 | VT520 | T11 | DECSCUSR 渲染（K01）、DECRQM | DECRQSS 光标样式（K02）、DECST8C（B02）、DECSCL（D02） | 部分 |
 | xterm | T12 | 1049/1047（A01）、括号粘贴、鼠标 1000/1002/1003/1006、焦点 1004、OSC 0/2/4/10/11/12/8、REP、SCOSC | 47 退出即丢弃内容（A02）、1016 像素坐标起点未核对（M04）、1005/1015（M05）、OSC 52（O04）、XTVERSION/XTGETTCAP（D03）、XTWINOPS 需显式开放（D08）、反向换行只撤销软换行（W04） | 大部分原样可用 |
@@ -195,7 +195,7 @@
 2. **左右边距 DECSLRM/DECLRMM（S04）与 VT420 矩形操作（E07）**：VT420/VT520 模式的核心能力，全部未实现。
 3. **终端身份与一致性等级（D01–D03）**：DA1/DA2 固定为 VT100 类，DECSCL 不生效，DA3/XTVERSION 无回复。若不处理，"选择 VT220/VT420/VT520 终端类型"（T08/T10/T11/T20）对主机端是不可见的。
 4. **DEC 细节语义**：DECOM 下的 CPR（S03）、DECSC 不保存 DECOM/换行（C03）、DECALN 不复位边距（L02）、SS2/SS3（G04）、S8C1T（D04）、DECSCNM（D07）、闪烁不渲染（R03）、DECSTR 后自动换行状态（X01）。这些都对应 vttest 子项或 VT 手册明确条目。
-5. **SIXEL（P01）**：VT340（T09）的必要能力；官方 `@xterm/addon-image` 未安装，渲染器兼容性与资源上限未评估。
+5. **SIXEL（P01）**：VT340（T09）的必要能力；官方 `@xterm/addon-image` 0.9.0 的隔离原型与限额评估见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md)，未接入生产，原生 WebView 未验证。
 
 xterm/256 色/真彩/鼠标/括号粘贴/OSC 颜色与标题这一类（T12/T13/T16/T17 主体）原样基本可用，不是 P0 阻断项。
 
@@ -222,6 +222,8 @@ xterm/256 色/真彩/鼠标/括号粘贴/OSC 颜色与标题这一类（T12/T13/
 - **DECSC 保存 DECOM/换行（C03）、47 备用屏保留（A02）、硬换行反向回绕（W04）、LS1R/LS2R/LS3R 进 GR（G05）**：状态位于 InputHandler/BufferSet/CharsetService 内部，公开 API 无法修补。
 - **闪烁（R03）**：DOM 渲染器没有文本闪烁样式，需要渲染器支持。
 - **SIXEL（P01）**：优先评估官方 `@xterm/addon-image`（锁版本、DOM 渲染器兼容性、内存上限），不满足时再立渲染 ADR。
+
+以上各项的方案比较（官方插件、上游、受控分支、Rust 内核、混合）与建议见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md)。
 - **1005/1015 鼠标编码（M05）**：编码表在 CoreMouseService 内部；1006 已覆盖现代应用，优先级低，若上游 WindTerm 实测支持再决定。
 
 ## 验证

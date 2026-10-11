@@ -11,6 +11,7 @@
 - 其余非 MIT/Apache 许可均为宽松许可：Unicode-3.0（ICU4X 数据与 `unicode-ident`）、Zlib、BSD-2/3-Clause、ISC、0BSD、Unlicense、CC0、`Apache-2.0 WITH LLVM-exception`。`ring` 为 `Apache-2.0 AND ISC`。
 - 前端运行时只打包 4 个 npm 包：`@xterm/xterm`、`@xterm/addon-fit`、`@xterm/addon-unicode11`（MIT）与 `@tauri-apps/api`（Apache-2.0 OR MIT）。
 - 开发依赖中的 `lightningcss`（MPL-2.0，Vite 构建期 CSS 工具）不进入发行产物。
+- `@xterm/addon-image 0.9.0`（MIT）只作为开发依赖，供隔离的 SIXEL 原型与其 Playwright 测试使用，生产入口没有引用它，`vite build` 产物中不含该插件。它的发布包内联了两个 MIT 库编译出的 WebAssembly：`sixel`（jerch/node-sixel）和 `xterm-wasm-parts`，没有运行时依赖。评估过程见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md)。
 
 ## 直接依赖
 
@@ -25,6 +26,7 @@
 | libc（Unix） | =0.2.180 | MIT OR Apache-2.0 | PTY 非阻塞与 poll |
 | windows-sys（Windows，`p0/windows-conpty` 分支） | =0.61.2 | MIT OR Apache-2.0 | Job Object、GetFileType；该版本此前已在锁文件中 |
 | @xterm/xterm 与插件 | 6.0.0 / 0.11.0 / 0.9.0 | MIT | 终端渲染 |
+| @xterm/addon-image（开发依赖） | 0.9.0 | MIT | 仅 SIXEL 隔离原型；与 xterm 6.0.0 同一提交 `f447274` 发布 |
 | @tauri-apps/api | 2.12.3 | Apache-2.0 OR MIT | 前端 IPC |
 
 ## 系统组件（不随应用分发）
