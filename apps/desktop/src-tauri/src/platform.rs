@@ -82,7 +82,41 @@ fn require_shell(path: &std::path::Path) -> Result<(), String> {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
+pub(crate) fn local_command() -> Result<CommandBuilder, String> {
+    // Keep the Windows shell contract explicit before ConPTY is enabled. `/D`
+    // disables AutoRun hooks, `/Q` disables command echoing, and `/K` keeps the
+    // interactive shell alive; this prevents user-wide cmd.exe configuration
+    // from changing the byte-level probe.
+    let comspec = std::env::var_os("ComSpec").ok_or("ComSpec is unavailable")?;
+    let comspec = std::path::PathBuf::from(comspec);
+    if !comspec.is_file()
+        || !comspec
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|name| name.eq_ignore_ascii_case("cmd.exe"))
+    {
+        return Err("ComSpec is not a regular cmd.exe file".into());
+    }
+    let mut command = CommandBuilder::new(comspec);
+    command.args(["/D", "/Q", "/K"]);
+    command.env_clear();
+    for name in ["SystemRoot", "ComSpec", "PATH"] {
+        command.env(
+            name,
+            std::env::var_os(name).ok_or_else(|| format!("{name} is unavailable"))?,
+        );
+    }
+    command.env("PROMPT", "P0 $P$G ");
+    command.cwd(std::env::temp_dir());
+    Ok(command)
+}
+
+#[cfg(all(
+    not(target_os = "macos"),
+    not(target_os = "linux"),
+    not(target_os = "windows")
+))]
 pub(crate) fn local_command() -> Result<CommandBuilder, String> {
     Err(UNSUPPORTED.into())
 }
@@ -213,7 +247,11 @@ mod tests {
         assert!(command.get_env("DYLD_INSERT_LIBRARIES").is_none());
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(all(
+        not(target_os = "macos"),
+        not(target_os = "linux"),
+        not(target_os = "windows")
+    ))]
     #[test]
     fn pending_adapter_rejects_session_before_allocating_a_pty() {
         let sessions = crate::pty::Sessions::default();
@@ -222,6 +260,16 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, UNSUPPORTED);
         assert!(local_command().is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn pending_adapter_still_rejects_windows_before_allocating_a_pty() {
+        let sessions = crate::pty::Sessions::default();
+        let error = sessions
+            .open("main", 80, 24, std::sync::Arc::new(|_| Ok(())))
+            .unwrap_err();
+        assert_eq!(error, UNSUPPORTED);
     }
 
     #[cfg(unix)]
@@ -262,6 +310,27 @@ mod tests {
         assert!(require_shell(&absent)
             .unwrap_err()
             .contains("requires Bash"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_command_disables_autorun_and_echoes() {
+        let command = local_command().unwrap();
+        assert!(ensure_supported().is_err());
+        assert_eq!(
+            command.get_argv().as_slice(),
+            &[
+                std::env::var_os("ComSpec").unwrap(),
+                "/D".into(),
+                "/Q".into(),
+                "/K".into(),
+            ]
+        );
+        assert_eq!(
+            command.get_env("PROMPT"),
+            Some(std::ffi::OsStr::new("P0 $P$G "))
+        );
+        assert!(command.get_env("ComSpec").is_some());
     }
 
     #[test]

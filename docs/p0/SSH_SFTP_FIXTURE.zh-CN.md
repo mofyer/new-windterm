@@ -2,6 +2,18 @@
 
 状态更新：2026-10-11。本页保存 macOS arm64、Node 26.0.0、系统 OpenSSH 10.3p1 / LibreSSL 3.3.6 的历史受控夹具证据：6 项协议检查与 2 项生命周期测试，以及前一轮固定命令 Rust SSH 客户端接入。**它不提供交互 PTY/shell，也不证明应用 SFTP 完成。** 固定命令入口及历史 CI 范围见 [SSH_CLIENT](SSH_CLIENT.zh-CN.md)；当前交互 SSH 使用另一个有限命令 russh 夹具，见 [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md)。最新代码、原生与 CI 验收统一见 [RESULTS](RESULTS.zh-CN.md)，不把本页旧 OpenSSH 结果当成当前轮通过。
 
+## 当前 Rust SFTP 只读切片
+
+本轮已把 `russh-sftp 3.0.1` 接入 Rust 依赖，并新增 [`src/sftp.rs`](../../apps/desktop/src-tauri/src/sftp.rs) 的 `ReadOnlySftp` 抽象。它接收**已经完成主机指纹确认和公钥认证的 `russh` channel**，显式请求 `sftp` subsystem 后只开放三类操作：
+
+- `list(path)`：目录列表及文件名、POSIX 风格路径、类型、大小、权限/模式和修改时间；单次最多保留 4,096 项，超出即报错；
+- `metadata(path)`：单路径元数据；
+- `read(path)`：仅打开普通文件，最多读取 64 KiB；路径长度与控制字符在请求前拒绝。
+
+该切片没有写入、删除、重命名、权限修改、持久化凭据或 Tauri 命令，也没有把认证绕过为独立 SFTP 登录。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未把它接入桌面 IPC，也未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
+
+依赖选择：当前工程把 `serde` 精确 pin 升至 `1.0.229`，以满足 `russh-sftp 3.0.1` 的最小版本约束；`Cargo.lock` 已同步。macOS arm64 本地通过不等于 Windows/Linux SFTP 运行通过；三端仍需真实 subsystem、取消、错误和大文件预算验收。
+
 ## 运行与清理
 
 从仓库根目录运行，不需安装 npm 依赖：

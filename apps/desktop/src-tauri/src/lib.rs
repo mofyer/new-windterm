@@ -1,5 +1,6 @@
 mod platform;
 pub mod pty;
+pub mod sftp;
 pub mod ssh;
 
 use pty::{PtyEvent, Sessions};

@@ -8,6 +8,8 @@
 
 当前代码已加入 Windows-only 的 `ChildKiller` 生命周期钩子：`Session::close()` 会在释放 master 前尝试终止直接子进程，Unix 构建和行为不变。这只是为后续验证准备的取消入口，尚未证明同步 reader 会返回，也没有解除平台拒绝或声称 Windows PTY 可用。
 
+同时已把未来 Windows shell 契约单独写入 `platform.rs`：使用校验过的 `ComSpec`、`cmd.exe /D /Q /K`，清空继承环境后只保留 `SystemRoot`、`ComSpec`、`PATH`、固定 `PROMPT` 和临时工作目录。该命令构造目前只用于后续适配与条件编译测试；由于 ConPTY reader 生命周期尚未通过实机验收，平台 gate 仍然拒绝创建会话。
+
 现有 `pty.rs` 的 reader worker 在 Unix 上依靠非阻塞描述符、`WouldBlock` 和 EIO EOF 约定运行。portable-pty 的 Windows ConPTY reader 使用匿名管道上的同步 `ReadFile`；`filedescriptor` 文档也明确指出 Windows 的 readiness 检查只适用于 socket。当前 `Session::close()` 会释放 master、标记 flow 并唤醒 Unix readiness，但 reader 可能仍阻塞在同步读，随后 `cleanup_child()` 才会执行。因此仅把 `configure_io()` 改成 no-op、或让 readiness 在 Windows 睡眠轮询，都会产生关闭超时、worker 残留或把未验证路径误报为支持。
 
 ## 允许的实现方向
