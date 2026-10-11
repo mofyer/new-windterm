@@ -29,6 +29,7 @@ const REKEY_ERROR: &str =
 const DEADLINE: Duration = Duration::from_secs(15);
 const TRUST_TTL: Duration = Duration::from_secs(60);
 const MAX_BYTES: usize = 64 * 1024;
+const MAX_KDF_ROUNDS: u32 = 512;
 const MAX_ACTIVE: usize = 4;
 const MAX_CHALLENGES: usize = 8;
 const MAX_CANCELLED: usize = 128;
@@ -904,6 +905,7 @@ fn private_key(path: &str, passphrase: Option<&str>) -> Result<PrivateKeyWithHas
         return Err("Private key exceeds 64 KiB".into());
     }
     let content = std::str::from_utf8(&bytes).map_err(|_| "Invalid private key")?;
+    check_kdf_cost(content, MAX_KDF_ROUNDS)?;
     let key = russh::keys::decode_secret_key(content, passphrase).map_err(|_| {
         if passphrase.is_some() {
             "Private key could not be decrypted; check the passphrase"
@@ -919,6 +921,21 @@ fn private_key(path: &str, passphrase: Option<&str>) -> Result<PrivateKeyWithHas
         return Err("P0 supports Ed25519 and ECDSA private keys".into());
     }
     Ok(PrivateKeyWithHashAlg::new(Arc::new(key), None))
+}
+
+/// bcrypt cost is chosen by whoever wrote the key file and decryption cannot be
+/// cancelled, so refuse extreme costs before holding a reader permit for them.
+fn check_kdf_cost(content: &str, max_rounds: u32) -> Result<(), String> {
+    if let Ok(parsed) = russh::keys::ssh_key::PrivateKey::from_openssh(content) {
+        if let russh::keys::ssh_key::Kdf::Bcrypt { rounds, .. } = parsed.kdf() {
+            if *rounds > max_rounds {
+                return Err(format!(
+                    "Private key encryption cost is too high (more than {max_rounds} bcrypt rounds)"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn execute(
@@ -1239,6 +1256,28 @@ mod tests {
             error,
             "Private key must be a regular file of at most 64 KiB"
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn encrypted_keys_with_extreme_bcrypt_cost_are_refused_before_decryption() {
+        use russh::keys::ssh_key::{LineEnding, PrivateKey};
+        let key = PrivateKey::random(&mut russh::keys::key::safe_rng(), Algorithm::Ed25519)
+            .unwrap()
+            .encrypt(&mut russh::keys::key::safe_rng(), "pass")
+            .unwrap();
+        let text = key.to_openssh(LineEnding::LF).unwrap();
+        // ssh-key encrypts with its default bcrypt cost (16 rounds).
+        assert!(check_kdf_cost(&text, MAX_KDF_ROUNDS).is_ok());
+        assert!(check_kdf_cost(&text, 15)
+            .unwrap_err()
+            .contains("more than 15"));
+        let root = std::env::temp_dir().join(id());
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("key");
+        std::fs::write(&path, text.as_bytes()).unwrap();
+        assert!(private_key(path.to_str().unwrap(), Some("pass")).is_ok());
+        assert!(private_key(path.to_str().unwrap(), Some("wrong")).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 

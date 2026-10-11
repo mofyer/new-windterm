@@ -12,6 +12,8 @@
 | russh 集成（真实 TCP/SSH） | 密码正确/错误；加密私钥口令正确、缺失、错误（后两者在本地失败，服务端认证计数不变）；临时 `ssh-agent` 无密钥时报错、`ssh-add` 后认证成功；SSH target 13/13 |
 | 浏览器（IPC stub） | 密码与口令不进入 probe 请求、probe 后清空输入框、只在 accept 时发送一次；agent 与私钥方式的请求形状；终端与文件面板交接只带凭据、不带路径；全套 118/118 |
 
+独立安全审查无 CRITICAL/HIGH。已修复：加密私钥的 bcrypt 轮数超过 512 时在解密前拒绝（解密无法取消，避免恶意文件长期占用读取线程）。已接受并记录的风险：russh `authenticate_password` 接口与 serde/IPC 解析各会产生一份未清零的密码副本；Windows agent 命名管道可被同用户进程抢先创建，与 OpenSSH 客户端的信任模型相同；SFTP 授权在有效期内持有凭据。
+
 边界：RSA 私钥需开启 russh `rsa` 特性（会引入新 crate），本轮未启用；不支持 keyboard-interactive、证书认证、Pageant；agent 认证只在 macOS 本机验证，Windows 命名管道路径只经交叉编译检查。密码与口令会经过 WebView，这是 ROADMAP 已说明的边界。
 
 ## 依赖与许可证清单
