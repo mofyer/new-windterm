@@ -60,6 +60,11 @@ node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交�
 node --test tests/fixtures/ssh-terminal/rust-client.test.mjs  # Rust ssh_open 对真实 OpenSSH shell 的互操作（ignored 测试）
 ```
 
+P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
+
+```sh
+```
+
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
 提交前：`git diff --check`。
