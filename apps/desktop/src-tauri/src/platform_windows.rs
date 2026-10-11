@@ -130,13 +130,14 @@ pub(crate) fn handle_count() -> u32 {
     count
 }
 
-/// Open handles of this process counted by object type (pipes and other
-/// files split by `GetFileType`), for leak diagnostics in Windows tests.
+/// Valid handle values of this process with their object type (files split
+/// by `GetFileType`), for leak diagnostics in Windows tests.
 #[cfg(test)]
-pub(crate) fn handle_types() -> std::collections::BTreeMap<String, u32> {
+pub(crate) fn handle_table() -> std::collections::BTreeMap<usize, String> {
     use windows_sys::Wdk::Foundation::{NtQueryObject, ObjectTypeInformation};
     use windows_sys::Win32::Foundation::{GetHandleInformation, UNICODE_STRING};
-    let mut types = std::collections::BTreeMap::new();
+    use windows_sys::Win32::Storage::FileSystem::{FILE_TYPE_CHAR, FILE_TYPE_PIPE};
+    let mut table = std::collections::BTreeMap::new();
     for value in (4..0x10000usize).step_by(4) {
         let handle = value as HANDLE;
         let mut flags = 0;
@@ -174,14 +175,66 @@ pub(crate) fn handle_types() -> std::collections::BTreeMap<String, u32> {
             // SAFETY: the handle was just validated; GetFileType does not block.
             name = match unsafe { GetFileType(handle) } {
                 FILE_TYPE_DISK => "File/disk".into(),
-                windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE => "File/pipe".into(),
-                windows_sys::Win32::Storage::FileSystem::FILE_TYPE_CHAR => "File/char".into(),
+                FILE_TYPE_PIPE => "File/pipe".into(),
+                FILE_TYPE_CHAR => "File/char".into(),
                 _ => "File/other".into(),
             };
         }
+        table.insert(value, name);
+    }
+    table
+}
+
+/// Open handles of this process counted by object type.
+#[cfg(test)]
+pub(crate) fn handle_types() -> std::collections::BTreeMap<String, u32> {
+    let mut types = std::collections::BTreeMap::new();
+    for name in handle_table().into_values() {
         *types.entry(name).or_insert(0) += 1;
     }
     types
+}
+
+/// What a process handle refers to: process id, image path and whether that
+/// process has exited.
+#[cfg(test)]
+pub(crate) fn describe_process(value: usize) -> String {
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, GetProcessId, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    };
+    let handle = value as HANDLE;
+    let mut path = [0u16; 512];
+    let mut length = path.len() as u32;
+    let mut code = 0;
+    // SAFETY: the handle value was just listed as a live process handle; the
+    // path buffer and its length describe one writable array.
+    unsafe {
+        let pid = GetProcessId(handle);
+        let image = if QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            path.as_mut_ptr(),
+            &mut length,
+        ) != 0
+        {
+            String::from_utf16_lossy(&path[..length as usize])
+        } else {
+            "?".into()
+        };
+        let state = if GetExitCodeProcess(handle, &mut code) == 0 {
+            "unknown".to_string()
+        } else if code == 259 {
+            "running".to_string()
+        } else {
+            format!("exited {code}")
+        };
+        let own = if pid == std::process::id() {
+            " (this process)"
+        } else {
+            ""
+        };
+        format!("pid {pid}{own} {image} {state}")
+    }
 }
 
 /// True only for on-disk files. `std` reports pipes, consoles and character

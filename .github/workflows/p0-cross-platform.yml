@@ -42,6 +42,10 @@ jobs:
             runner: windows-2022
             host: x86_64-pc-windows-msvc
             real_pty: false
+          - name: Windows x64 (Server 2025) — build and ConPTY lifecycle tests
+            runner: windows-2025
+            host: x86_64-pc-windows-msvc
+            real_pty: false
     defaults:
       run:
         shell: bash
@@ -80,6 +84,7 @@ jobs:
           node -p 'JSON.stringify({platform:process.platform,arch:process.arch,node:process.version})' | tee "$RUNNER_TEMP/p0-logs/environment.log"
           rustc -vV | tee -a "$RUNNER_TEMP/p0-logs/environment.log"
           cargo --version | tee -a "$RUNNER_TEMP/p0-logs/environment.log"
+          if [ "$RUNNER_OS" = Windows ]; then cmd //c ver | tee -a "$RUNNER_TEMP/p0-logs/environment.log"; fi
           actual_host=$(rustc -vV | sed -n 's/^host: //p')
           test "$actual_host" = "${{ matrix.host }}"
 
@@ -151,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: p0-${{ matrix.host }}-${{ github.run_attempt }}
+          name: p0-${{ matrix.host }}-${{ matrix.runner }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/p0-logs/
           if-no-files-found: warn
           retention-days: 14

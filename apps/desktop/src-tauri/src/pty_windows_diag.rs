@@ -16,12 +16,22 @@ fn measure(step: &str, cycle: impl Fn()) {
         cycle();
     }
     settle();
+    let table = platform::windows::handle_table();
     let before = platform::windows::handle_types();
     for _ in 0..CYCLES {
         cycle();
     }
     settle();
     let after = platform::windows::handle_types();
+    // Name the targets of process handles that appeared during the step.
+    for (value, kind) in platform::windows::handle_table() {
+        if kind == "Process" && !table.contains_key(&value) {
+            eprintln!(
+                "[handle-diag] {step}: new process handle {value:#x}: {}",
+                platform::windows::describe_process(value)
+            );
+        }
+    }
     let mut changes = Vec::new();
     for name in before.keys().chain(after.keys()) {
         let delta =
