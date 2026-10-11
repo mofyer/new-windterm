@@ -6,7 +6,7 @@ use new_windterm_desktop::{
 };
 use std::{
     sync::{atomic::Ordering, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -48,6 +48,22 @@ async fn open(server: &fixture::Fixture, service: &Arc<Ssh>) -> (String, mpsc::R
         .unwrap();
     (opened, receiver)
 }
+// Search each possible start position once, retaining only the overlap that
+// could form a marker across two SSH output blocks. The comparison count is
+// test-harness evidence, not application or terminal-content instrumentation.
+fn scan_new_marker(bytes: &[u8], previous_len: usize, marker: &[u8]) -> (Option<usize>, usize) {
+    assert!(!marker.is_empty());
+    let start = previous_len.saturating_sub(marker.len() - 1);
+    let mut compared = 0;
+    for (offset, window) in bytes[start..].windows(marker.len()).enumerate() {
+        compared += 1;
+        if window == marker {
+            return (Some(start + offset), compared);
+        }
+    }
+    (None, compared)
+}
+
 async fn until(
     service: &Ssh,
     session: &str,
@@ -55,23 +71,30 @@ async fn until(
     marker: &[u8],
 ) -> Vec<u8> {
     let mut bytes = Vec::new();
-    tokio::time::timeout(Duration::from_secs(10), async {
+    let started = Instant::now();
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
         while let Some(event) = events.recv().await {
             match event {
                 PtyEvent::Data { sequence, data, .. } => {
+                    let previous_len = bytes.len();
                     bytes.extend(data);
                     service.ack("main", session, sequence).unwrap();
+                    if scan_new_marker(&bytes, previous_len, marker).0.is_some() {
+                        return;
+                    }
                 }
                 other => panic!("unexpected event {other:?}"),
-            }
-            if bytes.windows(marker.len()).any(|window| window == marker) {
-                return;
             }
         }
         panic!("events closed before marker");
     })
-    .await
-    .expect("marker timeout");
+    .await;
+    assert!(
+        result.is_ok(),
+        "marker timeout: received_bytes={}, elapsed_ms={:.3}, deadline_ms=10000",
+        bytes.len(),
+        started.elapsed().as_secs_f64() * 1000.0,
+    );
     bytes
 }
 async fn closed(events: &mut mpsc::Receiver<PtyEvent>, service: &Ssh, session: &str) -> PtyEvent {
@@ -402,4 +425,41 @@ async fn server_initiated_rekey_fails_closed_with_reconnect_reason() {
     );
     drained(&server).await;
     server.stop().await;
+}
+
+#[test]
+fn incremental_marker_scan_preserves_boundaries_and_linear_work() {
+    let marker = b"LARGE_DONE";
+    // Exercise every split within the marker, an entirely new marker, and a
+    // marker that starts exactly at a block boundary.
+    for split in 0..=marker.len() {
+        let mut bytes = b"prefix".to_vec();
+        bytes.extend(&marker[..split]);
+        let (first, first_work) = scan_new_marker(&bytes, 0, marker);
+        assert_eq!(first, (split == marker.len()).then_some(6));
+        let previous = bytes.len();
+        bytes.extend(&marker[split..]);
+        let (second, second_work) = scan_new_marker(&bytes, previous, marker);
+        assert_eq!(second, (split != marker.len()).then_some(6));
+        assert_eq!(first_work + second_work, 7);
+        // Appending an unrelated block must not rediscover the old marker.
+        let previous = bytes.len();
+        bytes.extend(b"tail");
+        assert_eq!(scan_new_marker(&bytes, previous, marker).0, None);
+    }
+    let mut bytes = Vec::new();
+    let mut compared = 0;
+    for _ in 0..512 {
+        let previous = bytes.len();
+        bytes.extend([b'X'; 4096]);
+        let (found, work) = scan_new_marker(&bytes, previous, marker);
+        assert_eq!(found, None);
+        compared += work;
+    }
+    let previous = bytes.len();
+    bytes.extend(b"\r\nLARGE_DONE\r\n> ");
+    let (found, work) = scan_new_marker(&bytes, previous, marker);
+    compared += work;
+    assert_eq!(found, Some(2 * 1024 * 1024 + 2));
+    assert_eq!(compared, 2 * 1024 * 1024 + 3);
 }
