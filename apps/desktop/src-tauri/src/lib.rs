@@ -1,3 +1,4 @@
+pub mod modem;
 mod platform;
 pub mod pty;
 pub mod sftp;
