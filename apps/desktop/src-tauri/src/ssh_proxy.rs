@@ -49,6 +49,11 @@ pub(crate) async fn http_connect(
     port: u16,
     basic: Option<(&str, &str)>,
 ) -> Result<TcpStream, String> {
+    // The host is written into the request line; CR/LF or spaces would
+    // inject headers or split the line.
+    if host.is_empty() || host.bytes().any(|b| b <= b' ' || b == 0x7f) {
+        return Err("Host name contains invalid characters".into());
+    }
     let mut stream = TcpStream::connect(proxy)
         .await
         .map_err(|_| "HTTP proxy is unreachable")?;
@@ -502,6 +507,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(exit_code(stream, &server).await, Some(7));
+        for host in ["", "a\r\nX-Injected: 1", "a b", "a\0"] {
+            let error = http_connect(open, host, server.port, None)
+                .await
+                .err()
+                .unwrap();
+            assert!(error.contains("invalid characters"), "{host:?}: {error}");
+        }
         server.stop().await;
     }
 

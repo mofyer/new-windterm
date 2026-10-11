@@ -173,7 +173,8 @@ pub(crate) async fn download(
         .data(&[0u8][..])
         .await
         .map_err(|_| "SCP send failed")?;
-    let data = reader.exact(size as usize).await?;
+    let size = usize::try_from(size).map_err(|_| "SCP file is too large")?;
+    let data = reader.exact(size).await?;
     reader.ack().await?;
     reader
         .channel

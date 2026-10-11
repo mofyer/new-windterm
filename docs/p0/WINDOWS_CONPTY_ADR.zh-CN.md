@@ -6,6 +6,21 @@
 
 本记录下文保留原有分析。实现采用与原“CancelSynchronousIo”建议不同、但满足同一门槛的方案：不跨线程取消 `ReadFile`，而是让等待线程在子进程退出后关闭 pseudoconsole，由 conhost 关闭管道产生 EOF；关闭会话时终止 kill-on-close Job Object 以回收整个进程树；reader 结束后排空管道直到 EOF。原文列出的验收顺序（空闲关闭、输出中关闭、自然退出、重复关闭/刷新、ACK 超时、12 轮循环、`cmd /c start` 子进程树）与 Ctrl+C 均在 [run 38134532830](https://github.com/mofyer/new-windterm/actions/runs/38134532830) 通过，详见 [RESULTS](RESULTS.zh-CN.md)。仍未覆盖 PowerShell、WebView2 原生窗口、输入法与真实用户环境。
 
+### 评审后的调整与已知限制
+
+独立评审后补充：
+- **自然退出时的处理顺序**：等待线程先终止整个 Job，再关闭 pseudoconsole。这样，忽略控制台关闭的后代进程不会继续占住管道、让 reader 一直阻塞。
+- **终止 Job 失败时**：`TerminateJobObject` 失败会回退为直接终止 shell 进程，因此等待线程仍会醒来。为此 `ProcessTree` 额外持有一份复制的 shell 句柄。
+- **Ctrl+C 恢复**：`SetConsoleCtrlHandler(None, FALSE)` 是进程级设置，进程内只执行一次。
+- **12 轮循环测试**：改为复用同一个 `Sessions`，并断言第一轮之后进程句柄数增长不超过 8，作为句柄泄漏检查。句柄数是按整个进程统计的，同一测试二进制里并行运行的 SSH 测试会让它产生波动，所以这项测试在常规测试中标为 ignored，由 CI 的 Windows 作业单独运行。
+- **脱离 shell 的后代进程**：例如 `start /B` 启动的进程，现在会在 shell 退出时随 Job 一并终止，之后不再输出。
+- **前端早期输入暂存**：只作用于本地 PTY，不作用于 SSH。会话退出、PTY 启动失败或关闭时会清空暂存。
+
+已知限制，尚未消除：
+- **回退的作用范围**：回退为终止 shell 只在关闭一个仍在运行的 shell 时有效。在自然退出路径上，shell 已经结束，如果此时 `TerminateJobObject` 失败，`TerminateProcess` 也无法终止任何进程，存活的后代进程仍会占住管道。
+- **排空没有期限**：reader 在会话结束后读到 EOF 为止才结束，排空本身不设超时。正常路径下，终止 Job 再关闭 pseudoconsole 就会产生 EOF。但如果某个进程脱离了 Job 却仍持有管道写端，reader 线程会一直阻塞。这种情况在 CI 中没有出现，也没有专门的测试覆盖。
+- **Job 分配存在竞态**：portable-pty 创建 shell 时没有使用 `CREATE_SUSPENDED`，shell 是在启动后才被加入 Job 的。如果 shell 在这段时间里启动了子进程，这个子进程不在 Job 中。当前用 `cmd.exe /D` 禁用 AutoRun，shell 在收到输入前不会启动子进程，所以这个窗口实际不可利用。如果以后改为用户自定义 shell 或启动参数，需要改成挂起创建、加入 Job、再恢复运行。
+
 ## 原始记录
 
 ## 决策

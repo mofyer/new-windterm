@@ -2,7 +2,7 @@
 //! blocking `ReadFile`; the session ends them by closing the pseudoconsole after
 //! the shell exits, and this module owns the kill-on-close Job Object that
 //! bounds the shell's whole process tree.
-use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+use std::os::windows::io::{AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle, RawHandle};
 use windows_sys::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::{GetFileType, FILE_TYPE_DISK},
@@ -19,8 +19,12 @@ fn os_error(context: &str) -> String {
 }
 
 /// The shell and every process it starts. Dropping or terminating the job
-/// ends all of them, including detached `start /B` children.
-pub(crate) struct ProcessTree(OwnedHandle);
+/// ends all of them, including detached `start /B` children. The shell's own
+/// handle is kept as a fallback if job termination fails.
+pub(crate) struct ProcessTree {
+    job: OwnedHandle,
+    shell: OwnedHandle,
+}
 
 impl ProcessTree {
     /// Creates a kill-on-close job and assigns `process` to it. The shell is
@@ -54,14 +58,26 @@ impl ProcessTree {
         {
             return Err(os_error("Windows shell could not join its Job Object"));
         }
-        Ok(Self(job))
+        // SAFETY: `process` is the live child handle owned by portable-pty for
+        // this call; duplicating it gives this tree its own owned handle.
+        let shell = unsafe { BorrowedHandle::borrow_raw(process) }
+            .try_clone_to_owned()
+            .map_err(|_| "Windows shell handle could not be duplicated")?;
+        Ok(Self { job, shell })
     }
 
-    /// Terminates every process in the tree. Idempotent; an already empty job
-    /// is not an error worth reporting during teardown.
+    /// Terminates every process in the tree. Idempotent. If the job cannot be
+    /// terminated, the shell itself is terminated so its waiter still wakes.
     pub(crate) fn terminate(&self) {
-        // SAFETY: the job handle is owned by self and live.
-        unsafe { TerminateJobObject(self.0.as_raw_handle() as HANDLE, 1) };
+        // SAFETY: both handles are owned by self and live.
+        unsafe {
+            if TerminateJobObject(self.job.as_raw_handle() as HANDLE, 1) == 0 {
+                windows_sys::Win32::System::Threading::TerminateProcess(
+                    self.shell.as_raw_handle() as HANDLE,
+                    1,
+                );
+            }
+        }
     }
 
     /// Live processes still assigned to the job.
@@ -70,7 +86,7 @@ impl ProcessTree {
         // SAFETY: the pointer and size describe one live, correctly typed structure.
         let queried = unsafe {
             QueryInformationJobObject(
-                self.0.as_raw_handle() as HANDLE,
+                self.job.as_raw_handle() as HANDLE,
                 JobObjectBasicAccountingInformation,
                 (&mut info as *mut JOBOBJECT_BASIC_ACCOUNTING_INFORMATION).cast(),
                 std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
@@ -89,9 +105,29 @@ impl ProcessTree {
 /// spawns would ignore the Ctrl+C that ConPTY generates for 0x03. Restore
 /// normal processing before spawning. A GUI process has no console of its
 /// own, so this only affects what children inherit.
+///
+/// This is process-wide and also undoes an ignore the launcher set on purpose,
+/// so it runs once, before the first shell.
 pub(crate) fn restore_ctrl_c_processing() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
     // SAFETY: a null handler with FALSE only clears the inherited ignore flag.
-    unsafe { windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0) };
+    ONCE.call_once(|| unsafe {
+        windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0);
+    });
+}
+
+/// Open handles of this process, for leak checks in Windows tests.
+#[cfg(test)]
+pub(crate) fn handle_count() -> u32 {
+    let mut count = 0;
+    // SAFETY: the pseudo-handle of the current process is always valid.
+    unsafe {
+        windows_sys::Win32::System::Threading::GetProcessHandleCount(
+            windows_sys::Win32::System::Threading::GetCurrentProcess(),
+            &mut count,
+        )
+    };
+    count
 }
 
 /// True only for on-disk files. `std` reports pipes, consoles and character

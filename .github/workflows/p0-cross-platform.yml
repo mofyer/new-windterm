@@ -104,6 +104,11 @@ jobs:
         id: rust_tests
         run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | tee "$RUNNER_TEMP/p0-logs/rust-tests.log"
 
+      - name: Run Windows ConPTY 12-cycle handle-leak check alone
+        id: conpty_cycles
+        if: runner.os == 'Windows'
+        run: cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib pty::windows_tests::twelve_open_output_close_reap_cycles -- --ignored --exact 2>&1 | tee "$RUNNER_TEMP/p0-logs/conpty-cycles.log"
+
       - name: Run Clippy
         id: clippy
         run: cargo clippy --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/p0-logs/clippy.log"
@@ -133,11 +138,12 @@ jobs:
             printf '| Rust format | %s |\n' '${{ steps.format.outcome }}'
             printf '| Rust check | %s |\n' '${{ steps.rust_check.outcome }}'
             printf '| Unit/platform and controlled loopback SSH protocol tests | %s |\n' '${{ steps.rust_tests.outcome }}'
+            printf '| Windows ConPTY 12-cycle handle check (alone) | %s |\n' '${{ steps.conpty_cycles.outcome }}'
             printf '| Clippy | %s |\n' '${{ steps.clippy.outcome }}'
             printf '| Desktop executable link | %s |\n' '${{ steps.desktop_build.outcome }}'
             printf '| Default real PTY probe | %s |\n' '${{ steps.pty.outcome }}'
             printf '| Opt-in readiness real PTY probe | %s |\n\n' '${{ steps.pty_readiness.outcome }}'
-            printf 'Windows runs cmd.exe ConPTY lifecycle tests inside the Rust test step (exit code, UTF-8, resize, close, Ctrl-C, ACK budget/timeout, reload, Job Object tree reaping, 12 cycles); the Unix pty_probe is skipped there.\n\n'
+            printf 'Windows runs cmd.exe ConPTY lifecycle tests inside the Rust test step (exit code, UTF-8, resize, close, Ctrl-C, ACK budget/timeout, reload, Job Object tree reaping); the 12-cycle handle-leak check runs alone in its own step; the Unix pty_probe is skipped there.\n\n'
             printf 'SSH tests use a bounded in-memory russh server, not an OS shell. No GUI, IME, WebView, PowerShell, signing, installer, OpenSSH interoperability, SFTP or full feature-parity acceptance is implied.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 

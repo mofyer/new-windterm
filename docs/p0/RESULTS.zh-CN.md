@@ -2,6 +2,36 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
+## 集成分支 `p0/integration`
+
+合并 SFTP 面板、主机信任、认证方式、转发/代理/SCP/Telnet/tmux 探针与 Windows ConPTY 后，三平台 CI [run 38135518719](https://github.com/mofyer/new-windterm/actions/runs/38135518719) 为 **success**：
+
+| 平台 | Rust 单元 | SSH | tmux |
+| --- | --- | --- | --- |
+| macOS | 66 passed / 4 ignored | 14/14 | 1 |
+| Linux | 65 passed / 4 ignored | 14/14 | 1 |
+| Windows | 71 passed / 4 ignored，含 ConPTY 生命周期 | 13/13，agent 测试仅 Unix | 1 |
+
+本机浏览器全套 134/134 通过。下文的评审修复在此次运行之后提交，需要以新的 CI 运行为准。
+
+## 网络探针安全评审
+
+独立安全评审覆盖以下模块，结论为没有 CRITICAL 或 HIGH 问题：
+- 转发、通道路由、代理与 ProxyCommand
+- SCP
+- Telnet
+- keyboard-interactive
+
+已修复的问题：
+- **远端转发通道数**：服务端主动打开的 `forwarded-tcpip` 通道原来没有并发上限，现在与本地转发一样最多 64 个，超出的直接拒绝。新增测试：上限设为 1 时第二个通道被拒，第一个结束后名额可以复用；反向检查（取消上限）下该测试失败。
+- **HTTP CONNECT 主机名**：主机名中出现控制字符或空格时直接拒绝，防止拆分请求行或注入请求头。
+- **SCP 文件大小**：下载大小改用 `usize::try_from` 转换。
+
+未采纳的问题：
+- **Telnet 拒绝回复**：评审认为对不支持的选项每次都回 `DONT` / `WONT` 会被放大。这一条未采纳：RFC 1143 要求在 him=NO 时以 `DONT` 回复 `WILL`；回复字节数不超过请求，不构成放大，也不会形成循环。已在代码中注明理由。
+
+仍是低风险项：ProxyCommand 子进程不关闭 stdout 时，读取线程会一直阻塞；`Drop` 时会结束子进程。
+
 ## X11 转发与 GSSAPI（C15/C14）决策记录
 
 russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项都不阻断当前路线。X11 将作为显式开启的第三种路由，采用不可信转发（假 cookie 替换）；GSSAPI 需要接系统 GSS（macOS GSS.framework、Linux libgssapi、Windows SSPI）。验证分别需要 XQuartz/Xvfb 与测试 Kerberos 领域，本机均不具备，未写实现代码。[决策记录与所需条件](X11_GSSAPI_ADR.zh-CN.md)
@@ -12,11 +42,20 @@ russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项
 
 三平台 CI [run 38134532830](https://github.com/mofyer/new-windterm/actions/runs/38134532830) **success**：Windows 48 passed / 2 ignored，其中 10 项 ConPTY 生命周期测试全部通过（exit 7、UTF-8、窗口尺寸、空闲与重复关闭、输出中关闭、Ctrl+C、ACK 预算与超时、页面刷新、Job Object 回收脱离子进程、12 轮循环），SSH 10/10；macOS 41、Linux 40 passed。诊断日志记录原始 `0x03` 与 win32-input-mode 编码都能中断 `ping -t` 与 `for /L`。此前 5 次失败依次暴露并修复了：启动光标查询、清空环境后的测试标记、ACK 超时后的管道死锁、`ping -t` 起始判据、继承的 Ctrl+C 忽略属性。本机另有 Windows 目标的交叉 clippy 检查（使用桩头文件，仅类型检查）。
 
+独立 Rust 评审后补充：
+- 自然退出时先终止整个 Job，再关闭 pseudoconsole。
+- 终止 Job 失败时回退为终止 shell 进程。
+- Ctrl+C 恢复只执行一次。
+- 12 轮循环测试改为检查句柄增长不超过 8。
+- 前端早期输入暂存只作用于本地 PTY，并在退出、启动失败或关闭时清空。
+
+排空无期限与 Job 分配竞态两项已知限制见[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)。
+
 边界：只验证了 `cmd.exe`；PowerShell、WebView2 原生窗口、输入法、高输出性能与真实 Windows 用户环境（非 CI runner）尚未验收；`pty-readiness` 在 Windows 上不使用（ConPTY 管道为阻塞读取）。
 
 ## SCP 上传与下载（F08/F09）
 
-传统 `scp -t/-f` 协议在 exec 通道上实现，与 SFTP 分开验收。对真实 OpenSSH（夹具白名单只放行目录内的 `scp -f|-t -- '<路径>'`）上传并下载 1 MiB 的中文文件名文件，字节一致；缺失文件、大小上限、非法文件名与越界路径均被拒绝。夹具运行脚本 4/4 通过。目录、递归与时间戳未实现，也没有界面。[说明](SSH_SFTP_FIXTURE.zh-CN.md)
+传统 `scp -t/-f` 协议在 exec 通道上实现，与 SFTP 分开验收。对真实 OpenSSH（夹具白名单只放行目录内的 `scp -f|-t -- '<路径>'`）上传并下载 1 MiB 的中文文件名文件，字节一致；缺失文件、大小上限、非法文件名与越界路径均被拒绝。夹具运行脚本 4/4 通过。集成分支上，SFTP 夹具 `fixture.test.mjs` 在紧接 Rust 客户端脚本之后运行时失败过一次（1/2）。之后连续 3 次都通过，原因未查明，记为偶发。目录、递归与时间戳未实现，也没有界面。[说明](SSH_SFTP_FIXTURE.zh-CN.md)
 
 ## Telnet 编解码器（C02）与其它连接类型
 

@@ -17,7 +17,7 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 
-const MAX_CONNECTIONS: usize = 64;
+pub(crate) const MAX_CONNECTIONS: usize = 64;
 const HANDSHAKE: Duration = Duration::from_secs(5);
 
 /// Where accepted local connections are sent.
@@ -577,7 +577,14 @@ mod tests {
     }
 
     async fn routed(server: &fixture::Fixture) -> (Arc<client::Handle<KeyCheck>>, Arc<Routes>) {
-        let routes = Arc::new(Routes::default());
+        routed_with(server, Routes::default()).await
+    }
+
+    async fn routed_with(
+        server: &fixture::Fixture,
+        routes: Routes,
+    ) -> (Arc<client::Handle<KeyCheck>>, Arc<Routes>) {
+        let routes = Arc::new(routes);
         let stream = TcpStream::connect(("127.0.0.1", server.port))
             .await
             .unwrap();
@@ -638,6 +645,44 @@ mod tests {
             .await
             .is_err());
         assert!(routes.remote.lock().unwrap().is_empty());
+        server.stop().await;
+    }
+
+    /// A server cannot open more forwarded-tcpip channels than the limit;
+    /// a slot is reusable once its channel ends.
+    #[tokio::test]
+    async fn remote_forward_channels_are_bounded() {
+        let mut server = fixture::Fixture::start().await;
+        let target = echo().await;
+        let (ssh, routes) = routed_with(&server, Routes::limited(1)).await;
+        let bound = remote(&ssh, &routes, "127.0.0.1", 0, "127.0.0.1", target)
+            .await
+            .unwrap() as u16;
+        async fn echoes(stream: &mut TcpStream) -> bool {
+            let mut byte = [0; 1];
+            stream.write_all(b"x").await.is_ok()
+                && matches!(
+                    tokio::time::timeout(Duration::from_secs(5), stream.read(&mut byte)).await,
+                    Ok(Ok(1))
+                )
+        }
+        let mut held = TcpStream::connect(("127.0.0.1", bound)).await.unwrap();
+        assert!(echoes(&mut held).await);
+        let mut refused = TcpStream::connect(("127.0.0.1", bound)).await.unwrap();
+        assert!(!echoes(&mut refused).await, "second channel was accepted");
+        drop(held);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let mut next = TcpStream::connect(("127.0.0.1", bound)).await.unwrap();
+            if echoes(&mut next).await {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "slot was not released"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         server.stop().await;
     }
 

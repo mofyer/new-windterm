@@ -351,7 +351,9 @@ function queueInput(s: Session, bytes: Uint8Array) {
     sendInput(s, bytes);
     return;
   }
-  if (s.disposed || s.ended || s.closing) return;
+  // Only a local shell needs early input (ConPTY's cursor query). Keystrokes
+  // typed while an SSH connection authenticates are not replayed remotely.
+  if (s.mode !== "pty" || s.disposed || s.ended || s.closing) return;
   if (s.earlyBytes + bytes.length > EARLY_INPUT_LIMIT) {
     toast("会话仍在启动，输入暂未发送；请稍后重试。");
     return;
@@ -486,6 +488,8 @@ function terminalChannel(s: Session) {
       });
     } else if (event.kind === "exit") {
       s.ended = true;
+      s.early = [];
+      s.earlyBytes = 0;
       s.status = `已退出 · code ${event.code ?? "unknown"}`;
       s.ptyId = undefined;
       updateStatus();
@@ -523,6 +527,8 @@ async function openPty(s: Session) {
     });
     updateStatus();
   } catch (error) {
+    s.early = [];
+    s.earlyBytes = 0;
     if (s.disposed) return;
     backendError(s, error);
     s.terminal.write("\r\n本地 PTY 启动失败。请查看底部状态。\r\n");
@@ -580,6 +586,8 @@ async function closeSession(key: number) {
     return;
   }
   s.disposed = true;
+  s.early = [];
+  s.earlyBytes = 0;
   s.outputRun++;
   s.observer.disconnect();
   s.terminal.dispose();

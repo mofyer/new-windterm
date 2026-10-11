@@ -135,7 +135,9 @@ impl Codec {
     fn negotiate(&mut self, verb: u8, option: u8, reply: &mut Vec<u8>) {
         let index = option as usize;
         match verb {
-            // Server offers to perform an option.
+            // Server offers to perform an option. A refusal is repeated for
+            // every offer (RFC 1143: him=NO answers WILL with DONT); replies
+            // never exceed the request, so this cannot amplify or loop.
             WILL => {
                 let accept = matches!(option, ECHO | SGA | BINARY);
                 if accept != self.theirs[index] || !accept {

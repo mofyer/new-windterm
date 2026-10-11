@@ -837,12 +837,29 @@ fn config() -> Arc<client::Config> {
 type Observed = Arc<Mutex<Option<PublicKey>>>;
 /// Server-initiated channels this connection may accept. Everything not
 /// listed here (sessions, direct-tcpip, X11, streamlocal) is refused.
-#[derive(Default)]
 pub(crate) struct Routes {
     /// Remote forwards: (bind address, bound port) → local host and port.
     pub(crate) remote: Mutex<HashMap<(String, u32), (String, u16)>>,
     /// Agent forwarding, enabled per connection by an explicit user choice.
     pub(crate) agent: std::sync::atomic::AtomicBool,
+    /// Bounds concurrent forwarded-tcpip channels, as local forwards are.
+    remote_channels: Arc<tokio::sync::Semaphore>,
+}
+
+impl Routes {
+    pub(crate) fn limited(remote_channels: usize) -> Self {
+        Self {
+            remote: Mutex::default(),
+            agent: std::sync::atomic::AtomicBool::default(),
+            remote_channels: Arc::new(tokio::sync::Semaphore::new(remote_channels)),
+        }
+    }
+}
+
+impl Default for Routes {
+    fn default() -> Self {
+        Self::limited(forward::MAX_CONNECTIONS)
+    }
 }
 
 pub(crate) struct KeyCheck {
@@ -894,12 +911,18 @@ impl client::Handler for KeyCheck {
         let Some((host, port)) = route else {
             return Ok(());
         };
+        let Ok(permit) = self.routes.remote_channels.clone().try_acquire_owned() else {
+            return Ok(());
+        };
         let connect = TcpStream::connect((host.as_str(), port));
         let Ok(Ok(target)) = tokio::time::timeout(Duration::from_secs(5), connect).await else {
             return Ok(());
         };
         reply.accept().await;
-        tokio::spawn(forward::pump(channel, target));
+        tokio::spawn(async move {
+            forward::pump(channel, target).await;
+            drop(permit);
+        });
         Ok(())
     }
     async fn server_channel_open_agent_forward(

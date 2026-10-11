@@ -551,6 +551,9 @@ fn launch_workers(
         let session = session.clone();
         thread::spawn(move || {
             let status = child.wait();
+            // End the whole tree first: a descendant that ignores the console
+            // close would otherwise keep the pipe open and the reader blocked.
+            session.tree.terminate();
             session.release_console();
             status
         })
@@ -1074,8 +1077,12 @@ mod windows_tests {
     const DEADLINE: Duration = Duration::from_secs(10);
     const LOOP: &str = "for /L %i in (1,1,200000) do @echo %i P0 bounded ConPTY output line\r\n";
 
+    /// Windows lifecycle tests run one at a time so handle counts are stable.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
     struct Probe {
-        sessions: Sessions,
+        _serial: Option<std::sync::MutexGuard<'static, ()>>,
+        sessions: Arc<Sessions>,
         session: Arc<Session>,
         events: Receiver<PtyEvent>,
         output: Vec<u8>,
@@ -1085,7 +1092,16 @@ mod windows_tests {
 
     impl Probe {
         fn open() -> Self {
-            let sessions = Sessions::default();
+            let serial = SERIAL
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut probe = Self::open_in(Arc::new(Sessions::default()));
+            probe._serial = Some(serial);
+            probe
+        }
+
+        /// Opens in a shared registry; the caller holds `SERIAL`.
+        fn open_in(sessions: Arc<Sessions>) -> Self {
             let (sender, events) = channel();
             let id = sessions
                 .open(
@@ -1097,6 +1113,7 @@ mod windows_tests {
                 .unwrap();
             let session = sessions.get("win", &id).unwrap();
             Self {
+                _serial: None,
                 sessions,
                 session,
                 events,
@@ -1356,18 +1373,39 @@ mod windows_tests {
         }
     }
 
+    /// Counts handles of the whole process, so it must run with no other test
+    /// in the binary; CI runs it alone in its own step.
     #[test]
+    #[ignore = "process-wide handle count; run alone with --ignored --exact"]
     fn twelve_open_output_close_reap_cycles() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sessions = Arc::new(Sessions::default());
+        let mut baseline = None;
         for cycle in 0..12 {
-            let mut probe = Probe::open();
+            let mut probe = Probe::open_in(sessions.clone());
             probe.ready();
             probe.session.close();
             probe.assert_reaped();
+            drop(probe);
+            let live = sessions
+                .registry
+                .lock()
+                .unwrap()
+                .sessions
+                .values()
+                .filter(|session| !*session.done.0.lock().unwrap())
+                .count();
+            assert_eq!(live, 0, "unreaped session after cycle {cycle}");
+            // The first cycle warms up lazily allocated runtime handles.
+            let handles = platform::windows::handle_count();
+            let first = *baseline.get_or_insert(handles);
             assert!(
-                probe.sessions.registry.lock().unwrap().sessions.len() <= 1,
-                "cycle {cycle}"
+                handles <= first + 8,
+                "handles grew from {first} to {handles} by cycle {cycle}"
             );
-            probe.sessions.shutdown();
         }
+        sessions.shutdown();
     }
 }
