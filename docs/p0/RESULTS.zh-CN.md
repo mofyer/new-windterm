@@ -10,6 +10,7 @@
 | 浏览器独立全套 | **98/98，27.95 秒，0 failed/skipped/flaky**；严格 TypeScript/build 通过；新增 14 项交互 SSH 契约 | [WEB_QA](WEB_QA.zh-CN.md)；IPC stub，未运行 Rust/网络；含历史兼容缺口与隔离 PoC，不能全部计作生产功能完成 |
 | 浅深色独立复核 | 1000×650 的连接表单、指纹确认、SSH stub 终端共 6 态，无区域 overflow 或 pageerror | 本地回执 `.artifacts/p0/ssh-terminal-round/`；保持白银与中性炭灰方向，不是原生视觉/IME 验收 |
 | PTY 配对实验 | 三组交替配对 **6/6** 精确 2 MiB；负载中位数 6898.175 → 342.195 ms，含 300 ms 人工 ACK 暂停；顺序、预算、Ctrl-C、exit 7 与回收通过 | [PTY_READINESS](PTY_READINESS.zh-CN.md)；CLI 直接调用 Rust PTY，默认 feature 关闭，不代表默认 GUI 性能改善或性能出口通过 |
+| 本轮系统 OpenSSH 交互夹具 | **2/2 Node tests passed；自检连续 3 次通过；0 残留进程/临时目录**；随机 loopback sshd、临时 Ed25519/known_hosts、UTF-8、PTY 尺寸、有限输出 Ctrl-C、exit 7、错误 key/未知 host 和 `--serve` 清理均通过 | [OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md)；独立验证系统 OpenSSH，不接入 Tauri/Rust `ssh_open`，不代表完整远端 shell、SFTP 或 Windows 互操作已完成 |
 | 本轮首个提交本机 Rust 独立复验 | **28 单元 passed、1 explicit ignored；9 真实 SSH 集成 passed，26.85 秒**；fmt/check all-targets/all-features/clippy `-D warnings` 通过；独立 Rust 审查 APPROVE，未发现 critical/high | 代码 `807e0eb` 已在夹具辅助模块最终路径下复验；集成测试包含主动 rekey 拒绝。后续仅测试扫描器修订已独立 APPROVE，target 10/10（9 真实协议 + 1 helper），20.34 秒，fmt/target check/clippy 通过。真实 TCP/SSH 对端为有限命令 russh 服务端，不是 OS shell/OpenSSH；ignored 不计入通过 |
 | 当前共享 SSH 回归 | 代码 `807e0eb` 的 `ssh_probe --locked` 独立构建 7.04 秒；OpenSSH Node harness **2/2 passed、0 skipped，3.507 秒**，显式运行所需对端的 ignored 测试 | 本机固定命令入口：明确指纹、UTF-8、exit 7、错误客户端密钥与重连密钥不匹配路径；两次临时材料读取均为 ENOENT，额外确认无当前夹具目录/进程；不代表交互 OpenSSH 或应用 SFTP 验收 |
 | 本轮原生 GUI | arm64 debug 构建成功；WKWebView 完成实际指纹、本次信任、中文/emoji 输出、尺寸变化、输出中 Ctrl-C、exit 7、关闭和夹具清理 | 主任务 CUA 实测，详见下节；默认 readiness 关闭。仅为有限 russh 命令状态机的真实网络/native 链路，不代表 OS shell/OpenSSH、IME 或性能验收 |
@@ -37,6 +38,19 @@
 - `exit` 返回退出码 7；关闭 SSH 标签后只剩原有 1 个演示标签。停止夹具时 `active=0/auth=1`，检查确认临时目录已删除。
 
 该服务端不启动操作系统 shell。以上不证明 OpenSSH、vim/tmux、系统中文输入法或持续高输出性能通过，也不替代独立 Rust 审查与跨平台 CI。
+
+## 当前轮原生 PTY 数据路径冒烟
+
+本轮另外构建了两个 macOS arm64 debug `.app`：默认 feature 关闭的生产路径，以及显式启用 `pty-readiness` 的实验路径。通过 CUA 在真实 WKWebView 窗口打开本地 PTY，分别运行仓库内固定的 `pty-readiness` 生成器，并以独立标记确认命令结束：
+
+- 默认路径显示 `NW_BEGIN`、有限 2 MiB 生成器输出和 `NW_DONE`，退出码 0；应用状态显示退出、`129 × 23`，随后关闭标签回到原有 1 个会话。
+- readiness 路径显示 `RD_BEGIN`、同一有限 2 MiB 生成器输出和 `RD_DONE`，退出码 0；应用状态显示退出、`129 × 23`，随后关闭标签回到原有 1 个会话。
+
+状态栏字节数包含 shell 命令和标记（分别为 2,098,534 B 与 2,098,531 B），不能从中反推出生成器精确 payload；本次也没有测量 GUI 吞吐、输入法或键盘事件延迟。因此这只是原生默认/可选 readiness 数据路径和回收冒烟，不是性能或 IME 通过结论。readiness 构建命令为：
+
+```sh
+env PATH="$HOME/.cargo/bin:$PATH" npm run tauri build -- --debug --bundles app --features custom-protocol,pty-readiness
+```
 
 ## 前一轮历史：固定命令 SSH 与 PTY 分支计量
 
