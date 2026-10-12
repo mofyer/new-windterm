@@ -12,7 +12,7 @@
 #[path = "support/lrzsz.rs"]
 mod lrzsz;
 
-use lrzsz::{pump, require, transfer, Peer, Program, Scratch, Trace, TICK};
+use lrzsz::{pump, require, transfer, Held, Peer, Program, Scratch, Trace, Watch, STUCK, TICK};
 use new_windterm_desktop::modem::{
     Failure, Limits, OutgoingFile, ReceivedFile, Receiver, Sender, Status,
 };
@@ -338,46 +338,94 @@ struct Interrupted {
     settle: Duration,
 }
 
+/// When our machine's timers run in [`interrupt`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Timers {
+    /// Throughout, as in a real transfer.
+    Always,
+    /// Only from the intervention on, so short limits time just how our side
+    /// notices it. Before it, a peer may be slower than such limits allow:
+    /// lrzsz 0.12.21 `rb` (Debian/Ubuntu) drains the line for a whole second
+    /// before each YMODEM header request (see docs/p0/MODEM.zh-CN.md). A peer
+    /// silent for `STUCK` before the intervention is stuck, not slow: the
+    /// timers then start anyway, so the run fails with the full report.
+    FromIntervention,
+}
+
+/// Pumps `machine` until it stops; `act` runs once `progress` reaches
+/// `MID_TRANSFER`, when withheld timers start (or earlier, after `STUCK`).
+fn drive<M: lrzsz::Machine>(
+    machine: M,
+    peer: &mut Peer,
+    timers: Timers,
+    watch: &Watch,
+    progress: impl Fn(&M) -> u64,
+    act: impl Fn(&mut dyn lrzsz::Machine, &Peer),
+) -> M {
+    let mut held = Held {
+        machine,
+        timed: timers == Timers::Always,
+    };
+    let inbound = |chunk| watch.heard(chunk);
+    pump(&mut held, peer, identity, inbound, |held, peer| {
+        if watch.acted.get().is_some() {
+            return;
+        }
+        if progress(&held.machine) >= MID_TRANSFER {
+            watch.acted.set(Some(Instant::now()));
+            held.timed = true;
+            act(&mut held.machine, peer);
+        } else if !held.timed && watch.last_reply.get().elapsed() >= STUCK {
+            watch.stuck.set(true);
+            held.timed = true;
+        }
+    });
+    held.machine
+}
+
 /// Runs one side until `act` intervenes mid-transfer, then lets it settle.
+/// `limits` are the ones the side's machine was built with.
 fn interrupt(
     side: Side,
+    limits: Limits,
+    timers: Timers,
     act: impl Fn(&mut dyn lrzsz::Machine, &Peer) + Copy,
 ) -> Option<Interrupted> {
     let scratch = Scratch::new();
-    let mut acted: Option<Instant> = None;
-    let mut hook = |progress: u64, machine: &mut dyn lrzsz::Machine, peer: &mut Peer| {
-        if acted.is_none() && progress >= MID_TRANSFER {
-            acted = Some(Instant::now());
-            act(machine, peer);
-        }
-    };
-    let (label, status, exit, completed) = match side {
-        Side::Send(mut tx, role) => {
+    let (label, status, progress, peer, completed, watch) = match side {
+        Side::Send(tx, role) => {
             let program = require(role)?;
             let args: &[&str] = match role {
                 "rx" => &["--with-crc", "--binary", "big.bin"],
                 _ => &[],
             };
             let mut peer = spawn(&program, args, &scratch);
-            pump(&mut tx, &mut peer, identity, identity, |tx, peer| {
-                hook(tx.transferred(), tx, peer)
-            });
-            (role, tx.status(), peer, 0)
+            let watch = Watch::new();
+            let tx = drive(tx, &mut peer, timers, &watch, Sender::transferred, act);
+            (role, tx.status(), tx.transferred(), peer, 0, watch)
         }
-        Side::Receive(mut rx, role) => {
+        Side::Receive(rx, role) => {
             let program = require(role)?;
             write_sources(&scratch, &big_file());
             let mut peer = spawn(&program, &["--1k", "big.bin"], &scratch);
-            pump(&mut rx, &mut peer, identity, identity, |rx, peer| {
-                hook(rx.transferred(), rx, peer)
-            });
-            (role, rx.status(), peer, rx.files().len())
+            let watch = Watch::new();
+            let rx = drive(rx, &mut peer, timers, &watch, Receiver::transferred, act);
+            let completed = rx.files().len();
+            (role, rx.status(), rx.transferred(), peer, completed, watch)
         }
     };
-    let settle = acted
-        .unwrap_or_else(|| panic!("{label}: transfer ended before the intervention"))
-        .elapsed();
-    let exit = exit.finish();
+    let stopped = Instant::now();
+    let exit = peer.finish();
+    let pace = watch.report(limits, stopped);
+    let Some(acted) = watch.acted.get() else {
+        panic!(
+            "{label}: transfer ended before the intervention: ours {status:?} at {progress} bytes, {:?} after the peer started (timers {timers:?}); {pace}; peer exit {:?}, stderr {:?}",
+            stopped - watch.start,
+            exit.status,
+            exit.stderr.trim()
+        );
+    };
+    let settle = stopped - acted;
     let left_behind = match label {
         "rx" | "rb" => std::fs::metadata(scratch.path().join("big.bin"))
             .ok()
@@ -385,7 +433,7 @@ fn interrupt(
         _ => None,
     };
     eprintln!(
-        "{label}: ours {status:?} after {settle:?}; peer exit {:?}; peer file {left_behind:?}",
+        "{label}: ours {status:?} {settle:?} after the intervention; {pace}; peer exit {:?}; peer file {left_behind:?}",
         exit.status
     );
     Some(Interrupted {
@@ -416,8 +464,10 @@ fn assert_incomplete(run: &Interrupted) {
 #[test]
 #[ignore = "needs lrzsz; run with --ignored"]
 fn our_can_can_cancel_stops_every_lrzsz_peer() {
-    for side in sides(Limits::default()) {
-        let Some(run) = interrupt(side, |machine, _| machine.cancel()) else {
+    let limits = Limits::default();
+    for side in sides(limits) {
+        let Some(run) = interrupt(side, limits, Timers::Always, |machine, _| machine.cancel())
+        else {
             return;
         };
         assert_eq!(
@@ -441,8 +491,10 @@ fn our_can_can_cancel_stops_every_lrzsz_peer() {
 #[ignore = "needs lrzsz; run with --ignored"]
 fn lrzsz_interrupt_sends_can_and_cancels_us() {
     // lrzsz answers SIGINT by sending its CAN sequence before exiting.
-    for side in sides(Limits::default()) {
-        let Some(run) = interrupt(side, |_, peer| peer.signal("INT")) else {
+    let limits = Limits::default();
+    for side in sides(limits) {
+        let Some(run) = interrupt(side, limits, Timers::Always, |_, peer| peer.signal("INT"))
+        else {
             return;
         };
         assert_eq!(
@@ -464,8 +516,11 @@ fn peer_killed_mid_transfer_fails_within_the_retry_budget() {
         max_retries: 3,
         ..Limits::default()
     };
+    // The quick limits would expire before lrzsz 0.12.21 `rb` sends its first
+    // request, so they only time what follows the kill.
     for side in sides(quick) {
-        let Some(run) = interrupt(side, |_, peer| peer.signal("KILL")) else {
+        let kill = |_: &mut dyn lrzsz::Machine, peer: &Peer| peer.signal("KILL");
+        let Some(run) = interrupt(side, quick, Timers::FromIntervention, kill) else {
             return;
         };
         assert_eq!(

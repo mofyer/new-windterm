@@ -7,8 +7,9 @@
 //! is set (CI), in which case a missing program fails the test.
 #![allow(dead_code)]
 
-use new_windterm_desktop::modem::{Receiver, Sender, Status};
+use new_windterm_desktop::modem::{Limits, Receiver, Sender, Status};
 use std::{
+    cell::Cell,
     convert::identity,
     ffi::OsStr,
     io::{Read, Write},
@@ -345,4 +346,94 @@ pub fn pump<M: Machine>(
 /// Pumps a whole transfer without interference.
 pub fn transfer<M: Machine>(machine: &mut M, peer: &mut Peer) -> Trace {
     pump(machine, peer, identity, identity, |_, _| {})
+}
+
+/// Peer silence before an intervention after which withheld timers start:
+/// the peer is stuck, not slow.
+pub const STUCK: Duration = Duration::from_secs(10);
+
+/// A machine whose `tick()`s are withheld until `timed` is set, so a test
+/// can time only the steps after an intervention.
+pub struct Held<M> {
+    pub machine: M,
+    pub timed: bool,
+}
+
+impl<M: Machine> Machine for Held<M> {
+    fn feed(&mut self, input: &[u8]) {
+        self.machine.feed(input)
+    }
+    fn tick(&mut self) {
+        if self.timed {
+            self.machine.tick()
+        }
+    }
+    fn take_output(&mut self) -> Vec<u8> {
+        self.machine.take_output()
+    }
+    fn running(&self) -> bool {
+        self.machine.running()
+    }
+    fn cancel(&mut self) {
+        self.machine.cancel()
+    }
+}
+
+/// When the peer answered before an intervention, for logs and failures.
+pub struct Watch {
+    /// Just after the peer was spawned; the first wait includes its start-up.
+    pub start: Instant,
+    /// When the test intervened.
+    pub acted: Cell<Option<Instant>>,
+    first_reply: Cell<Option<Duration>>,
+    pub last_reply: Cell<Instant>,
+    /// Longest wait for the peer: start to first reply, or between replies.
+    longest_wait: Cell<Duration>,
+    /// Withheld timers started after `STUCK` of silence.
+    pub stuck: Cell<bool>,
+}
+
+impl Watch {
+    pub fn new() -> Self {
+        let start = Instant::now();
+        Self {
+            start,
+            acted: Cell::new(None),
+            first_reply: Cell::new(None),
+            last_reply: Cell::new(start),
+            longest_wait: Cell::new(Duration::ZERO),
+            stuck: Cell::new(false),
+        }
+    }
+
+    /// Inbound filter: notes when the peer's bytes arrived before the intervention.
+    pub fn heard(&self, chunk: Vec<u8>) -> Vec<u8> {
+        if self.acted.get().is_none() {
+            let now = Instant::now();
+            let wait = now - self.last_reply.get();
+            self.longest_wait.set(self.longest_wait.get().max(wait));
+            self.last_reply.set(now);
+            if self.first_reply.get().is_none() {
+                self.first_reply.set(Some(now - self.start));
+            }
+        }
+        chunk
+    }
+
+    /// Compares the peer's pace up to the intervention (or, without one, up
+    /// to `stopped`) with the silence `limits` tolerate per step.
+    pub fn report(&self, limits: Limits, stopped: Instant) -> String {
+        let tolerated = TICK * limits.timeout_ticks * (limits.max_retries + 1);
+        let end = self.acted.get().unwrap_or(stopped);
+        let trailing = end.saturating_duration_since(self.last_reply.get());
+        let stuck = match self.stuck.get() {
+            true => format!("; timers started after {STUCK:?} of peer silence"),
+            false => String::new(),
+        };
+        format!(
+            "first peer byte after {:?}; longest wait for the peer before the intervention {:?} (our limits tolerate {tolerated:?} of silence per step){stuck}",
+            self.first_reply.get(),
+            self.longest_wait.get().max(trailing)
+        )
+    }
 }

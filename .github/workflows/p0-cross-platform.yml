@@ -157,6 +157,20 @@ jobs:
           sudo apt-get install --no-install-recommends -y openssh-server xvfb xauth x11-utils
           node --test tests/fixtures/ssh-terminal/x11-client.test.mjs 2>&1 | tee "$RUNNER_TEMP/p0-logs/x11-openssh.log"
 
+      # Private sshd (AllowAgentForwarding yes) and a private ssh-agent with a
+      # generated key; remote ssh-add -l must list it only on the opted-in
+      # connection. The runner home is disposable, so sshd 10.1+ may bind its
+      # forwarded socket under ~/.ssh/agent here.
+      - name: Run ssh-agent forwarding against OpenSSH (Linux only)
+        id: agent_openssh
+        if: runner.os == 'Linux'
+        env:
+          P0_AGENT_REQUIRED: "1"
+          P0_AGENT_HOME_SOCKET: "1"
+        run: |
+          sudo apt-get install --no-install-recommends -y openssh-server openssh-client
+          node --test tests/fixtures/ssh-terminal/agent-client.test.mjs 2>&1 | tee "$RUNNER_TEMP/p0-logs/agent-openssh.log"
+
       - name: Record exact acceptance boundary
         if: always()
         run: |
