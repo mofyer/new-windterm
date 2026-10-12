@@ -20,10 +20,10 @@
 | tauri / tauri-build | =2.12.3 / =2.7.2 | Apache-2.0 OR MIT | 桌面壳、IPC、构建 |
 | portable-pty | =0.9.0 | MIT | 本地 PTY / ConPTY |
 | russh | =0.64.1 | Apache-2.0 | SSH 客户端（ring 后端） |
-| russh-sftp | =3.0.1 | Apache-2.0 | 只读 SFTP |
+| russh-sftp | =3.0.1 | Apache-2.0 | SFTP 浏览与写操作原型 |
 | tokio | =1.50.0 | MIT | 异步运行时 |
 | serde / uuid / zeroize | =1.0.229 / =1.18.1 / =1.9.1 | MIT / Apache-2.0 双许可 | 序列化、ID、秘密清零 |
-| libc（Unix） | =0.2.180 | MIT OR Apache-2.0 | PTY 非阻塞与 poll |
+| libc（Unix） | =0.2.180 | MIT OR Apache-2.0 | PTY 非阻塞与 poll；SFTP 下载落盘的 `O_NOFOLLOW` |
 | windows-sys（Windows，`p0/windows-conpty` 分支） | =0.61.2 | MIT OR Apache-2.0 | Job Object、GetFileType；该版本此前已在锁文件中 |
 | @xterm/xterm 与插件 | 6.0.0 / 0.11.0 / 0.9.0 | MIT | 终端渲染 |
 | @xterm/addon-image（开发依赖） | 0.9.0 | MIT | 仅 SIXEL 隔离原型；与 xterm 6.0.0 同一提交 `f447274` 发布 |

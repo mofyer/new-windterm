@@ -4,6 +4,7 @@ pub mod net_terminal;
 mod platform;
 pub mod pty;
 pub mod sftp;
+mod sftp_ipc;
 pub mod ssh;
 pub mod telnet;
 pub mod tmux_control;
@@ -455,6 +456,10 @@ pub fn run() {
             ssh_sftp_metadata,
             ssh_sftp_read,
             ssh_sftp_close,
+            sftp_ipc::ssh_sftp_set_writable,
+            sftp_ipc::ssh_sftp_change,
+            sftp_ipc::ssh_sftp_upload,
+            sftp_ipc::ssh_sftp_download,
             ssh_trust_save,
             ssh_trust_replace,
             ssh_reject,

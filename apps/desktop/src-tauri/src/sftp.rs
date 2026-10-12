@@ -1,10 +1,18 @@
 //! Read-only SFTP capability slice for an authenticated Russh channel.
 //!
-//! This module deliberately does not own SSH authentication or expose mutating
-//! filesystem operations. Callers provide an authenticated channel, and the
-//! wrapper only permits path resolution, directory listing, metadata, and
-//! bounded file reads. It drives the raw protocol so a listing can stop as soon
-//! as its budget is reached instead of first collecting the whole directory.
+//! This module deliberately does not own SSH authentication. Callers provide
+//! an authenticated channel, and `ReadOnlySftp` itself only permits path
+//! resolution, directory listing, metadata, and bounded file reads. It drives
+//! the raw protocol so a listing can stop as soon as its budget is reached
+//! instead of first collecting the whole directory.
+//!
+//! Mutations live in [`write`] behind a separate `Writer` that callers must
+//! obtain explicitly; streamed downloads to the local disk live in [`local`].
+
+#[path = "sftp_local.rs"]
+pub mod local;
+#[path = "sftp_write.rs"]
+pub mod write;
 
 use russh::{client, Channel};
 use russh_sftp::{
@@ -78,6 +86,15 @@ fn validate_path(path: &str) -> Result<(), String> {
         return Err("Invalid remote path".into());
     }
     Ok(())
+}
+
+/// The last path component, used as a display name for single-path results.
+fn base_name(path: &str) -> &str {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or(path)
 }
 
 fn entry(name: String, metadata: &FileAttributes) -> RemoteEntry {
@@ -218,13 +235,7 @@ impl ReadOnlySftp {
             .await
             .map_err(|_| "SFTP metadata request failed".to_string())?
             .attrs;
-        let name = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .filter(|name| !name.is_empty())
-            .unwrap_or(path);
-        Ok(entry(name.to_string(), &attrs))
+        Ok(entry(base_name(path).to_string(), &attrs))
     }
 
     /// Reads at most [`MAX_READ_BYTES`] from a remote regular file.
