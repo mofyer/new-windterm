@@ -36,7 +36,7 @@
 
 - **CI**：`.github/workflows/p0-cross-platform.yml`，覆盖 macOS arm64、Linux x64、Windows x64。工作分支上可以用 `gh workflow run p0-cross-platform.yml --ref <分支>` 手动触发。最近的证据以 [RESULTS](p0/RESULTS.zh-CN.md) 顶部各节为准。
 - **结果与边界**：[docs/p0/RESULTS.zh-CN.md](p0/RESULTS.zh-CN.md)。
-- **功能总矩阵**：[docs/FEATURE_PARITY.zh-CN.md](FEATURE_PARITY.zh-CN.md)，共 130 个 ID。本轮没有改变任何一行的状态。
+- **功能总矩阵**：[docs/FEATURE_PARITY.zh-CN.md](FEATURE_PARITY.zh-CN.md)。2026-10-12 由用户批准冻结，共 161 个 ID（原 130 个，加上 31 个采纳的候选）。冻结没有改变任何原有行的状态。
 - **路线图**：[docs/ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 本轮完成且有证据的内容（集成分支）
@@ -95,7 +95,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 这些事项已向用户说明过，不要自行绕过：
 
 - **合并**：同意把 `p0/integration` 合并到 `main`（需要在 CI 通过之后）。
-- **功能基线冻结**：对[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)中的 E1–E12 作出决定。最先要定的是：以 README 和静态证据为准直接冻结，还是先在隔离环境中运行上游 2.7.0，记录与本项目的差异。
+- **功能基线**：2026-10-12 已冻结，E1–E12 全部采用推荐选项。用户同时授权在隔离副本中运行上游 2.7.0 做实机盘点；Windows/Linux 上游包的静态核对放到冻结之后。见[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)的决定记录。
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。

@@ -125,6 +125,6 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 - 依赖全部精确锁定（Cargo 用 `=x.y.z`，npm 用精确版本），并提交 `Cargo.lock`/`package-lock.json`；构建统一使用 `--locked` / `npm ci`。
 - 文档为中文（`*.zh-CN.md`）。改动代码后要同步更新相关文档，写明提交、测试范围、平台和未验收边界。提交使用 conventional 格式（`feat:`/`fix:`/`docs:`/`test:`/`ci:`）；记录 CI 证据这类只改文档的提交通常在标题末尾加 `[skip ci]`。CI（`.github/workflows/p0-cross-platform.yml`，macOS arm64 / Linux x64 / Windows x64）只在 `apps/desktop/**`、`rust-toolchain.toml` 或 workflow 变更时触发。
-- 功能对齐矩阵共 130 个稳定 ID，分布在 `docs/FEATURE_PARITY.zh-CN.md`、`docs/p0/BASELINE.zh-CN.md`、`docs/p0/baseline.json` 三处，三者必须一致；修改后运行 [docs/p0/BASELINE_EVIDENCE.zh-CN.md](docs/p0/BASELINE_EVIDENCE.zh-CN.md)「结构验证」一节的 Python 脚本。不要更改原有 117 个 ID。
+- 功能基线已于 2026-10-12 由用户批准冻结（`scope_frozen: true`），共 161 个稳定 ID，分布在 `docs/FEATURE_PARITY.zh-CN.md`、`docs/p0/BASELINE.zh-CN.md`、`docs/p0/baseline.json` 三处，三者必须一致；修改后运行 [docs/p0/BASELINE_EVIDENCE.zh-CN.md](docs/p0/BASELINE_EVIDENCE.zh-CN.md)「结构验证」一节的三段脚本。冻结后的变更规则见[冻结方案](docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)：新能力只能以新 ID 补入并需用户批准；不删除 ID，也不复用编号（已排除 G43，暂缓 C23、C28、G54、G55）；改措辞要附证据和理由。
 - 视觉方向（浅色 Silver Soft UI、深色 Carbon Dark）已获用户认可，见 [docs/p0/DESIGN_SYSTEM.zh-CN.md](docs/p0/DESIGN_SYSTEM.zh-CN.md)。不要重新讨论技术路线或视觉方向。
 - `.reference/`（已 gitignore）存放 WindTerm 上游源码/README 和 2.7.0 x86_64 dmg，仅用于行为对照；不得复制上游代码、图标或二进制（许可证尚未逐文件核查）。
