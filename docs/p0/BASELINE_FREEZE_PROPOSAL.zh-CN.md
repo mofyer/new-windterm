@@ -100,7 +100,7 @@
 | 追踪 ID | 161（原 117 + 第二轮 13 + 冻结新增 31）；冻结前 130 |
 | 静态复核结论 | 支持 132（含冻结新增 31 项，取自候选表）、部分 23、矛盾 4（其中 Q06 为弱矛盾）、沉默 2；冻结前支持 101 |
 | P0 证据分组 | 原型/探针 67、仅静态 93、皆无 1（S08）；冻结前 64、65、1；2026-10-11 时为 57、72、1 |
-| “原型/探针”的证据层级 | 真实对端 22、真实平台 7、loopback 夹具 9、浏览器 29；冻结前 21、7、9、27；2026-10-11 时为 6、7、17、27 |
+| “原型/探针”的证据层级 | 真实对端 23、真实平台 7、loopback 夹具 8、浏览器 29；冻结前 21、7、9、27；2026-10-11 时为 6、7、17、27 |
 | 需要定措辞的冲突 | 4 项矛盾（G13、F08/F09、Q06）与 2 项路线图不一致（C14、G02），另有 4 项同步措辞（S11、G17、G33、F21）：均已按 E2–E7 定稿 |
 | 静态候选 | 36 项：纳入 31（其中 G53 限定范围）、不纳入 1（G43）、暂缓 4（C23、C28、G54、G55） |
 | 对齐计数标记 | S08 上游未证实；F08、F09 先确认上游是否存在；其余 158 项照常计入 |
@@ -344,7 +344,7 @@
 | Q | 6 | 6 | 0 | 0 |
 | 合计 | 161 | 67 | 93 | 1 |
 
-“原型/探针”组按证据层级再分：真实对端 22 项（真实 OpenSSH、tmux、telnetd、lrzsz，以及 Linux CI 上的 OpenSSH 加 Xvfb），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 9 项（russh 或测试内服务器、自发自收），浏览器 29 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、F12 另有方案或决策记录，但没有运行证据。冻结前（130 项）分组为 64、65、1，层级为 21、7、9、27；差额全部来自冻结新增的 31 项，见下文“2026-10-12 冻结新增 31 项”。
+“原型/探针”组按证据层级再分：真实对端 23 项（真实 OpenSSH、tmux、telnetd、lrzsz，以及 Linux CI 上的 OpenSSH 加 Xvfb），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 8 项（russh 或测试内服务器、自发自收），浏览器 29 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、F12 另有方案或决策记录，但没有运行证据。冻结前（130 项）分组为 64、65、1，层级为 21、7、9、27；差额全部来自冻结新增的 31 项，见下文“2026-10-12 冻结新增 31 项”。
 
 [UI_MAP](UI_MAP.zh-CN.md#已实现的原型行为) 还把部分界面原型映射到 S02、S08、G04、G09、G10、G19、G26、G27、F13、F21。这些入口使用演示数据或模拟状态机，或者语义与该行不同，因此不计为运行证据。各行的“覆盖范围与缺口”写明了理由；baseline.json 的 `evidence_refresh.ui_prototype_not_counted` 列出同一组 ID。F02、F03 原先也在这一组；2026-10-12 起它们有 SFTP 写操作原型的运行证据，因此移出，但原型中的模拟传输队列仍然不计为运行证据。
 
@@ -400,7 +400,7 @@ E8 决定后，(b) 表中纳入的 31 项按本节的分组与层级规则加入
 | C07 | ProxyCommand | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行 |
 | C08 | ProxyJump | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存 |
 | C09 | SSH agent | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 临时 ssh-agent 认证（russh 集成，仅 macOS 本机）；Windows 命名管道只经交叉编译 |
-| C10 | agent forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机) | agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测 |
+| C10 | agent forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#与-openssh-服务端互操作2026-10-12) | agent 转发默认拒绝、显式开启后可用；SSH 终端连接对话框逐连接开启（IPC stub 界面）；对系统 OpenSSH（本机 10.3p1、Linux CI）用私有临时 ssh-agent 验证：未开启时远端无 agent，开启后远端 ssh-add -l 只列出该密钥；未验证经转发的签名与原生窗口 |
 | C11 | 密码认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 密码正确/错误（russh 集成）；无保存与自动登录 |
 | C12 | 公钥认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) | Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录 |
 | C13 | keyboard-interactive | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_KBDINT](SSH_KBDINT.zh-CN.md#证据macos-arm64本地) | 多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH |

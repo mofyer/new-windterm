@@ -377,18 +377,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10",
-          "result": "agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面"
+          "result": "agent 转发默认拒绝、显式开启后可用；SSH 终端连接对话框逐连接开启（IPC stub 界面）；对系统 OpenSSH（本机 10.3p1、Linux CI）用私有临时 ssh-agent 验证：未开启时远端无 agent，开启后远端 ssh-add -l 只列出该密钥；未验证经转发的签名与原生窗口"
         },
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机",
-          "result": "agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测"
+          "result": "agent 转发默认拒绝、显式开启后可用；SSH 终端连接对话框逐连接开启（IPC stub 界面）；对系统 OpenSSH（本机 10.3p1、Linux CI）用私有临时 ssh-agent 验证：未开启时远端无 agent，开启后远端 ssh-add -l 只列出该密钥；未验证经转发的签名与原生窗口"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#与-openssh-服务端互操作2026-10-12",
+          "result": "agent 转发默认拒绝、显式开启后可用；SSH 终端连接对话框逐连接开启（IPC stub 界面）；对系统 OpenSSH（本机 10.3p1、Linux CI）用私有临时 ssh-agent 验证：未开启时远端无 agent，开启后远端 ssh-add -l 只列出该密钥；未验证经转发的签名与原生窗口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "agent 转发默认拒绝、显式开启后可用；SSH 终端连接对话框逐连接开启（IPC stub 界面）；对系统 OpenSSH（本机 10.3p1、Linux CI）用私有临时 ssh-agent 验证：未开启时远端无 agent，开启后远端 ssh-add -l 只列出该密钥；未验证经转发的签名与原生窗口",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -5884,9 +5889,9 @@
       "neither": "No upstream static evidence beyond the README claim and no P0 prototype or probe."
     },
     "p0_evidence_level_counts": {
-      "real_peer": 22,
+      "real_peer": 23,
       "real_platform": 7,
-      "loopback_fixture": 9,
+      "loopback_fixture": 8,
       "browser": 29
     },
     "p0_evidence_level_meaning": {

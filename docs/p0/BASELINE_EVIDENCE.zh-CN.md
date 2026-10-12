@@ -292,14 +292,14 @@ for i, (name, phase, acceptance, status) in old.items():
     assert (new[i][2] != acceptance) == (i in REWORDED), i
 oj = {f['id']: f for f in json.loads(show('docs/p0/baseline.json'))['features']}
 nj = {f['id']: f for f in json.loads(Path('docs/p0/baseline.json').read_text())['features']}
-KEEP = ['capability', 'phase', 'evidence', 'static_review_conclusion', 'p0_evidence_group', 'p0_evidence_level',
-        'p0_evidence_note', 'upstream_ui', 'upstream_protocol', 'upstream_behavior', 'parity', 'scope_origin',
-        'scope_classification', 'implementation_status']
+# Frozen fields only; P0 evidence (evidence, p0_evidence_*) may be refreshed after the freeze.
+KEEP = ['capability', 'phase', 'static_review_conclusion', 'upstream_ui', 'upstream_protocol', 'upstream_behavior',
+        'parity', 'scope_origin', 'scope_classification', 'implementation_status']
 for i, f in oj.items():
     assert all(nj[i].get(k) == f.get(k) for k in KEEP), i
     assert (nj[i]['acceptance'] != f['acceptance']) == (i in REWORDED), i
 assert {i for i in oj if nj[i]['not_tested_reason'] != oj[i]['not_tested_reason']} == {'C14'}
-print(f'PASS: {len(old)} pre-freeze rows keep name, phase, status and evidence; acceptance reworded only for '
+print(f'PASS: {len(old)} pre-freeze rows keep name, phase and status (P0 evidence may be refreshed); acceptance reworded only for '
       f'{len(REWORDED)} decided rows; only C14 not-tested reason updated; {len(new) - len(old)} rows added')
 PY
 ```

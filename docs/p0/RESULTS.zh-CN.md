@@ -294,6 +294,24 @@ Rust 评审的 1 个 HIGH 和 3 个 MEDIUM 已修复并复核。安全评审没�
 | 真实 OpenSSH 夹具 | 4/4 与 1/1 |
 | `pty_probe` | 加 `dev-tools` 时三项 PASS；不加时 Cargo 拒绝构建 |
 
+## CI：六个作业全绿，并新增互操作证据（2026-10-12）
+
+[run 38230376894](https://github.com/mofyer/new-windterm/actions/runs/38230376894) 的六个作业全部通过：
+- macOS、Linux、Windows Server 2022、Windows Server 2025 四个常规作业；
+- Linux 与 Windows 的原生 WebView 冒烟。
+
+其中 Linux 作业里的三项互操作：
+
+| 步骤 | 结果 |
+| --- | --- |
+| X/YMODEM 对 Ubuntu lrzsz 0.12.21rc | 11/11。上次失败的“对端中途被杀”一项也通过，根因与修复得到确认 |
+| X11 转发对 OpenSSH 加 Xvfb | 通过 |
+| agent 转发对 OpenSSH（首次在 Linux 上运行） | 通过：远端 `ssh-add -l` 只在开启转发时列出私有 agent 中的那把密钥 |
+
+台账中 C10 的证据层级随之从 loopback 夹具升为真实对端，“原型/探针”组的层级计数变为：真实对端 23、真实平台 7、loopback 夹具 8、浏览器 29。
+
+第三段结构验证原先把冻结前各行的证据字段也锁定为不可变，这与冻结规则不符：冻结锁定的是 ID、名称、阶段、状态与验收措辞，P0 证据可以随后更新。现已改为只核对被冻结的字段。
+
 ## E11：Windows 与 Linux 上游包静态核对
 
 对官方 2.7.0 的 Windows 与 Linux 便携包做了只读静态核对，没有运行包内任何内容，见[记录](UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md)：
