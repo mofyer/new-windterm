@@ -1,6 +1,6 @@
 # X/Y/ZModem 文件传输可行性探针（F10、F11、F12）
 
-日期：2026-10-11；2026-10-12 补充 lrzsz 互操作测试与 `zmodem2` 评估。状态：**XModem（F10）与 YModem（F11）只有与传输无关的 Rust 状态机，已在 macOS arm64 上经 stdin/stdout 管道与真实 lrzsz 0.13.1 双向互操作，并据此修复了 2 个协议缺陷；ZModem（F12）仍没有产品代码，只有下文的 ADR 和一个只在测试中使用的第三方 `zmodem2` 评估探针。三项均未接入终端、PTY、SSH 或串口，没有界面，均未完成，不代表验收。** [功能对齐矩阵](../FEATURE_PARITY.zh-CN.md)中 F10–F12 的状态仍是“未实现”，本次未改动。三处基线台账中 F10–F12 的“无 lrzsz 互操作”“无代码”说明也未改动，需由台账维护者统一更新。
+日期：2026-10-11；2026-10-12 补充 lrzsz 互操作测试、`zmodem2` 评估，以及 Ubuntu lrzsz 0.12.21rc 上一项测试失败的原因与测试修复。状态：**XModem（F10）与 YModem（F11）只有与传输无关的 Rust 状态机，已在 macOS arm64 上经 stdin/stdout 管道与真实 lrzsz 0.13.1 双向互操作，并据此修复了 2 个协议缺陷；Ubuntu 的 lrzsz 0.12.21rc 只在 CI 上运行过；ZModem（F12）仍没有产品代码，只有下文的 ADR 和一个只在测试中使用的第三方 `zmodem2` 评估探针。三项均未接入终端、PTY、SSH 或串口，没有界面，均未完成，不代表验收。** [功能对齐矩阵](../FEATURE_PARITY.zh-CN.md)中 F10–F12 的状态仍是“未实现”，本次未改动。三处基线台账中 F10–F12 的“无 lrzsz 互操作”“无代码”说明也未改动，需由台账维护者统一更新。
 
 ## 代码位置
 
@@ -10,7 +10,7 @@
 | [`modem/receiver.rs`](../../apps/desktop/src-tauri/src/modem/receiver.rs) | 接收端 `Receiver`、YMODEM 头解析 |
 | [`modem/tests.rs`](../../apps/desktop/src-tauri/src/modem/tests.rs) | 25 项单元测试（回环、故障注入、互操作发现的回归） |
 | [`tests/modem_lrzsz.rs`](../../apps/desktop/src-tauri/tests/modem_lrzsz.rs) | 11 项与 lrzsz `sx`/`rx`/`sb`/`rb` 的互操作测试（默认 `#[ignore]`） |
-| [`tests/support/lrzsz.rs`](../../apps/desktop/src-tauri/tests/support/lrzsz.rs) | 查找并启动 lrzsz、管道泵、私有临时目录、超时与清理 |
+| [`tests/support/lrzsz.rs`](../../apps/desktop/src-tauri/tests/support/lrzsz.rs) | 查找并启动 lrzsz、管道泵、私有临时目录、超时与清理；中断测试用的 `Held`（暂缓 `tick()`）与 `Watch`（记录对端节奏） |
 | [`tests/zmodem_lrzsz.rs`](../../apps/desktop/src-tauri/tests/zmodem_lrzsz.rs) | 8 项 `zmodem2` 与 lrzsz `sz`/`rz` 的评估测试（默认 `#[ignore]`） |
 | [`tests/support/zmodem2_probe.rs`](../../apps/desktop/src-tauri/tests/support/zmodem2_probe.rs) | 评估用驱动：把 `zmodem2` 接到同一个管道泵，并补上它不提供的取消检测、超时上限、文件名与大小检查；只是测试脚手架，不是产品集成设计 |
 
@@ -90,7 +90,7 @@ cargo test --locked --manifest-path $M --all-targets --all-features             
 
 ### lrzsz 互操作（2026-10-12）
 
-**对端与环境**：用户批准后通过 Homebrew 安装的 lrzsz 0.13.1（`/opt/homebrew/Cellar/lrzsz/0.13.1`），macOS 27.0.1 arm64，Rust 1.99.0。`lrx --version` 输出 `lrx (GNU lrzsz) 0.13.1`，`lsx --version` 输出 `lsx (lrzsz) 0.13.1`。Homebrew 只提供带 `l` 前缀的 `lsx`/`lrx`/`lsb`/`lrb`，`sz`/`rz` 两种名字都有；测试先找 `l<角色>`，再找 `<角色>`（Debian 两种名字都装）。lrzsz 是 GPL：只作为独立进程从 `PATH` 启动，没有链接、复制或改写它的任何代码，也没有阅读它的源码；行为依据它的 man page 和黑盒观察。
+**对端与环境**：用户批准后通过 Homebrew 安装的 lrzsz 0.13.1（`/opt/homebrew/Cellar/lrzsz/0.13.1`），macOS 27.0.1 arm64，Rust 1.99.0。`lrx --version` 输出 `lrx (GNU lrzsz) 0.13.1`，`lsx --version` 输出 `lsx (lrzsz) 0.13.1`。Homebrew 只提供带 `l` 前缀的 `lsx`/`lrx`/`lsb`/`lrb`，`sz`/`rz` 两种名字都有；测试先找 `l<角色>`，再找 `<角色>`（Debian 两种名字都装）。lrzsz 是 GPL：只作为独立进程从 `PATH` 启动，没有链接、复制或改写它的任何代码。上述互操作工作中没有阅读它的源码，行为依据 man page 和黑盒观察；后来为诊断 Ubuntu 上的失败，阅读过 0.12.21 中与定时有关的源码片段（见下文“Ubuntu lrzsz 0.12.21rc”）。
 
 **做法**：每个测试在 `std::env::temp_dir()` 下新建私有目录（结束时删除），以 `LC_ALL=C`、去掉 `ZMODEM_RESTRICTED` 的环境启动对端，经 stdin/stdout 管道收发。泵循环把我们状态机的 `take_output()` 写给对端，把对端输出交给 `feed()`，每 100 ms 实时调用一次 `tick()`（默认 10 tick 超时，即 1 秒）。对端输出由一个线程读入**有界**队列（4 块 × 8 KiB），流式对端会像真实链路一样被反压。单次传输超过 60 秒判失败；对端结束时最多再等 20 秒（期间继续读走它的输出），否则强制结束。所有收发结果都与原始数据逐字节比较。
 
@@ -113,7 +113,7 @@ cargo test --locked --manifest-path $M --all-features --test zmodem_lrzsz -- --i
 | `corrupted_blocks_are_rejected_and_resent_in_both_directions` | `rx`/`rb` 与 `sx --1k`/`sb --1k`，1 000 003 字节 | 我们发出的第 2 块首份被篡改 1 字节：lrzsz 拒收，我们恰好重发一次。lrzsz 发来的流第 2000 字节被篡改：我们 NAK 一次后得到正确数据（YMODEM 另有 EOT 的 NAK） |
 | `our_can_can_cancel_stops_every_lrzsz_peer` | `rx`/`rb`/`sx`/`sb`，传到 64 KiB 后 `cancel()` | 4 个对端都自行以退出码 128 结束；`rx`/`rb` 没有留下文件 |
 | `lrzsz_interrupt_sends_can_and_cancels_us` | 同上，传到 64 KiB 后向对端发 SIGINT | lrzsz 发出 CAN 序列，我们在约 2–4 ms 内报 `RemoteCancel`；对端退出码 130；`rx`/`rb` 留下 65 536 字节的部分文件（lrzsz 的 man page 说明中断时保留部分文件），我们侧不报告完成 |
-| `peer_killed_mid_transfer_fails_within_the_retry_budget` | 同上，SIGKILL | `timeout_ticks=2`、`max_retries=3` 时，我们在约 0.79 秒（预算 0.8 秒）后报 `RetriesExhausted` 并发出 CAN |
+| `peer_killed_mid_transfer_fails_within_the_retry_budget` | 同上，SIGKILL | `timeout_ticks=2`、`max_retries=3` 时，我们在约 0.79 秒（预算 0.8 秒）后报 `RetriesExhausted` 并发出 CAN。2026-10-12 起这组短限值只从杀死对端时开始计时，见下文“Ubuntu lrzsz 0.12.21rc” |
 | `ymodem_receiver_refuses_a_path_sent_by_sb_full_path` | `sb --full-path sub/x.bin` | 头中的 `sub/x.bin` 被拒绝（`InvalidFileName`），我们发出 5 个 CAN，`sb` 以非 0 退出 |
 | `late_lrzsz_senders_reading_queued_requests_stay_in_step` | `sb --delay-startup 2 <2 个文件>`、`sx [--1k] --delay-startup 2`，超时 300 ms | 回归测试，见下。修复前 `sb` 一项失败为 `SequenceError`；修复后两种对端都完成，内容一致 |
 | `long_ymodem_name_reaches_rb_in_a_1k_block_0` | `rb` | 244 字节的 UTF-8 文件名使块 0 改用 STX 帧，`rb` 按原名保存，内容一致 |
@@ -125,9 +125,39 @@ cargo test --locked --manifest-path $M --all-features --test zmodem_lrzsz -- --i
 
 **观察到、但未固化为测试的 lrzsz 0.13.1 行为**（一次性实验）：`sx` 读到块 1 之后的多余 `C` 会忽略，读到 NAK 会重发块 1。`lsb` 拒绝发送 64 字节及以上的文件名（试过 64/94/112/124/184/244 字节，加不加 `--1k` 都一样），提示 `filename too long for YMODEM subpacket`，之后以 128 退出，**不发 CAN**，我们的接收端只能等重试耗尽。14 字节的名称正常；更精确的阈值没有测。
 
-**仍未验证**：只在 macOS 上通过管道测试，没有经过 PTY/TTY 行规程、SSH channel、Telnet 或串口；只测了 lrzsz 0.13.1，Debian/Ubuntu 软件源中的旧版本系列没有在本机运行；没有与 WindTerm 2.7.0 对照；默认超时、重试次数也没有与 lrzsz 对照调优。
+**仍未验证**：只在 macOS 上通过管道测试，没有经过 PTY/TTY 行规程、SSH channel、Telnet 或串口；本机只测了 lrzsz 0.13.1，Ubuntu 的 0.12.21rc 只在 CI 上运行过（见下文）；没有与 WindTerm 2.7.0 对照；默认超时、重试次数也没有与 lrzsz 对照调优。
 
-**CI**：`.github/workflows/p0-cross-platform.yml` 新增一个只在 Linux 上运行的步骤：`sudo apt-get install -y lrzsz`，记录 `dpkg-query -W lrzsz`，再以 `P0_LRZSZ_REQUIRED=1` 运行 `--test modem_lrzsz -- --ignored --nocapture --test-threads=1`，日志写入上传的 `p0-logs/lrzsz-interop.log`。因为 Ubuntu 的 lrzsz 版本没有在本机验证过，该步骤设为 `continue-on-error: true`（不阻塞）；首次运行通过后可以去掉。`zmodem_lrzsz` 评估测试不进 CI。**本次提交未推送，该步骤还没有运行过。**
+**CI**：`.github/workflows/p0-cross-platform.yml` 新增一个只在 Linux 上运行的步骤：`sudo apt-get install -y lrzsz`，记录 `dpkg-query -W lrzsz`，再以 `P0_LRZSZ_REQUIRED=1` 运行 `--test modem_lrzsz -- --ignored --nocapture --test-threads=1`，日志写入上传的 `p0-logs/lrzsz-interop.log`。该步骤设为 `continue-on-error: true`（不阻塞），步骤结论总是 success，要以日志为准。`zmodem_lrzsz` 评估测试不进 CI。已运行的两次（run 38202512575、38206136775，Ubuntu lrzsz 0.12.21rc）都是 11 项中 10 项通过，`peer_killed_mid_transfer_fails_within_the_retry_budget` 失败，原因与修复见下节；**修复后还没有在 CI 上运行过**，首次全部通过后可以去掉 `continue-on-error`。
+
+### Ubuntu lrzsz 0.12.21rc：`rb` 请求文件头前约 1 秒的静默（2026-10-12）
+
+**现象**：CI 两次运行中，“对端中途被杀”一项都以 `rb: transfer ended before the intervention` 失败：传输在 64 KiB 的干预点之前就结束了。同一项中排在前面的 `rx` 通过；其余用默认限值的 `rb` 测试（批量发送、CAN 取消、SIGINT）都通过。
+
+**原因**（依据源码与本机计时，没有在 Ubuntu 上复现）：
+
+- Ubuntu 24.04 的 lrzsz 是 `0.12.21-11build1`，源码为 Debian 的 `lrzsz_0.12.21.orig.tar.gz`（版本串 0.12.21rc）。它的 `src/Makefile.am` 总是定义 `-DNFGVMIN`；在这个宏下，`rb` 取 YMODEM 文件头的函数 `wcrxpn()` 先读一次线路、丢弃杂散输入，然后才发出 `C`。`src/zreadline.c` 的读超时用 `alarm()` 实现，以整秒计，最短 1 秒，所以 `rb` 每次请求文件头之前（每个文件开始时和批量结束时）都会静默约 1 秒。Debian 0.12.21-10 的补丁没有改动这部分；Ubuntu `-11build1` 的补丁没有逐一核对。
+- `rx` 带文件名启动时不经过 `wcrxpn()`，立即发 `C`，所以 `rx` 一项通过。
+- lrzsz 0.13 系列的读超时改用 `select()`，以 0.1 秒计。本机实测（独立的计时脚本，未提交）：`lrb` 启动约 105 ms 后发出第一个 `C`，`lrx` 约 2 ms。
+- 这项测试为了尽快结束，把限值设为 `timeout_ticks=2`、`max_retries=3`，每 tick 100 ms，同一步最多容忍 (3+1)×2×100 ms = 0.8 秒的静默。我们的发送端等 `C` 时超时只计数，0.8 秒后以 `RetriesExhausted` 失败，进度为 0，所以没走到干预点。默认限值能容忍 11 秒，其余 `rb` 测试因此不受影响。
+- 0.12.21 确认 EOT 时同样以整秒等待（收到 EOT 后再等约 1 秒没有数据才认）。这项测试走不到那一步，没有观察。
+
+这是对端的定时差异，不是线上格式差异。产品含义：如果调用方给每一步的静默容忍低于约 1 秒，与 0.12.21 的 `rb` 交换每个文件头时都会失败；建议的 1 tick = 1 秒、10 tick 超时不受影响。
+
+**修复（只改测试，状态机代码未动）**：`tests/modem_lrzsz.rs` 的 `interrupt()` 增加 `Timers` 参数。“对端被杀”一项改用 `Timers::FromIntervention`：干预之前，状态机收不到 `tick()`（`tests/support/lrzsz.rs` 的 `Held` 包装）；从杀死对端那一刻起，短限值照常计时。断言不变：仍要求 `RetriesExhausted`，并在 (3+1)×2 tick 加 1 秒调度余量内结束。如果干预之前对端连续 10 秒（`STUCK`）没有任何输出，就视为卡死而不是慢，计时器提前启动，测试很快失败并给出完整诊断，而不是空等 60 秒的传输上限。CAN 取消和 SIGINT 两项仍用 `Timers::Always` 和默认限值。代价：这一项在干预之前不再覆盖我们的超时与重发请求，这些由其他测试覆盖。
+
+**诊断**：每一侧都在 `--nocapture` 输出中打印对端首字节的时间、干预前等待对端的最长时间，以及限值能容忍的静默。没有走到干预点时，panic 信息包含我们最终的状态、已传字节、从对端启动起的耗时、上述计时，以及对端的退出状态和 stderr。下次 Linux CI 日志中 `rb` 一行预计显示首字节约 1 秒，可据此确认上面的原因（尚未运行）。
+
+**本机验证**（macOS，lrzsz 0.13.1；用 `--delay-startup` 模拟启动静默的修改都是临时的，未提交）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 当前代码，`P0_LRZSZ_REQUIRED=1 ... --test modem_lrzsz -- --ignored --nocapture --test-threads=1` | 11 passed；被杀一项四个对端都在约 0.79 秒后报 `RetriesExhausted` |
+| 给 `lrb` 加 `--delay-startup 1`，计时器全程运行（即修复前的做法） | 失败，报错与 CI 相同：`rb: transfer ended before the intervention: ours Failed(RetriesExhausted) at 0 bytes, 805ms after the peer started ...; first peer byte after None; longest wait ... 804ms (our limits tolerate 800ms of silence per step)` |
+| 同上，改用 `Timers::FromIntervention` | 通过；`rb` 的首字节在 1.106 秒后到达，被杀后 0.786 秒报 `RetriesExhausted` |
+| 再给 `lsx`/`lsb` 也加 1 秒启动延迟 | 通过（接收端只发一次初始 `C`，对端醒来后读到它） |
+| 给 `lrb` 加 `--delay-startup 15`（模拟卡死的对端） | 约 10.7 秒后失败，报错中包含 `timers started after 10s of peer silence` |
+
+**关于阅读源码**：为找出原因，本次阅读了 Debian 源码包中 lrzsz 0.12.21 的相关片段（`src/Makefile.am`，`src/lrz.c` 的 `wcreceive`、`wcrxpn`、`wcrx`、`wcgetsec`、`procheader`，`src/zreadline.c`，`src/lsz.c` 的启动部分），并查看了 0.13 系列 `zreadline.c` 读超时的实现方式。只用于解释对端的定时，没有复制、翻译或改写其中任何代码。按上文 ADR，日后自研 ZMODEM 的实现者仍不应参考 lrzsz 源码；读过这些片段的人不宜担任实现者。
 
 ## 终端集成设计（未实现）
 
@@ -234,7 +264,7 @@ cargo test --locked --manifest-path $M --all-features --test zmodem_lrzsz -- --i
 - F10、F11、F12 均未完成，不能写成“已支持 X/Y/ZModem”。
 - 没有接入 PTY、SSH、串口或 Telnet，没有 IPC 命令、前端、进度事件，也没有磁盘写入。
 - 真实对端互操作只有 macOS arm64 上经 stdin/stdout 管道的 lrzsz 0.13.1；没有经过 PTY/TTY 行规程、SSH、Telnet 或串口；没有与 WindTerm 2.7.0 对照。
-- Linux CI 上的 lrzsz 互操作步骤是非阻塞的，而且本次提交未推送，尚未运行；Ubuntu 软件源中的 lrzsz 版本没有验证过。Windows 上没有运行互操作测试（测试只在 Unix 上编译）。
+- Linux CI 上的 lrzsz 互操作步骤是非阻塞的。Ubuntu 的 lrzsz 0.12.21rc 在修复前的两次 CI 运行中 10/11 通过；修复后尚未运行，原因分析也还没有经 CI 日志确认。Windows 上没有运行互操作测试（测试只在 Unix 上编译）。
 - ZMODEM 没有产品代码；`zmodem2` 探针只在测试中运行，评估结论是不直接采用。
 - XMODEM 无法区分文件真实结尾的 0x1A 和填充。
 - X/YMODEM 的应答不带块号。如果重复的控制字节在链路中积压（例如链路延迟接近超时时间，接收端超时发出的 NAK 与迟到的帧在途中交错），发送端可能“超前一块”。当前的缓解措施：发送端超时不重发；丢弃同一次读取中的过期应答；发出帧后同一 tick 内收到的 `C` 不触发重发；接收端丢弃多余请求引出的回声（lrzsz 实测场景）；块号错位时用 CAN 终止。仍未覆盖的情况：数据阶段的超时 NAK 与迟到的原帧交错；晚于一次超时才到的回声，会再被 ACK。NAK 无法用同样方式过滤，因为正常的“坏帧 NAK”也会紧接着到达。XMODEM 在最坏情况下可能截断文件尾部而不报错（YMODEM 会因长度不符报错）。目前只在上面列出的故障注入场景和 lrzsz 管道场景下验证过。
