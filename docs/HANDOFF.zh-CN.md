@@ -59,7 +59,8 @@
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
 | VT 兼容矩阵 | xterm.js 6.0.0 的 63 项探针：支持 35、部分支持 16、不支持 12 | [矩阵](p0/VT_MATRIX.zh-CN.md) | 没有运行 vttest，没有与 WindTerm、xterm 或 DEC 对比 |
-| Windows ConPTY | `cmd.exe` 生命周期：Job Object 回收进程树，关闭、ACK、Ctrl+C 等 | Windows CI | 只验证了 `cmd.exe`；句柄泄漏检查仍在 CI 中确认，见下文 |
+| Windows ConPTY | `cmd.exe` 生命周期：Job Object 回收进程树，关闭、ACK、Ctrl+C 等 | Windows CI（Server 2022 与 2025） | 只验证了 `cmd.exe`；Server 2022 系统自带的 ConPTY 每个会话泄漏 1 个句柄，Server 2025 上没有，本项目代码不额外泄漏 |
+| 工作量估算 | 全项目分解与人周估算 | [估算](p0/EFFORT_ESTIMATE.zh-CN.md) | 只是估算，不是承诺 |
 | 性能基线 | 本机 PTY、xterm、启动与内存基线 | [记录](p0/PERFORMANCE_BASELINE.zh-CN.md) | 测量环境嘈杂；没有 WKWebView 数字，没有与 WindTerm 对比 |
 | 上游静态复核 | 130 项逐条对照上游静态材料 | [复核记录](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md) | 静态证据不等于行为已验证 |
 | 依赖与许可证 | 依赖清单 | [清单](p0/DEPENDENCIES.zh-CN.md) | — |
@@ -83,7 +84,6 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
   - loopback russh 或测试内 TCP 服务端，不能等同于真实 OpenSSH、telnetd 或网络设备。
 - 构建结果不代表发行验收：
   - macOS arm64 CI 或本地 debug 构建，不等于真机 IME、高输出性能、签名、公证或发行验收。
-  - release 包目前混入了三个测试二进制。
 - 概念验证与探针不改变功能矩阵中任何一行的状态。
 
 ## 需要用户提供或决定的事项
@@ -97,10 +97,12 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
 - **辅助功能**：输入法与 VoiceOver 需要在真机上测试。
 - **发行**：签名与公证需要凭据。
+- **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
+- **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
 
 ## 推荐下一步顺序
 
-1. **确认 Windows 句柄泄漏检查**。新版检查是 4 轮预热加 24 轮测量，在 CI 中单独运行。看日志里打印的句柄序列：如果是线性增长，就是真实泄漏，需要逐项排查 Session、portable-pty 和 conhost 的句柄；如果趋于平稳，就在 ADR 中记录。然后取得一次三平台全绿的集成 CI，再向用户申请合并到 `main`。
+1. **合并到 `main`**：取得一次全绿的集成 CI 后，向用户申请把 `p0/integration` 合并到 `main`。Windows 句柄泄漏已定位，见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)。
 2. **把探针接入界面**：SCP、转发、代理和 tmux 都只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
 3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
 4. **互操作**：
@@ -108,7 +110,7 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
    - 真实 telnetd。
    - Linux CI 上卡住连接的取消测试。
 5. **VT 差距**：先用解析器钩子补设备身份（DA/DECSCL）和 OSC 52；双宽行、左右边距、矩形操作和 SIXEL 需要评估改动 xterm.js 渲染器或内核的代价。
-6. **发行前问题**：从 release 包中排除 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture`。
+6. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 需要先评审 CSP 中的 `wasm-unsafe-eval`。
 7. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
 
 ## 本地验证命令

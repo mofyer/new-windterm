@@ -2,6 +2,82 @@
 
 日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
 
+## Windows 句柄泄漏定位
+
+每个本地终端会话多出的 1 个句柄，来自 Windows Server 2022（build 20348）系统自带的 ConPTY，不是本项目的代码。依据如下：
+- **分步诊断**：只做 ConPTY 的打开和关闭、不启动 shell，每轮就多 1 个 `Process` 句柄；它指向的进程都已退出，与 conhost 的生命周期一致。
+- **其余各步**：启动 shell、加 Job、完整会话都没有在此之上增加句柄。
+- **新系统对照**：在 Server 2025（build 26100）上，所有步骤的增长都为 0，24 轮完整会话的句柄数始终是 117。
+
+现在的泄漏检查断言：完整会话的句柄增长不超过裸 ConPTY 开关的增长再加 8。[run 38153032998](https://github.com/mofyer/new-windterm/actions/runs/38153032998) 的四个作业全部通过：
+
+| 作业 | Rust 单元 | 其它测试 |
+| --- | --- | --- |
+| macOS | 102 passed | 集成 7、5、14、1 |
+| Linux | 101 passed | 集成 7、5、14、1 |
+| Windows Server 2022 | 106 passed / 6 ignored | 集成 7、5、13、1；诊断与相对泄漏检查 2/2 |
+| Windows Server 2025 | 106 passed / 6 ignored | 集成 7、5、13、1；诊断与相对泄漏检查 2/2 |
+
+可选缓解：随应用一起分发新版 `conpty.dll` 和 `OpenConsole.exe`，portable-pty 会优先使用它们。需要用户决定，目前没有采用。详见[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)。
+
+## 终端内核技术调整决策
+
+[决策记录](TERMINAL_CORE_ADR.zh-CN.md)的建议是：P1 之前不更换终端内核，继续使用 xterm.js，按缺口分别处理。
+
+| 缺口 | 处理方式 |
+| --- | --- |
+| SIXEL | 使用官方 `@xterm/addon-image` 0.9.0（MIT），并收紧限制 |
+| DECSC、闪烁 | 上游 xterm 7.0 已修复，等待升级 |
+| DECSLRM | 先向上游提出设计 |
+| 双宽行、矩形操作 | 等实际 vttest 与 WindTerm 2.7.0 的对比结果再定 |
+| Free Type、折叠、压缩历史 | 收到一个小的终端内核接口之后，降低以后更换内核的成本 |
+
+另外建议用 2–3 周、限定时长，试做一次 Rust 内核方案。
+
+同时提交了隔离的 SIXEL 原型。它只作为开发依赖，生产构建中没有它。SIXEL 原型 7 项测试通过，浏览器全套 218/218 通过。
+
+最大的阻碍是 CSP：生产 CSP 不允许 addon 的 WebAssembly 解码器加载。启用它需要 `'wasm-unsafe-eval'`，必须先在 WKWebView、WebView2、WebKitGTK 中测试，并通过安全评审。
+
+更换内核的粗略量级如下，都只是量级，不是排期：
+- 更换 xterm.js：约 6–10 人月，补齐缺口另需 1.5–2 人月。
+- 维护 xterm.js 分叉：前期约 10–16 人周。
+
+## 完整工作量估算
+
+[估算](EFFORT_ESTIMATE.zh-CN.md)只是估算，不是承诺。
+
+全项目工作量（人周，最好 / 可能 / 最差）为 248 / 408 / 673，PERT 期望值 426。
+
+日历时间（阶段允许重叠）：
+
+| 人数 | 时间 |
+| --- | --- |
+| 1 人 | 约 9.3 年 |
+| 2 人 | 约 5.2 年 |
+| 4 人 | 约 2.9 年 |
+
+关键路径是：上游盘点 → 应用架构 → VT 内核 → 压缩历史 → 折叠/大纲 → 搜索 → 三平台最终回归。约 38 / 60 / 98 个工作周，即使人手不限也约需 16 个月。路线图要求 P0 结束时重新估算。
+
+## 发行包与最低 macOS 版本
+
+测试和探针二进制改为需要 `dev-tools` feature 才会构建，包括 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture`、`pty_diagnose`。效果如下：
+- release `.app` 从 23.3 MiB 降到 14.6 MiB，`Contents/MacOS` 中只剩主程序。
+- 新增守护测试 `tests/release_bins.rs`，发现有未加门槛的二进制就失败。
+- CI、夹具运行脚本和文档中的命令都已同步更新。
+
+最低 macOS 版本定为 13.3，见[说明](RELEASE.zh-CN.md)：
+- 理由：前端构建目标是 Safari 16.4，已在 `vite.config.ts` 中固定，避免升级时悄悄抬高。
+- 只是声明：没有在 13.3 上实际运行过，`.app` 也没有签名或公证。
+
+集成分支上的检查结果：
+
+| 检查 | 结果 |
+| --- | --- |
+| Rust 单元 | 102 passed |
+| 集成测试 | `net_terminal` 7、`release_bins` 3、`ssh_kbdint` 5、`ssh_terminal` 14、`tmux_control` 1 |
+| 真实 OpenSSH 夹具 | 4/4 与 1/1 |
+| `pty_probe` | 加 `dev-tools` 时三项 PASS；不加时 Cargo 拒绝构建 |
+
 ## 功能基线冻结方案（待用户决定）
 
 [冻结方案](BASELINE_FREEZE_PROPOSAL.zh-CN.md)已经准备好。三处台账中的 130 个 ID 都补上了三类链接：静态证据、P0 原型或探针证据、冻结方案中对应的章节。两个结构验证脚本都通过。基线**尚未冻结**（`scope_frozen` 仍为 `false`），也没有改动任何一行的状态。
@@ -156,7 +232,7 @@ ZMODEM 建议先评估 `zmodem2` crate（MIT/Apache-2.0），否则按公开规�
 | 启动 | 到窗口出现约 268 ms，到界面就绪约 487 ms（中位数，非严格冷启动） |
 | 空闲 RSS | 进程合计约 266 MiB（上界） |
 
-发现的问题：release 包里混入了 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture` 三个测试二进制，约 8 MB，发行前需要排除。
+发现的问题：release 包里混入了 `pty_probe`、`ssh_probe`、`ssh_terminal_fixture` 三个测试二进制，约 8 MB。已修复，见下文“发行包与最低 macOS 版本”。
 
 未测：
 - WKWebView 内的数字。
@@ -213,7 +289,7 @@ russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项
 - 自然退出时先终止整个 Job，再关闭 pseudoconsole。
 - 终止 Job 失败时回退为终止 shell 进程。
 - Ctrl+C 恢复只执行一次。
-- 循环测试改为检查句柄泄漏：4 轮预热后再跑 24 轮，句柄增长不得超过 8。这项测试在 CI 中单独运行，第一版在 Windows 上失败，详见决策记录。
+- 句柄泄漏检查改为与裸 ConPTY 开关做相对比较，在 CI 中单独运行。泄漏已定位到 Server 2022 系统自带的 ConPTY，见下文“Windows 句柄泄漏定位”。
 - 前端早期输入暂存只作用于本地 PTY，并在退出、启动失败或关闭时清空。
 
 排空无期限与 Job 分配竞态两项已知限制见[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)。
@@ -441,8 +517,8 @@ cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
 cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
 cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --bin pty_probe
-cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features pty-readiness --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin pty_probe
+cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-readiness --bin pty_probe
 ```
 
 本机 debug 产物位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，不随 Git 分发，无签名公证。浏览器临时回执位于被忽略的 `apps/desktop/test-results/`，后续运行会覆盖。

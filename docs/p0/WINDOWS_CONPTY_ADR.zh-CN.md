@@ -12,21 +12,7 @@
 - **自然退出时的处理顺序**：等待线程先终止整个 Job，再关闭 pseudoconsole。这样，忽略控制台关闭的后代进程不会继续占住管道、让 reader 一直阻塞。
 - **终止 Job 失败时**：`TerminateJobObject` 失败会回退为直接终止 shell 进程，因此等待线程仍会醒来。为此 `ProcessTree` 额外持有一份复制的 shell 句柄。
 - **Ctrl+C 恢复**：`SetConsoleCtrlHandler(None, FALSE)` 是进程级设置，进程内只执行一次。
-- **句柄泄漏循环**：原来的 12 轮循环测试改为复用同一个 `Sessions`，先跑 4 轮预热，再跑 24 轮测量，断言句柄增长不超过 8。每次测量都等待片刻、取 10 个样本中的最小值。即使每个会话只泄漏 1 个句柄，24 轮也会累积到 24 个，足以触发断言。句柄数是按整个进程统计的，同一测试二进制里并行运行的 SSH 测试会让它产生波动，所以这项测试在常规测试中标为 ignored，由 CI 的 Windows 作业单独运行，并把句柄序列打印到日志中。第一版只取第一轮之后的数值，没有预热和稳定采样，在 [run 38136357458](https://github.com/mofyer/new-windterm/actions/runs/38136357458) 中第 9 轮从 120 增长到 129 而失败，尚不能区分是真实泄漏还是惰性分配。
-
-改为预热加稳定采样后，[run 38137592323](https://github.com/mofyer/new-windterm/actions/runs/38137592323) 的序列是 123、124、……、147：每轮正好增加 1 个句柄，严格线性。由此确认，**每个会话泄漏 1 个句柄**。
-
-整个 Session 泄漏的话，至少会同时多出 Job 句柄和 shell 句柄共 2 个，所以泄漏的是单独一个句柄。已排除的来源：
-- portable-pty 的主线程句柄与进程句柄都已转为 owned 释放；
-- conhost 端的管道在 `PsuedoCon::new` 中释放；
-- 本项目的 `close` / `release_console` / readiness 桩不创建句柄。
-
-下一步加入分步诊断测试 `windows_diag::handle_growth_by_lifecycle_step`。它分别测量以下五种情形，并按对象类型统计新增句柄，用来定位来源：
-- 空闲（测量噪声）
-- 仅 openpty
-- 裸 shell
-- 裸 shell 加 Job
-- 完整 Session
+- **句柄泄漏检查**：改为与裸 ConPTY 开关做相对比较，详见下文“句柄泄漏定位”。
 - **脱离 shell 的后代进程**：例如 `start /B` 启动的进程，现在会在 shell 退出时随 Job 一并终止，之后不再输出。
 - **前端早期输入暂存**：只作用于本地 PTY，不作用于 SSH。会话退出、PTY 启动失败或关闭时会清空暂存。
 
@@ -34,6 +20,25 @@
 - **回退的作用范围**：回退为终止 shell 只在关闭一个仍在运行的 shell 时有效。在自然退出路径上，shell 已经结束，如果此时 `TerminateJobObject` 失败，`TerminateProcess` 也无法终止任何进程，存活的后代进程仍会占住管道。
 - **排空没有期限**：reader 在会话结束后读到 EOF 为止才结束，排空本身不设超时。正常路径下，终止 Job 再关闭 pseudoconsole 就会产生 EOF。但如果某个进程脱离了 Job 却仍持有管道写端，reader 线程会一直阻塞。这种情况在 CI 中没有出现，也没有专门的测试覆盖。
 - **Job 分配存在竞态**：portable-pty 创建 shell 时没有使用 `CREATE_SUSPENDED`，shell 是在启动后才被加入 Job 的。如果 shell 在这段时间里启动了子进程，这个子进程不在 Job 中。当前用 `cmd.exe /D` 禁用 AutoRun，shell 在收到输入前不会启动子进程，所以这个窗口实际不可利用。如果以后改为用户自定义 shell 或启动参数，需要改成挂起创建、加入 Job、再恢复运行。
+
+### 句柄泄漏定位
+
+**结论：** 每个会话多出的 1 个句柄，来自 Windows Server 2022（build 20348）系统自带的 ConPTY，不是本项目的代码。Windows Server 2025（build 26100）上没有这个泄漏。
+
+| 运行 | 方法 | 结果 |
+| --- | --- | --- |
+| [38136357458](https://github.com/mofyer/new-windterm/actions/runs/38136357458) | 12 轮循环，第一轮之后断言句柄增长不超过 8 | 第 9 轮从 120 涨到 129，测试失败；看不出是泄漏还是惰性分配 |
+| [38137592323](https://github.com/mofyer/new-windterm/actions/runs/38137592323) | 4 轮预热，再测 24 轮；每次取 10 个样本的最小值 | 123、124、……、147，每轮正好多 1 个，严格线性 |
+| [38138657734](https://github.com/mofyer/new-windterm/actions/runs/38138657734) | 分步诊断，按对象类型统计 | 空闲时增长为 0；只做 openpty 再关闭（不启动 shell）、裸 shell、加 Job、完整会话这四步，每轮都多 1 个 `Process` 句柄，没有其它类型 |
+| [38153032998](https://github.com/mofyer/new-windterm/actions/runs/38153032998) | 列出新增句柄指向的进程；增加 windows-2025 作业 | Server 2022：新增句柄指向的进程都已退出（退出码 0），与 conhost 的生命周期一致。Server 2025：所有步骤增长都为 0，24 轮完整会话的句柄数始终是 117 |
+
+第一次把测试改成整个进程计数之后，同一测试二进制里并行运行的 SSH 测试会干扰计数。所以这两项测试在常规测试中都标为 ignored，由 CI 在单独的步骤里依次运行，并把数据打印到日志中。
+
+**现在的检查方式：** 先测 24 轮裸 ConPTY 开关的增长，再测 24 轮完整会话的增长，断言后者不超过前者加 8。系统 ConPTY 自身的泄漏不计入，而本项目只要每个会话多泄漏 1 个句柄，就会多出 24 个，触发断言。两个 Windows 版本上，这项检查都已通过。
+
+**影响：** 在 Server 2022 这一代系统上，每打开一个本地终端，进程里就会留下一个指向已退出 conhost 的句柄，直到应用退出才释放。按正常使用频率，影响很小，但它确实存在。Windows 10 很可能用的是同一代 ConPTY，尚未验证。
+
+**可选缓解：** portable-pty 会优先加载应用目录下的 `conpty.dll` 和 `OpenConsole.exe`。可以随应用一起分发 Windows Terminal 发布的新版 ConPTY（MIT 许可）。这样做会多出需要随包发布和签名的二进制，需要用户决定，目前没有采用。
 
 ## 原始记录
 
