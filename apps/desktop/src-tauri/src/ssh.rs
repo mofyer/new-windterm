@@ -15,6 +15,8 @@ pub mod scp;
 pub mod sftp_write;
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
+#[path = "ssh_x11.rs"]
+pub mod x11;
 use crate::known_hosts::{KnownHosts, Saved};
 use crate::sftp::{ReadOnlySftp, RemoteEntry, RemoteListing};
 use auth::AuthFailure;
@@ -999,7 +1001,7 @@ fn config_for(credential: &Credential) -> Arc<client::Config> {
 
 type Observed = Arc<Mutex<Option<PublicKey>>>;
 /// Server-initiated channels this connection may accept. Everything not
-/// listed here (sessions, direct-tcpip, X11, streamlocal) is refused.
+/// listed here (sessions, direct-tcpip, streamlocal) is refused.
 pub(crate) struct Routes {
     /// Remote forwards: (bind address, bound port) → local host and port.
     pub(crate) remote: Mutex<HashMap<(String, u32), (String, u16)>>,
@@ -1007,6 +1009,8 @@ pub(crate) struct Routes {
     pub(crate) agent: std::sync::atomic::AtomicBool,
     /// Bounds concurrent forwarded-tcpip channels, as local forwards are.
     remote_channels: Arc<tokio::sync::Semaphore>,
+    /// X11 forwarding, enabled per connection by an explicit user choice.
+    x11: x11::Slot,
     /// Raised by [`Routes::end_relays`]; relays of server-opened channels end then.
     relays_ended: watch::Sender<bool>,
 }
@@ -1017,18 +1021,20 @@ impl Routes {
             remote: Mutex::default(),
             agent: std::sync::atomic::AtomicBool::default(),
             remote_channels: Arc::new(tokio::sync::Semaphore::new(remote_channels)),
+            x11: x11::Slot::default(),
             relays_ended: watch::channel(false).0,
         }
     }
 
-    /// Ends the relays of channels the server opened (remote forwards and
-    /// agent), idle ones included, and refuses new ones: no route is left.
+    /// Ends the relays of channels the server opened (remote forwards, agent
+    /// and X11), idle ones included, and refuses new ones: no route is left.
     pub(crate) fn end_relays(&self) {
         self.remote
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.agent.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.x11.clear();
         self.relays_ended.send_replace(true);
     }
 
@@ -1161,12 +1167,13 @@ impl client::Handler for KeyCheck {
     }
     async fn server_channel_open_x11(
         &mut self,
-        _channel: russh::Channel<client::Msg>,
+        channel: russh::Channel<client::Msg>,
         _originator_address: &str,
         _originator_port: u32,
-        _reply: client::ChannelOpenHandle,
+        reply: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
+        x11::accept(&self.routes, channel, reply);
         Ok(())
     }
     async fn check_server_key(

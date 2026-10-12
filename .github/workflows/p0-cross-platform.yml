@@ -132,6 +132,17 @@ jobs:
         if: matrix.real_pty
         run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-readiness --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-readiness-probe.log"
 
+      # Private sshd (X11Forwarding yes) and Xvfb with a generated cookie; the
+      # Rust client runs xdpyinfo remotely through the forwarded display.
+      - name: Run X11 forwarding against OpenSSH and Xvfb (Linux only)
+        id: x11_openssh
+        if: runner.os == 'Linux'
+        env:
+          P0_X11_REQUIRED: "1"
+        run: |
+          sudo apt-get install --no-install-recommends -y openssh-server xvfb xauth x11-utils
+          node --test tests/fixtures/ssh-terminal/x11-client.test.mjs 2>&1 | tee "$RUNNER_TEMP/p0-logs/x11-openssh.log"
+
       - name: Record exact acceptance boundary
         if: always()
         run: |

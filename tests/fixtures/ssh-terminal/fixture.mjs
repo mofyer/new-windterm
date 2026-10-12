@@ -13,9 +13,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 const SSHD = '/usr/sbin/sshd';
 const SSH = '/usr/bin/ssh';
 const KEYGEN = '/usr/bin/ssh-keygen';
-const SERVE = process.argv[2] === '--serve';
-if (process.argv.length > 2 && !SERVE) {
-  console.error('Usage: node tests/fixtures/ssh-terminal/fixture.mjs [--serve]');
+const XAUTH = '/usr/bin/xauth';
+const ARGS = process.argv.slice(2);
+const SERVE = ARGS.includes('--serve');
+// --x11: X11Forwarding yes (all other forwarding stays off) and an
+// `xdpyinfo` command; the server's xauth writes a private file in the root.
+const X11 = ARGS.includes('--x11');
+if (ARGS.some(arg => !['--serve', '--x11'].includes(arg))) {
+  console.error('Usage: node tests/fixtures/ssh-terminal/fixture.mjs [--serve] [--x11]');
   process.exit(2);
 }
 
@@ -27,6 +32,7 @@ if (!['darwin', 'linux'].includes(process.platform) || process.getuid?.() === 0)
   unsupported('requires a non-root macOS/Linux account; Windows is skipped');
 }
 if (![SSHD, SSH, KEYGEN].every(existsSync)) unsupported('OpenSSH sshd, ssh, and ssh-keygen are required');
+if (X11 && !existsSync(XAUTH)) unsupported(`X11 mode needs ${XAUTH} for sshd`);
 
 const shell = userInfo().shell;
 if (!['/bin/zsh', '/bin/bash', '/usr/bin/zsh', '/usr/bin/bash'].includes(shell)) {
@@ -175,7 +181,8 @@ async function setup() {
     await chmod(join(root, key), 0o600);
     await chmod(join(root, `${key}.pub`), 0o600);
   }
-  await writeFile(join(root, 'authorized_keys'), `no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc ${await readFile(join(root, 'client.pub'), 'utf8')}`, { mode: 0o600 });
+  const keyOptions = `no-agent-forwarding,no-port-forwarding,${X11 ? '' : 'no-X11-forwarding,'}no-user-rc`;
+  await writeFile(join(root, 'authorized_keys'), `${keyOptions} ${await readFile(join(root, 'client.pub'), 'utf8')}`, { mode: 0o600 });
   await writeFile(join(root, 'empty_known_hosts'), '', { mode: 0o600 });
 
   const generator = `import { once } from 'node:events';
@@ -215,7 +222,15 @@ while IFS= read -r command; do
       ${quote(process.execPath)} ${quote(join(root, 'generator.mjs'))} || generator_status=$?
       if [ "$interrupted" -eq 1 ] || [ "$generator_status" -eq 130 ]; then printf '\\r\\nP0_SSH_INTERRUPTED\\r\\n'; else printf '\\r\\nP0_GENERATOR_END\\r\\n'; fi
       ;;
-    exit) printf 'P0_SSH_EXIT_7\\r\\n'; exit 7 ;;
+${X11 ? `    xdpyinfo)
+      if info=$(xdpyinfo 2>&1); then
+        printf 'P0_X11_%s %s %s\\r\\n' OK "\${DISPLAY-}" "$(printf '%s\\n' "$info" | grep -m1 'dimensions:' | tr -s ' ')"
+      else
+        printf 'P0_X11_%s %s %s\\r\\n' FAILED "\${DISPLAY-}" "$(printf '%s\\n' "$info" | tail -n 1)"
+      fi
+      printf 'P0_X11_REMOTE_COOKIE %s\\r\\n' "$(xauth list 2>/dev/null | awk '{print $3}' | head -n 1)"
+      ;;
+` : ''}    exit) printf 'P0_SSH_EXIT_7\\r\\n'; exit 7 ;;
     '') ;;
     *) printf 'P0_COMMAND_DENIED\\r\\n' >&2; exit 126 ;;
   esac
@@ -252,8 +267,15 @@ PermitRootLogin no
 PermitUserEnvironment no
 PermitUserRC no
 PermitTTY yes
-DisableForwarding yes
-X11Forwarding no
+${X11 ? `AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+PermitTunnel no
+X11Forwarding yes
+X11UseLocalhost yes
+X11DisplayOffset 10
+XAuthLocation ${XAUTH}` : `DisableForwarding yes
+X11Forwarding no`}
 StrictModes yes
 UseDNS no
 LoginGraceTime 10
@@ -262,7 +284,7 @@ MaxAuthTries 2
 MaxSessions 2
 MaxStartups 3
 LogLevel ERROR
-SetEnv ZDOTDIR=${root} BASH_ENV=/dev/null ENV=/dev/null
+SetEnv ZDOTDIR=${root} BASH_ENV=/dev/null ENV=/dev/null${X11 ? ` XAUTHORITY=${join(root, 'remote.xauth')}` : ''}
 ForceCommand /bin/sh ${join(root, 'dispatch.sh')}
 `;
   await writeFile(join(root, 'sshd_config'), configuration, { mode: 0o600 });
@@ -288,7 +310,8 @@ ForceCommand /bin/sh ${join(root, 'dispatch.sh')}
     username: account.username, privateKeyPath: join(root, 'client'), wrongKeyPath: join(root, 'wrong-client'),
     knownHostsPath: join(root, 'known_hosts'), emptyKnownHostsPath: join(root, 'empty_known_hosts'),
     fingerprint, rootDirectory: root, serverConfigPath: join(root, 'sshd_config'),
-    allowedCommands: ['printf', 'stty size', 'generate', 'exit'],
+    allowedCommands: ['printf', 'stty size', 'generate', ...(X11 ? ['xdpyinfo'] : []), 'exit'],
+    x11: X11, remoteXauthority: X11 ? join(root, 'remote.xauth') : null,
     exitCode: 7, maxGeneratorBytes: 2 * 1024 * 1024,
   };
   await writeFile(join(root, 'connection.json'), JSON.stringify(metadata, null, 2), { mode: 0o600 });

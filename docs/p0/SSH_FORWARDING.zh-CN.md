@@ -27,10 +27,11 @@
 
 ## 远端转发与 agent 转发（C17、C10）
 
-服务端主动打开的通道过去会被 russh 客户端的默认实现**全部接受**（session、direct-tcpip、forwarded-tcpip、agent、X11）。现在 `KeyCheck` 持有每条连接的路由表，只接受两类通道：
+服务端主动打开的通道过去会被 russh 客户端的默认实现**全部接受**（session、direct-tcpip、forwarded-tcpip、agent、X11）。现在 `KeyCheck` 持有每条连接的路由表，只接受登记过的通道：
 
 - **远端转发（`ssh -R`）**：`remote()` 向服务端申请监听并登记“远端地址:端口 → 本地目标”；只有登记过的 `forwarded-tcpip` 通道会被接受并连到本地目标（5 秒连接期限），其余一律拒绝。固定端口先登记再申请，服务端选择的端口在应答后登记；`cancel_remote()` 移除路由并取消监听。
 - **agent 转发**：只有该连接显式开启后，才接受服务端的 agent 通道并连到本机 agent（Unix `SSH_AUTH_SOCK`，Windows OpenSSH agent 命名管道）；默认拒绝。
+- **X11 转发**（2026-10-12 加入，C15）：只有该连接显式开启后才接受 `x11` 通道，先校验假 cookie 再连本机 X 服务，随终端结束；默认拒绝。见 [X11 决策记录](X11_GSSAPI_ADR.zh-CN.md#已实现探针2026-10-12)。
 
 其余服务端主动打开的通道一律拒绝。实测（russh 夹具）：远端转发 2 路往返一致；移除路由后服务端打开的通道被拒绝、服务端连接无数据关闭；取消后服务端不再监听；绑定 `0.0.0.0` 被拒绝。agent 转发未开启时服务端得到 `AGENT REFUSED`；开启后经转发通道查到临时 agent 中的 1 把公钥。
 
@@ -103,7 +104,7 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 
 ## 未完成
 
-- X11 转发（C15，需要本机 X 服务）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发尚无界面；远端监听只在回环地址上验证。
+- X11 转发（C15）只有 Rust 探针，没有界面，未在真实 X 服务器上验证，见[决策记录](X11_GSSAPI_ADR.zh-CN.md)；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发尚无界面；远端监听只在回环地址上验证。
 - 代理、ProxyCommand 与一跳跳板已作为连接路线接入 SSH 对话框（2026-10-12），见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)；仍无配置保存，代理只在本机测试代理上验证。
 - 端口转发只能在已打开的 SSH 终端上临时添加：没有配置保存，也不随会话自动启动；本地与动态监听只允许回环地址。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

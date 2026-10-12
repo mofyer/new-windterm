@@ -45,4 +45,15 @@ node --test tests/fixtures/ssh-terminal/rust-client.test.mjs
 
 该用例先编译 Rust 测试二进制，再以 `--serve` 启动夹具，显式运行 ignored 测试 `ssh::terminal::tests::real_openssh_interactive_shell`。它经由应用同一个 Rust `Ssh` 服务完成：实际指纹探测并与 `ssh-keygen` 指纹比对、一次性信任、`ssh_open` 请求 PTY 与 shell、逐块 ACK、输入、`printf` 中文与 emoji、窗口变化（包装脚本启动时强制 `stty rows 24 cols 80`，之后只有到达远端 PTY 的 window-change 才能让 `stty size` 报告 `40 120`）、`generate` 输出中 Ctrl-C 中断且字节数有界、`exit` 退出码 7，以及结束后无残留终端与操作。macOS arm64、OpenSSH 10.3p1 本机连续 4 次通过，0 残留进程/临时目录；原始日志在被忽略的 `.artifacts/p0/openssh-shell-round/`。
 
+## X11 模式（`--x11`，仅供 X11 互操作）
+
+`--x11` 只改动以下几处，其余与默认模式相同：
+
+- 授权 key 不再带 `no-X11-forwarding`。
+- sshd 配置把 `DisableForwarding yes` 换成 `X11Forwarding yes`，同时显式关闭 TCP、agent、Unix socket 转发和隧道；`XAuthLocation` 固定为 `/usr/bin/xauth`。
+- 通过 `SetEnv` 把远端 `XAUTHORITY` 指向临时根目录内的私有文件，sshd 写入的 cookie 不会碰到真实的 `~/.Xauthority`。
+- 白名单增加 `xdpyinfo` 命令：输出远端 `DISPLAY` 与屏幕尺寸，以及远端 xauth 中的 cookie。
+
+[`x11-client.test.mjs`](../../tests/fixtures/ssh-terminal/x11-client.test.mjs) 用这一模式和私有 Xvfb 驱动 ignored 测试 `ssh::x11::tests::real_openssh_x11_forwarding`。它只在非 root 的 Linux 上运行，需要 sshd、Xvfb、xauth、xdpyinfo，其它平台跳过；CI 设置 `P0_X11_REQUIRED=1`，缺少前提条件时直接失败。该用例尚未在 CI 上运行，见 [X11 决策记录](X11_GSSAPI_ADR.zh-CN.md)。
+
 边界：这是 WebView 之外的 Rust 服务验收；远端是受白名单约束的 shell 包装，而非任意命令、vim/tmux 或全屏程序。Linux 与 Windows 客户端运行时尚未执行该用例。

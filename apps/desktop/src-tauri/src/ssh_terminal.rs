@@ -9,6 +9,7 @@ const CHUNK: usize = 4096;
 const BUDGET: usize = 64 * 1024;
 const BLOCKS: usize = 64;
 const ACK_WAIT: Duration = Duration::from_secs(15);
+const REJECTED: &str = "SSH PTY or shell request rejected";
 
 #[derive(Default)]
 struct Flow {
@@ -156,6 +157,25 @@ impl Ssh {
         rows: u16,
         sink: EventSink,
     ) -> Result<String, String> {
+        let size = (cols, rows);
+        self.open_session(owner, id, token, scope, login, size, sink, None)
+            .await
+    }
+
+    /// [`Ssh::open_with`], with X11 forwarding requested on the session
+    /// channel when `x11` is set (see [`x11`]).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn open_session(
+        self: &Arc<Self>,
+        owner: &str,
+        id: &str,
+        token: &str,
+        scope: &str,
+        login: impl Into<Login>,
+        (cols, rows): (u16, u16),
+        sink: EventSink,
+        x11: Option<x11::LocalDisplay>,
+    ) -> Result<String, String> {
         let Login {
             credential,
             prompts,
@@ -173,6 +193,7 @@ impl Ssh {
             operation.cancel.clone(),
             prompter.as_ref(),
             (cols, rows),
+            x11,
         );
         let connection = tokio::select! {
             biased;
@@ -263,6 +284,7 @@ async fn connect(
     cancel: watch::Receiver<bool>,
     prompter: Option<&Prompter>,
     (cols, rows): (u16, u16),
+    x11: Option<x11::LocalDisplay>,
 ) -> Result<Connection, String> {
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let routes = Arc::new(Routes::default());
@@ -307,6 +329,16 @@ async fn connect(
             .map_err(|_| "SSH PTY request failed")?;
         let mut initial = Vec::new();
         reply(&mut channel, &mut initial).await?;
+        if let Some(display) = x11 {
+            x11::request(&channel, &routes, display).await?;
+            reply(&mut channel, &mut initial).await.map_err(|e| {
+                if e == REJECTED {
+                    x11::REFUSED.into()
+                } else {
+                    e
+                }
+            })?;
+        }
         channel
             .request_shell(true)
             .await
@@ -355,7 +387,7 @@ async fn reply(
                 }
                 initial.push(message);
             }
-            _ => return Err("SSH PTY or shell request rejected".into()),
+            _ => return Err(REJECTED.into()),
         }
     }
 }
