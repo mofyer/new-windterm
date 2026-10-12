@@ -7,6 +7,8 @@ fn main() {
             "pty_ack",
             "pty_close",
             "ssh_probe",
+            "ssh_probe_through",
+            "ssh_proxy_command_preview",
             "ssh_accept",
             "ssh_reject",
             "ssh_cancel",

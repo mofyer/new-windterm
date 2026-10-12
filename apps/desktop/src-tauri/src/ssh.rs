@@ -7,6 +7,8 @@ pub mod forward;
 pub mod kbdint;
 #[path = "ssh_proxy.rs"]
 pub mod proxy;
+#[path = "ssh_route.rs"]
+pub mod route;
 #[path = "ssh_scp.rs"]
 pub mod scp;
 #[path = "ssh_terminal.rs"]
@@ -17,6 +19,8 @@ use auth::AuthFailure;
 pub use auth::Credential;
 pub use kbdint::{AuthPrompt, PromptField, PromptSink, ROUND_DEADLINE};
 use kbdint::{Clock, Prompter, Prompts};
+pub use route::{proxy_command_preview, RouteSpec, RouteSummary, Stage};
+use route::{Route, RouteError};
 use russh::{
     client,
     keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate},
@@ -84,6 +88,10 @@ pub struct Challenge {
     pub expires_in_seconds: u64,
     pub trust: Trust,
     pub saved_fingerprint: Option<String>,
+    /// `jump`: this is the jump host's key (step 1 of 2); `target` otherwise.
+    pub stage: Stage,
+    /// How this key was reached. Later operations reuse the same route.
+    pub route: RouteSummary,
 }
 
 /// A credential plus, for prompted keyboard-interactive, where to show the
@@ -126,6 +134,10 @@ struct Pending {
     expires: Instant,
     public: Option<PublicKey>,
     trust: Trust,
+    /// How `request` was reached; consuming the challenge binds it.
+    route: Route,
+    /// For a jump host's key: the target to observe through it once confirmed.
+    next: Option<Request>,
 }
 
 struct Active {
@@ -143,6 +155,8 @@ struct Grant {
     key: Vec<u8>,
     // Needed for every reconnect; zeroized when the grant is dropped.
     credential: Credential,
+    // The confirmed route, including any proxy or jump secret it needs.
+    route: Route,
     idle_until: Instant,
     expires: Instant,
 }
@@ -162,7 +176,8 @@ pub struct SftpOpened {
 }
 
 struct AuthenticatedSftp {
-    _socket: SocketGuard,
+    // The route's socket, ProxyCommand process or jump session.
+    _socket: route::Carrier,
     session: client::Handle<KeyCheck>,
     sftp: ReadOnlySftp,
     rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
@@ -194,6 +209,7 @@ struct Target {
     request: Request,
     key: Vec<u8>,
     credential: Credential,
+    route: Route,
 }
 
 impl SftpFailure {
@@ -424,7 +440,12 @@ impl Ssh {
         Ok(())
     }
 
+    /// Takes a confirmed target challenge for the final operation.
     fn consume(&self, owner: &str, token: &str) -> Result<Pending, String> {
+        self.take(owner, token, Stage::Target)
+    }
+
+    fn take(&self, owner: &str, token: &str, stage: Stage) -> Result<Pending, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         let pending = registry
             .challenges
@@ -436,6 +457,12 @@ impl Ssh {
         // A changed key stays pending so the user can still replace it explicitly.
         if pending.trust == Trust::Changed && pending.expires > Instant::now() {
             return Err(HOST_CHANGED.into());
+        }
+        // A jump host's key only leads to the target's; the wrong kind stays pending.
+        match (pending.next.is_some(), stage) {
+            (true, Stage::Target) => return Err(route::JUMP_FIRST.into()),
+            (false, Stage::Jump) => return Err(route::NOT_JUMP.into()),
+            _ => {}
         }
         let pending = registry
             .challenges
@@ -508,33 +535,20 @@ impl Ssh {
         request: Request,
         scope: &str,
     ) -> Result<Challenge, String> {
-        validate(&request)?;
-        let mut operation = self.start(owner, id, scope)?;
-        let observed = Arc::new(Mutex::new(None));
-        let work = async {
-            let (_socket, stream) = transport(&request).await?;
-            let handler = KeyCheck {
-                expected: None,
-                observed: observed.clone(),
-                mismatch: Arc::default(),
-                kex_seen: false,
-                rekey_rejected: Arc::default(),
-                routes: Arc::default(),
-            };
-            // Deliberately reject every unknown key. No user authentication occurs.
-            let _ = client::connect_stream(config(), stream, handler).await;
-            let key = observed
-                .lock()
-                .map_err(|_| "SSH state unavailable")?
-                .take()
-                .ok_or("SSH handshake failed or host key is not Ed25519")?;
-            Ok::<_, String>(key)
-        };
-        let public: PublicKey = tokio::select! {
-            biased;
-            _ = operation.cancel.changed() => return Err("SSH operation cancelled".into()),
-            result = tokio::time::timeout(DEADLINE, work) => result.map_err(|_| "SSH operation timed out")??,
-        };
+        self.probe_via(owner, id, request, RouteSpec::default(), scope)
+            .await
+    }
+
+    /// Registers a challenge for a key observed through `route`. `next` is
+    /// set only for a jump host's key: the target to observe once confirmed.
+    fn challenge(
+        &self,
+        operation: &Operation<'_>,
+        request: Request,
+        route: Route,
+        next: Option<Request>,
+        public: PublicKey,
+    ) -> Result<Challenge, String> {
         let key = public
             .to_bytes()
             .map_err(|_| "Host key cannot be encoded")?;
@@ -568,6 +582,12 @@ impl Ssh {
             expires_in_seconds: TRUST_TTL.as_secs(),
             trust,
             saved_fingerprint,
+            stage: if next.is_some() {
+                Stage::Jump
+            } else {
+                Stage::Target
+            },
+            route: route.summary(),
         };
         registry.challenges.insert(
             token,
@@ -578,6 +598,8 @@ impl Ssh {
                 expires: Instant::now() + TRUST_TTL,
                 public: Some(public),
                 trust,
+                route,
+                next,
             },
         );
         Ok(challenge)
@@ -661,11 +683,12 @@ impl Ssh {
         self.grant_capacity()?;
         let pending = self.consume(owner, token)?;
         credential.validate(&pending.request)?;
-        let (request, key) = (pending.request, pending.key);
+        let (request, key, route) = (pending.request, pending.key, pending.route);
         let target = Target {
             request: request.clone(),
             key: key.clone(),
             credential: credential.clone(),
+            route: route.clone(),
         };
         // A prompted grant keeps no answers: every later operation asks again.
         let listing = match self
@@ -676,7 +699,7 @@ impl Ssh {
             SftpResult::List(listing) => listing,
             _ => return Err("Unexpected SFTP result".into()),
         };
-        let grant_token = self.issue_grant(&operation, scope, request, key, credential)?;
+        let grant_token = self.issue_grant(&operation, scope, request, key, credential, route)?;
         Ok(SftpOpened {
             grant_token,
             idle_seconds: SFTP_IDLE.as_secs(),
@@ -815,6 +838,7 @@ impl Ssh {
         request: Request,
         key: Vec<u8>,
         credential: Credential,
+        route: Route,
     ) -> Result<String, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         if *operation.cancel.borrow()
@@ -837,6 +861,7 @@ impl Ssh {
                 request,
                 key,
                 credential,
+                route,
                 idle_until: now + SFTP_IDLE,
                 expires: now + SFTP_LIFETIME,
             },
@@ -861,6 +886,7 @@ impl Ssh {
             request: grant.request.clone(),
             key: grant.key.clone(),
             credential: grant.credential.clone(),
+            route: grant.route.clone(),
         })
     }
 
@@ -876,15 +902,18 @@ impl Ssh {
     }
 }
 
-fn validate(request: &Request) -> Result<(), String> {
-    if request.host.is_empty()
-        || request.host.len() > 253
-        || !request
-            .host
+/// A DNS name or IP literal: no spaces, quotes, `%` or leading option dash.
+fn valid_host(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= 253
+        && !host.starts_with('-')
+        && host
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c))
-        || request.port == 0
-    {
+}
+
+fn validate(request: &Request) -> Result<(), String> {
+    if !valid_host(&request.host) || request.port == 0 {
         return Err("Invalid SSH host or port".into());
     }
     if request.username.is_empty()
@@ -1191,9 +1220,16 @@ async fn execute(
     cancel: watch::Receiver<bool>,
     prompter: Option<&Prompter>,
 ) -> Result<Output, String> {
-    let (_socket, stream) = transport(&pending.request).await?;
-    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (_carrier, stream) = route::connect(
+        &pending.request,
+        &pending.route,
+        &rekey_rejected,
+        cancel.clone(),
+    )
+    .await
+    .map_err(RouteError::message)?;
+    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
         expected: Some(pending.key),
         observed: Arc::default(),
@@ -1307,10 +1343,16 @@ async fn connect_sftp(
         request: target,
         key,
         credential,
+        route,
     } = target;
-    let (socket, stream) = transport(&target).await.map_err(SftpFailure::Keep)?;
-    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (carrier, stream) = route::connect(&target, &route, &rekey_rejected, cancel.clone())
+        .await
+        .map_err(|failure| match failure {
+            RouteError::Evidence(message) => SftpFailure::Revoke(message),
+            RouteError::Other(message) => SftpFailure::Keep(message),
+        })?;
+    let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
         expected: Some(key),
         observed: Arc::default(),
@@ -1345,7 +1387,7 @@ async fn connect_sftp(
         return Err(SftpFailure::Revoke(REKEY_ERROR.into()));
     }
     Ok(AuthenticatedSftp {
-        _socket: socket,
+        _socket: carrier,
         session,
         sftp,
         rekey_rejected,
@@ -1408,7 +1450,6 @@ where
 }
 
 /// Reads the host key a server presents over `stream` without authenticating.
-#[cfg_attr(not(test), allow(dead_code))] // P0 probe; no UI consumer yet
 pub(crate) async fn observe_host_key<S>(stream: S) -> Result<PublicKey, String>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -1484,6 +1525,8 @@ mod tests {
                 expires,
                 public: None,
                 trust: Trust::New,
+                route: Route::Direct,
+                next: None,
             },
         );
         token
@@ -1764,6 +1807,7 @@ mod tests {
                 request,
                 vec![1, 2, 3],
                 Credential::default(),
+                Route::Direct,
             )
             .unwrap()
     }
@@ -1830,7 +1874,8 @@ mod tests {
                 &scope,
                 request(),
                 vec![1],
-                Credential::default()
+                Credential::default(),
+                Route::Direct,
             )
             .is_err());
         service.sftp_close("main", &tokens[0]).unwrap();
@@ -1844,7 +1889,8 @@ mod tests {
                 &scope,
                 request(),
                 vec![1],
-                Credential::default()
+                Credential::default(),
+                Route::Direct,
             )
             .is_err());
         let _ = grant(&service, "main", request());
@@ -1934,6 +1980,8 @@ mod tests {
                 expires: Instant::now() + TRUST_TTL,
                 public: None,
                 trust: Trust::New,
+                route: Route::Direct,
+                next: None,
             },
         );
         let scope = service.context("main").unwrap();
@@ -1984,7 +2032,14 @@ mod tests {
         let operation = service.start("main", &id(), &scope).unwrap();
         let prompted = Credential::KeyboardInteractivePrompted {};
         let token = service
-            .issue_grant(&operation, &scope, request(), vec![1], prompted)
+            .issue_grant(
+                &operation,
+                &scope,
+                request(),
+                vec![1],
+                prompted,
+                Route::Direct,
+            )
             .unwrap();
         drop(operation);
         // A later operation without a way to ask the window fails before
