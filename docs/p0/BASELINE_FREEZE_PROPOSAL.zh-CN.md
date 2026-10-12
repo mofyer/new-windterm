@@ -1,11 +1,11 @@
 # P0 功能基线冻结提议（待用户决定）
 
-日期：2026-10-11。状态：**提议；功能基线尚未冻结**，[baseline.json](baseline.json) 的 `scope_frozen` 仍为 `false`。本文是 P0 出口交付物“冻结功能基线”的准备材料，整理冻结前必须由用户拍板的事项。输入为[上游静态复核](UPSTREAM_STATIC_REVIEW.zh-CN.md)、三处台账（[功能矩阵](../FEATURE_PARITY.zh-CN.md)、[基线台账](BASELINE.zh-CN.md)、[baseline.json](baseline.json)）、[证据记录](BASELINE_EVIDENCE.zh-CN.md)和 [P0 结果](RESULTS.zh-CN.md)链接的各探针文档。
+日期：2026-10-11；2026-10-12 按其后合入的原型刷新证据索引（见 [(d)](#d-逐项-p0-证据汇总) 的“2026-10-12 刷新”）。状态：**提议；功能基线尚未冻结**，[baseline.json](baseline.json) 的 `scope_frozen` 仍为 `false`。本文是 P0 出口交付物“冻结功能基线”的准备材料，整理冻结前必须由用户拍板的事项。输入为[上游静态复核](UPSTREAM_STATIC_REVIEW.zh-CN.md)、三处台账（[功能矩阵](../FEATURE_PARITY.zh-CN.md)、[基线台账](BASELINE.zh-CN.md)、[baseline.json](baseline.json)）、[证据记录](BASELINE_EVIDENCE.zh-CN.md)和 [P0 结果](RESULTS.zh-CN.md)链接的各探针文档。
 
 ## 边界声明
 
 - **本文不改变任何一行的状态**，不新增、不改名、不删除任何 ID。原始 117 个 ID 与第二轮 13 个 ID 保持不变。下文的“提议 ID”只是讨论编号，**没有写入台账**。
-- 本轮对三处台账只补充证据索引，即每个 ID 的静态复核结论和当前 P0 原型/探针记录的链接：两份 Markdown 台账各新增一列和一段指向静态复核发现的说明；JSON 在各行 `evidence` 数组末尾追加条目，并新增索引字段。能力名称、阶段、验收要点、状态与原有证据条目都没有改。
+- 本轮对三处台账只补充证据索引，即每个 ID 的静态复核结论和当前 P0 原型/探针记录的链接：两份 Markdown 台账各新增一列和一段指向静态复核发现的说明；JSON 在各行 `evidence` 数组末尾追加条目，并新增索引字段。能力名称、阶段、验收要点、状态与原有证据条目都没有改。2026-10-12 的刷新同样只改证据索引：为 30 个 ID 补充或更新 P0 链接、分组、证据层级与说明，没有改任何状态、ID 或能力名称。
 - **静态证据不等于行为已验证。** 默认配置、菜单动作、翻译字符串和链接符号只说明发布包里有入口或代码引用。
 - **P0 原型/探针不等于对齐通过。** “原型/探针”分组只表示有运行证据涉及该行至少一项验收要点。具体证据层级各不相同：
   - 浏览器测试使用 IPC stub；
@@ -34,8 +34,8 @@
 | --- | --- |
 | 追踪 ID | 130（原 117 + 第二轮 13） |
 | 静态复核结论 | 支持 101、部分 23、矛盾 4（其中 Q06 为弱矛盾）、沉默 2 |
-| P0 证据分组 | 原型/探针 57、仅静态 72、皆无 1（S08） |
-| “原型/探针”的证据层级 | 真实对端 6、真实平台 7、loopback 夹具 17、浏览器 27 |
+| P0 证据分组 | 原型/探针 63、仅静态 66、皆无 1（S08）；2026-10-11 时为 57、72、1 |
+| “原型/探针”的证据层级 | 真实对端 18、真实平台 7、loopback 夹具 11、浏览器 27；2026-10-11 时为 6、7、17、27 |
 | 需要定措辞的冲突 | 4 项矛盾（G13、F08/F09、Q06）与 2 项路线图不一致（C14、G02），另有 4 项同步措辞（S11、G17、G33、F21） |
 | 静态候选 | 36 项：建议纳入 31（其中 1 项限定范围）、不纳入 1、暂缓 4；全部按建议采纳后共 161 个 ID |
 | 冻结前需要用户决定的事项 | 12 项，见 [(e)](#e-冻结前需要用户决定的事项) |
@@ -163,20 +163,20 @@
 | 1 | G41 | 触发器（全局/会话级） | `MNU:747/270` 全局与会话级触发器管理；`TRG` 默认 4 条；`BIN` 7 种动作类型与连接前后事件；`LOC:4030` | `RD:389` | 纳入 | 入口、默认配置与动作类型齐全；“运行命令”“发送文本”类动作需加入安全确认和不误发送的验收要点 |
 | 2 | G42 | OneKey 凭据模板与登录向导（expect/send） | `MNU:746`；`GCF:56–57/59/66`，登录向导默认类型为 OneKey；`BIN` “OneKey Manager”；`LOC:1561/3880` | G06、C11 | 纳入 | 上游默认登录方式；涉及凭据保存，需与 Keychain 方案和 G06 一起验收，不解密旧凭据 |
 | 3 | S14 | 会话导入（OpenSSH config / PuTTY / Shell） | `MNU:220–224`；`BIN` Host/HostName/IdentityFile/ProxyJump/各类 Forward 解析键与 ssh_config、PuTTY 会话路径；`LOC:1273` | S01、S02 | 纳入 | 需要导入预览、冲突处理和只读源文件；与“非秘密 WindTerm 配置导入”分开验收 |
-| 4 | C22 | 隧道管理器（独立对话框、与会话绑定、状态显示） | `MNU:748`；`LOC:3466`；`BIN` 删除会话时连带隧道的提示 | C16–C18 | 纳入 | C16–C18 验收协议行为；管理器的绑定、生命周期与状态显示是独立工作流。P0 转发探针都没有界面 |
+| 4 | C22 | 隧道管理器（独立对话框、与会话绑定、状态显示） | `MNU:748`；`LOC:3466`；`BIN` 删除会话时连带隧道的提示 | C16–C18 | 纳入 | C16–C18 验收协议行为；管理器的绑定、生命周期与状态显示是独立工作流。P0 只有已打开 SSH 终端上的临时[端口转发面板](SSH_FORWARDING.zh-CN.md#界面)（russh 夹具、IPC stub），不保存、不与会话配置绑定，不是隧道管理器 |
 | 5 | C23 | 内置 X Server（Windows VcXsrv 包装） | `GCF:130–138` `xserver.*`；`BIN` “X Server &Settings...”“-multiwindow”；`LOC:3388` VcXsrv 参数 | C15 | 暂缓 | 只在 macOS 包中看到设置键，没有核对 Windows 包是否随附 X Server；捆绑第三方 X Server 需单独做许可证与分发评估 |
-| 6 | T30 | 远端读写剪贴板（OSC 52）权限 | `SCF:11–12` 读/写默认值 2；`BIN` OSC 52 格式串与询问/允许/禁止选项；`LOC:2926` | T12、G29 | 纳入 | 安全相关且有独立设置。P0 [VT 矩阵](VT_MATRIX.zh-CN.md#osc)确认 xterm.js 内核忽略 OSC 52（O04），公开钩子可接管（H03） |
-| 7 | G43 | 括号粘贴与大段发送确认 | `BIN` “[200~”“[201~” 与 “You are sending a large amount of text (%1 bytes).” | G12、T12 | 不纳入（并入） | 括号粘贴属于 T12 控制序列（VT 矩阵 A03 原样可用），大段发送确认属于 G12 粘贴对话框；建议把两点补入 T12/G12 验收要点，编号不启用 |
+| 6 | T30 | 远端读写剪贴板（OSC 52）权限 | `SCF:11–12` 读/写默认值 2；`BIN` OSC 52 格式串与询问/允许/禁止选项；`LOC:2926` | T12、G29 | 纳入 | 安全相关且有独立设置。P0 [VT 矩阵](VT_MATRIX.zh-CN.md#osc)确认 xterm.js 内核忽略 OSC 52（O04），公开钩子可接管（H03）；生产适配器已改为读取始终拒绝、写入需会话级授权（[OSC 52 剪贴板](VT_MATRIX.zh-CN.md#osc-52-剪贴板)，仅浏览器） |
+| 7 | G43 | 括号粘贴与大段发送确认 | `BIN` “[200~”“[201~” 与 “You are sending a large amount of text (%1 bytes).” | G12、T12 | 不纳入（并入） | 括号粘贴属于 T12 控制序列（VT 矩阵 A03 原样可用），大段发送确认属于 G12 粘贴对话框；建议把两点补入 T12/G12 验收要点，编号不启用。P0 [输入路径探针](INPUT_PATHS.zh-CN.md#粘贴input-pastespects26-项)已有粘贴控制字符清洗与有序输入队列，但没有大段发送确认（仅浏览器） |
 | 8 | C24 | SSH 算法、重协商与证书公钥类型配置 | `BIN` 算法/密钥交换/MAC/公钥类型设置与默认顺序（含 `*-cert-v01@openssh.com`）；`SCF:44–45` rekey 数据量与时间上限；`LOC:523/1603` | C01、C12 | 纳入 | 会话设置有独立页面；P0 目前显式拒绝 rekey，不支持证书与 RSA，需要单独验收和安全评审 |
 | 9 | C25 | 主机指纹信任管理（信任/取消信任/查看） | `LOC:3064/3133`；`BIN` `ssh.serverFingerprint`；`nm -u BIN` `_ssh_write_knownhost` | C01 | 纳入 | C01 只验收首次确认与变化拒绝；查看、取消信任是管理工作流。P0 已有 known_hosts 持久化，但没有管理界面 |
 | 10 | C26 | 连接超时、保活与 TCP 选项 | `SCF:15/17/27–30`；`LOC:802/2497/1609` | C01–C03、S01 | 纳入 | 超时与保活有可测行为（断线发现、空闲连接）；TCP 选项作为本行配置项，不再单列 |
-| 11 | C27 | 应用级全局代理（无/系统/HTTP/SOCKS5，代理 DNS） | `GCF:5–6`；`BIN` 全局代理键、“System proxy”、会话代理类型 “Global”；`LOC:3484` | C19、C20 | 纳入 | 有系统代理与全局继承语义，不同于会话级代理。P0 代理探针只覆盖会话级 HTTP/SOCKS5 |
-| 12 | T31 | 终端键盘与初始模式设置 | `SCF:50–63`：Alt/Meta 修饰、answerBack、Backspace/Delete、光标键与小键盘模式、换行模式、反显、formatOtherKeys；`LOC:220/352/3523` | T07–T13 | 纳入 | 键盘编码直接影响 vim、tmux 等应用；每个设置都能用字节捕获验收 |
+| 11 | C27 | 应用级全局代理（无/系统/HTTP/SOCKS5，代理 DNS） | `GCF:5–6`；`BIN` 全局代理键、“System proxy”、会话代理类型 “Global”；`LOC:3484` | C19、C20 | 纳入 | 有系统代理与全局继承语义，不同于会话级代理。P0 代理探针与连接对话框路线只覆盖单次连接的 HTTP/SOCKS5，没有全局或系统代理 |
+| 12 | T31 | 终端键盘与初始模式设置 | `SCF:50–63`：Alt/Meta 修饰、answerBack、Backspace/Delete、光标键与小键盘模式、换行模式、反显、formatOtherKeys；`LOC:220/352/3523` | T07–T13 | 纳入 | 键盘编码直接影响 vim、tmux 等应用；每个设置都能用字节捕获验收。P0 [输入路径探针](INPUT_PATHS.zh-CN.md#按键input-keysspects12-项)记录了 xterm.js 6.0.0 的光标键、功能键与 Ctrl 组合字节，macOS 上 Option 默认不作 Meta（仅浏览器） |
 | 13 | T32 | 终端清屏与复位 | `MNU:260–262/297–301`：清回滚、清屏、全部清除、软/硬复位、复位字符集；`ACT:744/950` | T07–T13 | 纳入 | 这是用户动作，验收方式不同于控制序列行；P0 VT 矩阵 X01/X02 已记录 DECSTR、RIS 的原样行为 |
 | 14 | G44 | 命令级导航、选择、复制与命令历史存储 | `MNU:246/265–268`；`GCF:53–55` 命令历史 30 天、10000 条、默认持久化；`BIN` “commands.history”；`LOC:3637/3811` | G02、G17 | 纳入 | 命令历史默认写盘，涉及隐私与秘密过滤；需与 G02 补全来源、G17 大纲联合验收 |
 | 15 | F22 | 文件面板与终端当前目录同步 | `SCF:2` 默认关闭；`ACT:172/348`；`BIN` tmux “pane-cwd-changed”；`LOC:3682` | F01、F13 | 纳入 | 有动作与默认设置；依赖 shell 当前目录探测，P0 未涉及 |
 | 16 | F23 | 远端文件用外部编辑器打开并回传 | `ACT:313/344`；`BIN` 分平台默认编辑器；`LOC:103` 修改后回传提示 | F02、F03 | 纳入 | 涉及临时文件、变更检测与覆盖确认，验收独立于上传和下载 |
-| 17 | F24 | 文件面板辅助：新建链接、属性与权限编辑、复制路径/名称到终端、隐藏项 | `MNU:103/185/187–195/106`；`nm -u BIN` `_sftp_symlink`、`_sftp_chmod`、`_sftp_setstat`；`BIN` UID/GID/Sticky/Octal；`GCF:23`；`LOC:703` | F01–F07、F13–F20 | 纳入 | 有导入符号与菜单，可在实机后再细分。P0 只读 SFTP 能显示权限、解析符号链接，但没有修改能力 |
+| 17 | F24 | 文件面板辅助：新建链接、属性与权限编辑、复制路径/名称到终端、隐藏项 | `MNU:103/185/187–195/106`；`nm -u BIN` `_sftp_symlink`、`_sftp_chmod`、`_sftp_setstat`；`BIN` UID/GID/Sticky/Octal；`GCF:23`；`LOC:703` | F01–F07、F13–F20 | 纳入 | 有导入符号与菜单，可在实机后再细分。P0 只读 SFTP 能显示权限、解析符号链接；[SFTP 写操作原型](SFTP_WRITE.zh-CN.md#各操作的语义)可改 rwx 权限位（真实 OpenSSH 夹具），没有新建链接、属主与特殊权限位 |
 | 18 | F25 | 传输队列暂停/恢复/移除与并发参数（F21 拆分） | `MNU:238–243`；`SCF:64–72`；`BIN` “&Open directory after download” | F21 | 纳入 | F21 要求“确认后拆分为独立 ID”；P0 传输队列仍是模拟数据 |
 | 19 | F26 | X/Y/Z Modem 冲突策略、填充与拖放协议（F21 拆分） | `BIN` “When destination file &exists:” 及覆盖、追加、重命名、续传、跳过等策略，填充字符；`SCF:3`；`LOC:2704/3199` | F10–F12、F21 | 纳入 | 同上；P0 modem 探针没有覆盖冲突策略与落盘 |
 | 20 | T33 | 其余会话字符集、十六进制显示与自动检测 | `BIN` 分组字符集表（GB2312/GB18030/GBK、Shift-JIS、韩文、西里尔、UTF-16/32 等）、“System”、“Hexadecimal”；uchardet 类探测器 | T28、T29 | 纳入 | 矩阵已注明“其他字符集仍待盘点”；先用一个 ID 承接，UI 盘点后按字符集分组拆分。P0 终端只处理 UTF-8 |
@@ -209,6 +209,7 @@
 - **P0 证据**：
   - 生产终端工厂启用 `@xterm/addon-unicode11@0.9.0`。浏览器回归确认 🌏、👋、中各占 2 列，组合重音占 1 列；不加载插件时的 1 列旧问题可以复现。见 [WEB_QA](WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查)。
   - 真实 OpenSSH 交互 shell 输出了中文与 emoji。
+  - 2026-10-12 的[输入路径探针](INPUT_PATHS.zh-CN.md#宽字符input-widespects27-项)（浏览器、CDP 模拟输入法、IPC stub）记录了更多列宽：ZWJ 家庭占 6 列、旗帜为 2 个窄格、肤色修饰占 4 列、VS16 不加宽，均列为已知差距；还修复了 xterm.js 6.0.0 在输出块边界丢字的缺陷。这些都没有与 shell 的 `wcwidth` 或 WindTerm 对照，不回答 E9。
   - 这是 Unicode 11 宽度表，不是 Unicode 13。
 - **提议**：保留 T14，验收依据从“README 声明”改为“README 声明 + 实机列宽对照”。验收要点建议改为：
 
@@ -253,28 +254,46 @@
 | --- | ---: | ---: | ---: | ---: |
 | C | 21 | 17 | 4 | 0 |
 | T | 29 | 20 | 9 | 0 |
-| F | 21 | 5 | 16 | 0 |
+| F | 21 | 11 | 10 | 0 |
 | G | 40 | 7 | 33 | 0 |
 | S | 13 | 2 | 10 | 1 |
 | Q | 6 | 6 | 0 | 0 |
-| 合计 | 130 | 57 | 72 | 1 |
+| 合计 | 130 | 63 | 66 | 1 |
 
-“原型/探针”组按证据层级再分：真实对端 6 项（真实 OpenSSH、tmux），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 17 项（russh 或测试内服务器、自发自收），浏览器 27 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、C15、F12 另有方案或决策记录，但没有运行证据。
+“原型/探针”组按证据层级再分：真实对端 18 项（真实 OpenSSH、tmux、telnetd），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 11 项（russh 或测试内服务器、自发自收），浏览器 27 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、C15、F12 另有方案或决策记录，但没有运行证据。
 
-[UI_MAP](UI_MAP.zh-CN.md#已实现的原型行为) 还把部分界面原型映射到 S02、S08、G04、G09、G10、G19、G26、G27、F02、F03、F13、F21。这些入口使用演示数据或模拟状态机，或者语义与该行不同，因此不计为运行证据。各行的“覆盖范围与缺口”写明了理由；baseline.json 的 `evidence_refresh.ui_prototype_not_counted` 列出同一组 ID。
+[UI_MAP](UI_MAP.zh-CN.md#已实现的原型行为) 还把部分界面原型映射到 S02、S08、G04、G09、G10、G19、G26、G27、F13、F21。这些入口使用演示数据或模拟状态机，或者语义与该行不同，因此不计为运行证据。各行的“覆盖范围与缺口”写明了理由；baseline.json 的 `evidence_refresh.ui_prototype_not_counted` 列出同一组 ID。F02、F03 原先也在这一组；2026-10-12 起它们有 SFTP 写操作原型的运行证据，因此移出，但原型中的模拟传输队列仍然不计为运行证据。
+
+### 2026-10-12 刷新
+
+本次刷新只处理 2026-10-11 冻结提议之后合入 `p0/integration` 的原型，没有改任何状态、ID 或能力名称。每行仍只记一个证据层级，取直接涉及该行验收要点的最强运行证据，其余部分的层级写在“覆盖范围与缺口”中。
+
+| 来源 | 涉及 ID | 分组或层级变化 |
+| --- | --- | --- |
+| [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | F02–F07 | 仅静态 → 原型/探针，层级为真实对端：Rust 服务对系统 OpenSSH `sftp-server` 夹具，面板为 IPC stub。修改权限属于候选 F24，不在 130 项内 |
+| [SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | C07、C08、C19、C20、C21 | loopback 夹具 → 真实对端：只读 SFTP 经各路线到达系统 OpenSSH。HTTP/SOCKS5 代理仍是测试内代理，跳板仍是 russh 夹具。C21 与 C08 共用跳板证据，属于本次按功能矩阵做的映射，SSH_ROUTES 原文只列 C07、C08、C19、C20 |
+| [NET_TERMINAL](NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12) | C02 | loopback 夹具 → 真实对端：本机 Apple telnetd 308，被测程序是测试脚本，不是 login(1) |
+| [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | C16、C17、C18 | 无变化（loopback 夹具）；补充已打开 SSH 终端的端口转发面板（IPC stub） |
+| [VT_MATRIX](VT_MATRIX.zh-CN.md#生产-vt-适配器) | T07、T08、T10、T11、T12、T16、T20、T21 | 无变化（浏览器）；说明改为原样行为加生产 VT 适配器 |
+| [INPUT_PATHS](INPUT_PATHS.zh-CN.md#探针覆盖与结论) | T12、T14、T15；G12 只加说明 | 无变化（浏览器）。G12 仍为仅静态：粘贴清洗与有序队列不是粘贴对话框 |
+| [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | T03、Q02 | 无变化（真实平台）；补充 Server 2022 与 2025 CI 和句柄泄漏定位 |
+| [RELEASE](RELEASE.zh-CN.md#4-本地验证) | Q01 | 无变化（真实平台）；补充 release `.app` 排除测试二进制与声明的最低 macOS 13.3 |
+| [TERMINAL_CORE_ADR](TERMINAL_CORE_ADR.zh-CN.md#原型) | T09 | 无变化（浏览器）；补充隔离 SIXEL 原型。ADR 本身是提议，不计为运行证据 |
+
+合计：6 个 ID 从“仅静态”移入“原型/探针”（F02–F07）；6 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（C02、C07、C08、C19、C20、C21）；其余 18 个 ID 只更新链接或说明。
 
 ### C 协议、认证、代理与转发
 
 | ID | 能力 | 静态结论 | P0 分组 | 证据层级 | P0 证据 | 覆盖范围与缺口 |
 | --- | --- | --- | --- | --- | --- | --- |
 | C01 | SSH v2 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md#验证与未验收项)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作)、[RESULTS](RESULTS.zh-CN.md#持久化主机信任) | loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝 |
-| C02 | Telnet | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [NET_TERMINAL](NET_TERMINAL.zh-CN.md#证据)、[TRANSPORTS](TRANSPORTS.zh-CN.md#telnetc02) | Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作 |
+| C02 | Telnet | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [NET_TERMINAL](NET_TERMINAL.zh-CN.md#证据)、[TRANSPORTS](TRANSPORTS.zh-CN.md#telnetc02)、[NET_TERMINAL](NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12) | Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行 |
 | C03 | Raw TCP | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [NET_TERMINAL](NET_TERMINAL.zh-CN.md#证据) | Raw TCP 终端标签的字节完整性与背压，仅 loopback；无真实服务互操作 |
 | C04 | 串口 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [TRANSPORTS](TRANSPORTS.zh-CN.md#串口c04) | 仅验证计划，需要 USB 串口设备；无代码（不计为运行证据） |
 | C05 | SSH 认证后自动执行 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | — | 无 P0 原型或探针 |
 | C06 | SSH ControlMaster | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [CONTROLMASTER_ADR](CONTROLMASTER_ADR.zh-CN.md#证据) | 单连接多 PTY 通道探针（russh 夹具）与提议 ADR；无外部 ControlPath |
-| C07 | ProxyCommand | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20) | 不经 shell 的 ProxyCommand 探针（依赖 /usr/bin/nc）；无界面与配置 |
-| C08 | ProxyJump | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮) | 两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；无界面 |
+| C07 | ProxyCommand | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行 |
+| C08 | ProxyJump | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存 |
 | C09 | SSH agent | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 临时 ssh-agent 认证（russh 集成，仅 macOS 本机）；Windows 命名管道只经交叉编译 |
 | C10 | agent forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10) | agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面 |
 | C11 | 密码认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 密码正确/错误（russh 集成）；无保存与自动登录 |
@@ -282,12 +301,12 @@
 | C13 | keyboard-interactive | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_KBDINT](SSH_KBDINT.zh-CN.md#证据macos-arm64本地) | 多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH |
 | C14 | gssapi-with-mic | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#gssapigssapi-with-micc14) | 仅决策记录；无实现与 KDC 实验（不计为运行证据） |
 | C15 | X11 forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#x11-转发c15) | 仅决策记录；无实现，需要 XQuartz 或 Xvfb（不计为运行证据） |
-| C16 | 本地/直接端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮) | 本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；无界面 |
-| C17 | 远端/反向端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10) | 远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；无界面 |
-| C18 | 动态端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮) | SOCKS5 动态转发 CONNECT（russh 夹具）；无认证、无界面 |
-| C19 | HTTP 代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20) | HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；无界面 |
-| C20 | SOCKS5 代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20) | SOCKS5 代理含用户名/密码（本机测试代理）；无界面 |
-| C21 | Jump Server 会话代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮) | 仅协议层跳板（与 C08 共用探针）；无已保存会话复用 |
+| C16 | 本地/直接端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | 本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作 |
+| C17 | 远端/反向端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | 远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作 |
+| C18 | 动态端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | SOCKS5 动态转发 CONNECT（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；SOCKS 无认证，无配置保存，无 OpenSSH 互操作 |
+| C19 | HTTP 代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置 |
+| C20 | SOCKS5 代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | SOCKS5 代理含用户名/密码（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置 |
+| C21 | Jump Server 会话代理 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 协议层跳板与连接对话框一跳跳板路线（与 C08 共用；russh 夹具作跳板、真实 OpenSSH 作目标）；无已保存跳板会话复用 |
 
 ### T 本地 Shell、终端与 tmux
 
@@ -295,25 +314,25 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | T01 | macOS bash/zsh/PowerShell Core | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [PTY_PROBE](PTY_PROBE.zh-CN.md#已执行检查)、[RESULTS](RESULTS.zh-CN.md#当前轮原生-pty-数据路径冒烟) | macOS zsh 真实 PTY 探针与 WKWebView 冒烟；bash、PowerShell Core 未测 |
 | T02 | Linux bash/zsh/PowerShell Core | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) | Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测 |
-| T03 | Windows Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过) | cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测 |
+| T03 | Windows Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测 |
 | T04 | Windows PowerShell | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
 | T05 | Windows 管理员 Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
 | T06 | Windows 管理员 PowerShell | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
-| T07 | VT100 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | xterm.js 6.0.0 原样行为探针：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口 |
-| T08 | VT220 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针：部分；SS2/SS3、S8C1T、DECSCL 等缺口 |
-| T09 | VT340 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#图形) | 原样行为探针：SIXEL 被吞掉（不支持）；ReGIS 未测 |
-| T10 | VT420 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针：DECIC/DECDC 可用；左右边距与矩形操作缺口 |
-| T11 | VT520 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针：部分；DECST8C、DECSCL 缺口 |
-| T12 | xterm | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针：大部分可用；OSC 52、1005/1015 等缺口 |
+| T07 | VT100 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | xterm.js 6.0.0 原样行为探针加生产 VT 适配器（vt100 身份、DECOM 下 CPR）：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口 |
+| T08 | VT220 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针加生产适配器（vt220 身份、DECSCL 等级报告）：部分；SS2/SS3、S8C1T、DECSCL 不切换功能等缺口 |
+| T09 | VT340 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#图形)、[TERMINAL_CORE_ADR](TERMINAL_CORE_ADR.zh-CN.md#原型) | 原样行为探针：SIXEL 被吞掉；隔离 SIXEL 原型（@xterm/addon-image 0.9.0）可绘制，但生产 CSP 阻止其 WebAssembly 解码器，未接生产终端；ReGIS 未测 |
+| T10 | VT420 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针加生产适配器（vt420 身份）：DECIC/DECDC 可用；左右边距与矩形操作缺口 |
+| T11 | VT520 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论) | 原样行为探针加生产适配器（vt520 身份、DECSCUSR 报告）：部分；DECST8C 缺口，DECSCL 只改报告 |
+| T12 | xterm | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#按终端类型的结论)、[VT_MATRIX](VT_MATRIX.zh-CN.md#osc-52-剪贴板)、[INPUT_PATHS](INPUT_PATHS.zh-CN.md#按键input-keysspects12-项) | 原样行为探针加生产适配器：大部分可用，XTVERSION 有回复，OSC 52 写入需会话授权、读取拒绝；按键编码探针（浏览器）；1005/1015、XTGETTCAP 等缺口 |
 | T13 | xterm-256-colors | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#sgr-与颜色) | 原样行为探针：16/256 色可用 |
-| T14 | Unicode 13 与宽字符 | [沉默](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [WEB_QA](WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查) | 生产终端工厂的 Unicode 11 宽度回归（浏览器）；不是 Unicode 13 |
-| T15 | emoji | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [WEB_QA](WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) | emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测 |
-| T16 | true-color | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#sgr-与颜色) | 原样行为探针：24 位色可用 |
+| T14 | Unicode 13 与宽字符 | [沉默](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [WEB_QA](WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查)、[INPUT_PATHS](INPUT_PATHS.zh-CN.md#探针覆盖与结论) | 生产终端工厂的 Unicode 11 宽度回归，及宽字符、CDP 模拟输入法组合与跨块 UTF-8 输出探针（浏览器）；不是 Unicode 13，原生输入法未测 |
+| T15 | emoji | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [WEB_QA](WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作)、[INPUT_PATHS](INPUT_PATHS.zh-CN.md#宽字符input-widespects27-项) | emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；ZWJ、旗帜、肤色、VS16 的列宽差距已记录（浏览器）；字形回退未测 |
+| T16 | true-color | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#sgr-与颜色) | 原样行为探针：24 位色可用；DECRQSS 颜色报告靠生产适配器 |
 | T17 | 终端鼠标协议 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#鼠标与焦点) | 原样行为探针：1000/1002/1003/1006 可用；1005/1015 不支持 |
 | T18 | 自动换行模式 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#自动换行与反向换行) | 原样行为探针：部分；待换行列号与反向换行差异 |
 | T19 | 自定义协议 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
-| T20 | 自定义终端类型 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#适配钩子可行性公开-api) | 身份回复可经公开 parser 钩子补齐（H02）；自定义终端类型未实现 |
-| T21 | vttest 兼容范围 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#阻断-windterm-对齐的缺口) | 63 项 vttest 相关序列样本；vttest 未运行 |
+| T20 | 自定义终端类型 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#适配钩子可行性公开-api)、[VT_MATRIX](VT_MATRIX.zh-CN.md#终端类型与身份回复) | 会话级 terminalType 决定身份与 DECSCL 等级回复（生产适配器）；无界面入口，TERM 不变，自定义终端类型未实现 |
+| T21 | vttest 兼容范围 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 浏览器 | [VT_MATRIX](VT_MATRIX.zh-CN.md#阻断-windterm-对齐的缺口) | 63 项 vttest 相关序列样本（含生产适配器）；vttest 未运行 |
 | T22 | tmux 集成 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实对端 | [TMUX_CONTROL](TMUX_CONTROL.zh-CN.md#实测) | control-mode 解析器对真实 tmux 3.6b；无界面映射 |
 | T23 | Powerline / Oh-My-Zsh | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
 | T24 | Powerline / Oh-My-Posh | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
@@ -328,12 +347,12 @@
 | ID | 能力 | 静态结论 | P0 分组 | 证据层级 | P0 证据 | 覆盖范围与缺口 |
 | --- | --- | --- | --- | --- | --- | --- |
 | F01 | SFTP 文件浏览 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#真实-openssh-验收)、[RESULTS](RESULTS.zh-CN.md#只读-sftp-文件面板闭环) | 只读浏览（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
-| F02 | SFTP 下载 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 原型下载与传输队列是模拟状态机，明确不落盘（WEB_QA），不计为运行证据 |
-| F03 | SFTP 上传 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 原型传输队列是模拟状态机，没有真实上传（WEB_QA），不计为运行证据 |
-| F04 | SFTP 删除 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 无 P0 原型或探针 |
-| F05 | SFTP 重命名 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 无 P0 原型或探针 |
-| F06 | SFTP 新建文件 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 无 P0 原型或探针 |
-| F07 | SFTP 新建目录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 无 P0 原型或探针 |
+| F02 | SFTP 下载 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 下载到本机“下载”文件夹，逐字节一致、不覆盖、取消后删除半成品（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 64 MiB，模拟传输队列仍未接入 |
+| F03 | SFTP 上传 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 上传经 .part 校验大小后改名、显式覆盖与取消（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 16 MiB，覆盖非原子，模拟传输队列仍未接入 |
+| F04 | SFTP 删除 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 删除文件、符号链接本身与空目录，非空目录与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无递归删除，无原生 WKWebView 实测 |
+| F05 | SFTP 重命名 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 重命名到已存在名称被拒、到新名称成功（真实 OpenSSH sftp-server、IPC stub 面板）；不覆盖只在 OpenSSH 上有服务器端保证，无原生 WKWebView 实测 |
+| F06 | SFTP 新建文件 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 新建空文件即 0 字节不覆盖上传，同名被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
+| F07 | SFTP 新建目录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 中文带空格目录创建，重复创建与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
 | F08 | SCP 下载 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面 |
 | F09 | SCP 上传 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面 |
 | F10 | XModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | loopback 夹具 | [MODEM](MODEM.zh-CN.md#已验证) | sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路 |
@@ -364,7 +383,7 @@
 | G09 | Explorer 面板 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 原型文件面板是演示数据，侧栏折叠不是 Explorer 树的展开折叠，不计为运行证据；只读 SFTP 面板的目录导航计入 F01 |
 | G10 | Shell 面板 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 原型只有“本地终端”按钮，没有 Shell 面板，不计为运行证据；本地 PTY 证据计入 T01 |
 | G11 | Quick Bar | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 无 P0 原型或探针 |
-| G12 | 粘贴对话框 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 无 P0 原型或探针 |
+| G12 | 粘贴对话框 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | INPUT_PATHS 的粘贴清洗、换行规范化与有序队列只涉及粘贴字节路径，没有粘贴对话框、预览或确认，不计为运行证据 |
 | G13 | 本地/远程输入模式 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 无 P0 原型或探针 |
 | G14 | Vim 键位 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 无 P0 原型或探针 |
 | G15 | 时间戳 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流) | 仅静态 | — | — | 无 P0 原型或探针 |
@@ -416,8 +435,8 @@
 
 | ID | 能力 | 静态结论 | P0 分组 | 证据层级 | P0 证据 | 覆盖范围与缺口 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Q01 | macOS 平台 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包)、[RESULTS](RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟) | arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证 |
-| Q02 | Windows 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过) | Windows CI 构建与 cmd.exe ConPTY；无原生 GUI |
+| Q01 | macOS 平台 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包)、[RESULTS](RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟)、[RELEASE](RELEASE.zh-CN.md#4-本地验证) | arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证 |
+| Q02 | Windows 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI |
 | Q03 | Linux 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) | Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI |
 | Q04 | 动态内存压缩 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 浏览器 | [HISTORY_ARCHIVE](HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机) | 压缩冷历史 PoC（约 7.4 倍）；未接生产终端 |
 | Q05 | 吞吐与低延迟 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.zh-CN.md#1-rust-pty-吞吐与-ctrl-c-延迟)、[PTY_READINESS](PTY_READINESS.zh-CN.md#本机配对结果) | 本机嘈杂环境基线；无 GUI 全链路，无 WindTerm 对比 |
@@ -426,6 +445,8 @@
 ## (e) 冻结前需要用户决定的事项
 
 “阻断”表示不决定就无法冻结；“不阻断”表示可以先冻结，按变更规则后补。
+
+2026-10-12 刷新时逐项核对过：新合入的证据都是本项目原型的运行证据，没有一项涉及上游 WindTerm 2.7.0 的实机行为，因此不直接回答 E1–E12 中任何一项，下表的选项与建议保持原样。与候选 F24、T30、C22、G43、T31 有关的原型已写入 [(b)](#b-36-项静态候选) 表的理由列，不改变其中的建议；T14 的补充证据见 [c1](#c1-t14-unicode-13-与宽字符)。
 
 | 编号 | 决定事项 | 可选项 | 建议 | 是否阻断冻结 |
 | --- | --- | --- | --- | --- |
@@ -450,7 +471,7 @@
 | XQuartz 安装许可或 Linux Xvfb 方案 | C15 |
 | 测试 Kerberos 领域 | C14 |
 | 测试机上的 lrzsz | F10–F12 互操作 |
-| 真实 telnetd 或网络设备 | C02 |
+| 网络设备或其它 telnetd 实现（本机 Apple telnetd 308 已测，见 [NET_TERMINAL](NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12)） | C02 |
 | 原生 IME 与 VoiceOver 实机 | T14、T15 等 |
 
 ## 复核
