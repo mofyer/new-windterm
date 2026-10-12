@@ -7,7 +7,10 @@ use super::{connect_pinned, observe_host_key, Credential, KeyCheck, Request, Rou
 use russh::{client, keys::PublicKey};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tokio::{
@@ -16,6 +19,10 @@ use tokio::{
     sync::watch,
     task::{JoinHandle, JoinSet},
 };
+
+#[path = "ssh_forward_flow.rs"]
+mod flow;
+use flow::{closed, deliver, Delivery, Live};
 
 pub(crate) const MAX_CONNECTIONS: usize = 64;
 const HANDSHAKE: Duration = Duration::from_secs(5);
@@ -29,11 +36,13 @@ pub(crate) enum Target {
     Socks5,
 }
 
-/// A running listener. Dropping it without `stop` leaves the task running.
+/// A running listener. Dropping it also ends the listener task, but only
+/// `stop` waits until the socket and its connections are closed.
 pub(crate) struct Forward {
     pub(crate) local: SocketAddr,
     stop: watch::Sender<bool>,
     task: JoinHandle<()>,
+    live: Arc<AtomicUsize>,
 }
 
 impl Forward {
@@ -41,6 +50,16 @@ impl Forward {
     pub(crate) async fn stop(self) {
         self.stop.send_replace(true);
         let _ = self.task.await;
+    }
+
+    /// Relayed connections currently open (including SOCKS5 handshakes).
+    pub(crate) fn connections(&self) -> usize {
+        self.live.load(Ordering::SeqCst)
+    }
+
+    /// False once the listener ended on its own, e.g. after an accept error.
+    pub(crate) fn listening(&self) -> bool {
+        !self.task.is_finished()
     }
 }
 
@@ -61,6 +80,8 @@ pub(crate) async fn listen(
         .local_addr()
         .map_err(|_| "Listener address unavailable")?;
     let (stop, mut stopped) = watch::channel(false);
+    let live = Arc::new(AtomicUsize::new(0));
+    let counter = live.clone();
     let task = tokio::spawn(async move {
         let mut connections = JoinSet::new();
         loop {
@@ -74,7 +95,11 @@ pub(crate) async fn listen(
                         continue; // dropping `client` refuses it
                     }
                     let (session, target) = (session.clone(), target.clone());
-                    connections.spawn(async move { relay(&session, client, origin, &target).await });
+                    let counted = Live::new(&counter);
+                    connections.spawn(async move {
+                        let _counted = counted;
+                        relay(&session, client, origin, &target).await
+                    });
                 }
             }
         }
@@ -82,7 +107,12 @@ pub(crate) async fn listen(
         connections.abort_all();
         while connections.join_next().await.is_some() {}
     });
-    Ok(Forward { local, stop, task })
+    Ok(Forward {
+        local,
+        stop,
+        task,
+        live,
+    })
 }
 
 async fn relay(
@@ -130,44 +160,68 @@ async fn relay(
 /// half-close: local EOF sends channel EOF, channel EOF shuts down the local
 /// write side, and the channel closes once both directions finished. Uses the
 /// split `wait`/`data` halves, the same I/O path as the terminal, so EOF and
-/// close are explicit rather than implied by stream shutdown.
+/// close are explicit rather than implied by stream shutdown. A local side
+/// that fails or stalls (see [`deliver`]) ends both directions at once, and
+/// so does a server close or the end of the connection, even while the
+/// local side is idle.
 pub(crate) async fn pump<S>(channel: russh::Channel<client::Msg>, io: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send,
+{
+    pump_with(channel, io, Some(flow::STALL)).await;
+}
+
+/// [`pump`] with the stall limit of [`deliver`]; `None` waits for the local
+/// side for as long as it takes.
+async fn pump_with<S>(channel: russh::Channel<client::Msg>, io: S, stall: Option<Duration>)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send,
 {
     let (mut from_remote, to_remote) = channel.split();
     let (mut local_read, mut local_write) = tokio::io::split(io);
-    let upstream = async {
-        let mut buffer = [0; 32 * 1024];
-        while let Ok(n) = local_read.read(&mut buffer).await {
-            if n == 0 || to_remote.data(&buffer[..n]).await.is_err() {
-                break;
-            }
-        }
-        let _ = to_remote.eof().await;
-    };
-    let downstream = async {
-        while let Some(message) = from_remote.wait().await {
-            match message {
-                russh::ChannelMsg::Data { data } => {
-                    if local_write.write_all(&data).await.is_err() {
-                        break;
-                    }
+    {
+        let upstream = async {
+            let mut buffer = [0; 32 * 1024];
+            while let Ok(n) = local_read.read(&mut buffer).await {
+                if n == 0 || to_remote.data(&buffer[..n]).await.is_err() {
+                    break;
                 }
-                russh::ChannelMsg::Eof | russh::ChannelMsg::Close => break,
-                _ => {}
+            }
+            let _ = to_remote.eof().await;
+        };
+        let mut upstream = std::pin::pin!(upstream);
+        let mut upstream_done = false;
+        let delivery = {
+            let mut downstream = std::pin::pin!(deliver(&mut from_remote, &mut local_write, stall));
+            tokio::select! {
+                delivery = &mut downstream => delivery,
+                () = &mut upstream => {
+                    upstream_done = true;
+                    downstream.await
+                }
+            }
+        };
+        if delivery != Delivery::Failed {
+            let _ = local_write.shutdown().await;
+        }
+        if delivery == Delivery::Eof && !upstream_done {
+            // Half-closed by the server: local data still goes upstream until
+            // the local side ends or the server closes the channel.
+            tokio::select! {
+                () = &mut upstream => {}
+                () = closed(&mut from_remote) => {}
             }
         }
-        let _ = local_write.shutdown().await;
-    };
-    tokio::join!(upstream, downstream);
+    }
     let _ = to_remote.close().await;
 }
 
 /// An in-memory stream backed by `channel`, for running SSH over a jump hop.
+/// The hop's own connection carries only this channel, so a slow inner
+/// session is waited for instead of being disconnected.
 fn pipe(channel: russh::Channel<client::Msg>) -> tokio::io::DuplexStream {
     let (ours, theirs) = tokio::io::duplex(64 * 1024);
-    tokio::spawn(pump(channel, theirs));
+    tokio::spawn(pump_with(channel, theirs, None));
     ours
 }
 

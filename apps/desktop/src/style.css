@@ -316,3 +316,29 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 #ssh-kbdint-status:empty, #ssh-kbdint-error:empty { display: none; }
 #ssh-kbdint-error { color: #ad3f46; }
 [data-theme="dark"] #ssh-kbdint-error { color: #e7aaaa; }
+
+/* SSH port forward sheet for one connected SSH tab (desktop only). */
+#forward-open[hidden] { display: none; }
+#port-forward-dialog { width: min(640px, calc(100% - 32px)); }
+#port-forward-dialog [hidden] { display: none; }
+#port-forward-dialog fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+#port-forward-dialog .dialog-heading h2 { margin-bottom: 0; }
+#port-forward-dialog #forward-close { align-self: flex-start; min-width: 36px; min-height: 36px; }
+#port-forward-dialog select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }
+#forward-session { display: block; font-size: 13px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.forward-head, .forward-row { display: grid; grid-template-columns: 64px minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr) 52px; gap: 8px; align-items: center; font-size: 11px; }
+.forward-head { padding: 0 8px 6px; color: var(--muted); border-bottom: 1px solid var(--line); }
+#forward-list { max-height: 220px; overflow: auto; margin-bottom: 4px; }
+.forward-row { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.forward-row > span { min-width: 0; overflow-wrap: anywhere; }
+.forward-row button { font-size: 11px; min-height: 26px; padding: 3px 8px; }
+#forward-list .empty { margin: 10px 8px; }
+#forward-status, #forward-error { margin: 10px 0 0; overflow-wrap: anywhere; }
+#forward-status:empty, #forward-error:empty { display: none; }
+#forward-error { color: #ad3f46; }
+[data-theme="dark"] #forward-error { color: #e7aaaa; }
+@media (max-width: 560px) {
+  .forward-head { display: none; }
+  .forward-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .forward-row button { justify-self: start; margin-top: 4px; }
+}

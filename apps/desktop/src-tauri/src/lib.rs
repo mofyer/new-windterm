@@ -299,6 +299,40 @@ fn ssh_close(
     service.close(window.label(), &id)
 }
 
+/// Starts a local, dynamic (SOCKS5) or remote forward over SSH terminal `id`.
+#[tauri::command]
+async fn ssh_forward_add(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+    forward: ssh::terminal::tunnels::ForwardRequest,
+) -> Result<ssh::terminal::tunnels::ForwardInfo, String> {
+    service.forward_add(window.label(), &id, forward).await
+}
+
+/// Stops one forward of SSH terminal `id`; remote forwards are cancelled on the server.
+#[tauri::command]
+async fn ssh_forward_remove(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+    forward_id: String,
+) -> Result<(), String> {
+    service
+        .forward_remove(window.label(), &id, &forward_id)
+        .await
+}
+
+/// Lists the forwards of SSH terminal `id` with their current status.
+#[tauri::command]
+fn ssh_forward_list(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    id: String,
+) -> Result<Vec<ssh::terminal::tunnels::ForwardInfo>, String> {
+    service.forward_list(window.label(), &id)
+}
+
 #[tauri::command]
 async fn pty_open(
     window: WebviewWindow,
@@ -443,6 +477,9 @@ pub fn run() {
             ssh_resize,
             ssh_ack,
             ssh_close,
+            ssh_forward_add,
+            ssh_forward_remove,
+            ssh_forward_list,
             pty_open,
             pty_write,
             pty_resize,
