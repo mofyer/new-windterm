@@ -4,7 +4,7 @@
 
 ## 背景
 
-[VT 兼容矩阵](VT_MATRIX.zh-CN.md)用 63 项探针记录了 xterm.js 6.0.0 的原样行为。设备身份、DECRQSS、OSC 52 等回复类缺口可以用公开的解析器钩子补齐。以下缺口钩子无法关闭：
+[VT 兼容矩阵](VT_MATRIX.zh-CN.md)用 63 项探针记录了 xterm.js 6.0.0 的原样行为。设备身份、DECRQSS、OSC 52 等回复类缺口可以用公开的解析器钩子补齐，其中设备身份、DECSCL 等级报告、DECRQSS SGR/DECSCUSR、DECOM 下的 CPR 与 OSC 52 策略已由生产适配器 `vt-adapters.ts` 处理（仅浏览器验证，见矩阵「生产 VT 适配器」一节）。以下缺口钩子无法关闭：
 
 | 缺口 | 探针 | 影响的功能 ID | 为什么钩子不够 |
 | --- | --- | --- | --- |
@@ -85,7 +85,7 @@ VT 矩阵还列出了 A02（47 备用屏保留）、W04（硬换行反向回绕�
 - **主线程同步解码**：0.9.0 没有 Worker，SIXEL 在解析器的 `put` 中同步解码。大图会阻塞 UI，也会推迟 ACK。上限内的最坏耗时尚未测量。
 - **依赖 xterm 私有 API**：插件使用 `_core._inputHandler`、内部 `_parser.registerDcsHandler`、`screenElement`、`_themeService` 等，所以必须与 xterm 核心锁在同一提交，不能单独升级。
 - **没有就绪信号**：解码器经 `WebAssembly.instantiate` 异步创建，在它就绪前到达的 SIXEL 会被静默丢弃。原型因此读取私有字段等待就绪。生产环境需要上游提供就绪 API，或在启动 PTY 前完成预热。
-- **DA1 冲突**：插件无条件把 DA1 改写为 VT220 + SIXEL，与按终端类型回复身份的适配层（D01）冲突，生产中应由身份适配层统一回复。
+- **DA1 冲突**：插件无条件把 DA1 改写为 VT220 + SIXEL，与按终端类型回复身份的适配层（D01）冲突，生产中应由身份适配层统一回复。身份适配层现已在 `terminal.ts` 工厂中注册；xterm.js 后注册的处理器先执行，插件若在工厂之后加载，它的 DA1 会抢先回复。
 - **与 WindTerm 特性的交互**：
   - 图块存在 xterm 单元格的扩展属性里，滚出 scrollback 后，由 marker 触发删除。
   - [压缩历史](HISTORY_ARCHIVE.zh-CN.md)只归档文本与 SGR，[折叠视图](FOLDING.zh-CN.md)只回放文本，所以图片在两者中都会丢失。是否要求历史保留图片，需要另行决定。

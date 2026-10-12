@@ -1,5 +1,6 @@
 import type { Terminal, ITheme } from "@xterm/xterm";
-import { createWorkspaceTerminal } from "./terminal";
+import { createWorkspaceSession, describeVtNotice } from "./terminal";
+import type { VtAdapters } from "./terminal-compat/vt-adapters";
 import { authPromptsFor, createSshVerification, type SshTerminalRequest } from "./ssh-verification";
 import { createSftpPanel } from "./sftp-panel";
 import { createNetTerminalDialog, netLabel, type NetTerminalRequest } from "./net-terminal";
@@ -21,6 +22,8 @@ type Session = {
   /** Telnet or Raw TCP, for "net" sessions. */
   netKind?: string;
   terminal: Terminal;
+  /** VT adapters: terminal type, OSC 52 opt-in (off by default). */
+  vt: VtAdapters;
   fit: FitAddon;
   element: HTMLElement;
   observer: ResizeObserver;
@@ -177,9 +180,10 @@ function updateStatus() {
       : s.mode === "pty" ? "本机 shell / 输入将实际执行"
       : s.mode === "ssh" ? "远端 SSH / 输入将实际执行" : `远端 ${modeName(s)} / 输入将实际发送`
     : "";
+  const clipboard = s?.vt.clipboardWrite ? " · OSC 52 可写剪贴板" : "";
   if (statusElements.state.textContent !== state) statusElements.state.textContent = state;
   if (statusElements.size.textContent !== size) statusElements.size.textContent = size;
-  if (statusElements.detail.textContent !== detail) statusElements.detail.textContent = detail;
+  if (statusElements.detail.textContent !== detail + clipboard) statusElements.detail.textContent = detail + clipboard;
   const disabled = !s || s.mode !== "demo";
   if (statusElements.sample.disabled !== disabled) statusElements.sample.disabled = disabled;
   if (statusElements.stress.disabled !== disabled) statusElements.stress.disabled = disabled;
@@ -391,7 +395,11 @@ function createSession(name: string, mode: Mode): Session | undefined {
   element.className = "terminal-pane";
   element.setAttribute("aria-label", `${name} 终端`);
   $("#terminals").append(element);
-  const terminal = createWorkspaceTerminal(colors());
+  // Set once the session exists, so a notice can never touch `s` before its declaration.
+  let owner: Session | undefined;
+  const { terminal, vt } = createWorkspaceSession(colors(), {
+    onNotice: (notice) => { if (owner && !owner.disposed) toast(`「${owner.name}」${describeVtNotice(notice)}`); },
+  });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(element);
@@ -400,6 +408,7 @@ function createSession(name: string, mode: Mode): Session | undefined {
     name,
     mode,
     terminal,
+    vt,
     fit,
     element,
     observer: new ResizeObserver(() => {
@@ -418,6 +427,7 @@ function createSession(name: string, mode: Mode): Session | undefined {
     ack: Promise.resolve(),
     input: Promise.resolve(),
   };
+  owner = s;
   s.observer.observe(element);
   sessions.set(s.key, s);
   activeKey = s.key;
@@ -644,11 +654,21 @@ async function closeSession(key: number) {
   s.earlyBytes = 0;
   s.outputRun++;
   s.observer.disconnect();
+  s.vt.dispose();
   s.terminal.dispose();
   s.element.remove();
   sessions.delete(key);
   if (activeKey === key) activeKey = sessions.keys().next().value ?? 0;
   paintSessions();
+}
+function toggleClipboardWrite() {
+  const s = active();
+  if (!s) return;
+  s.vt.setClipboardWrite(!s.vt.clipboardWrite);
+  toast(s.vt.clipboardWrite
+    ? `已允许「${s.name}」通过 OSC 52 写入剪贴板；读取仍被禁止。`
+    : `已关闭「${s.name}」的 OSC 52 剪贴板写入。`);
+  updateStatus();
 }
 function showDialog(id: string) {
   ($(id) as HTMLDialogElement).showModal();
@@ -883,6 +903,7 @@ const commands = [
   { name: "SSH 验证 · 真实指纹与固定命令 · 仅桌面", action: () => sshVerification.open() },
   { name: "只读浏览远端文件 · SFTP · 仅桌面", action: () => sshVerification.open("files") },
   { name: "打开 Telnet / Raw TCP 终端 · 仅桌面", action: () => netTerminal.open() },
+  { name: "切换当前会话 OSC 52 剪贴板写入 · 默认关闭", action: toggleClipboardWrite },
 ];
 let commandIndex = 0;
 function paintCommands() {
@@ -943,6 +964,7 @@ window.addEventListener("beforeunload", () => {
     s.disposed = true;
     s.outputRun++;
     s.observer.disconnect();
+    s.vt.dispose();
     s.terminal.dispose();
     if (s.mode === "ssh" && s.operationId) void invoke("ssh_cancel", { operationId: s.operationId }).catch(() => {});
     else if (s.ptyId ?? s.operationId) void invoke(`${transport(s)}_close`, { id: s.ptyId ?? s.operationId }).catch(() => {});

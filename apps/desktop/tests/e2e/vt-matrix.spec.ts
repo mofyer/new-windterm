@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { ESC, ST, installHarness, probe, run } from './support/vt-harness';
+import { ESC, ST, installHarness, probe, rawAndAdapted, run, type Harness } from './support/vt-harness';
 
-// VT compatibility matrix for the exact @xterm/xterm 6.0.0 in package-lock.json.
+// VT compatibility matrix for the exact @xterm/xterm 6.0.0 in package-lock.json plus the
+// production adapters (src/terminal-compat/vt-adapters.ts), which the harness attaches by
+// default exactly as the workspace factory does. Probes whose result the adapters change also
+// record the raw xterm.js evidence (`vt: false`) next to the adapted result.
 // Every probe drives a real, independent xterm in the page and asserts the behaviour observed
 // today, so a dependency bump that changes it fails loudly. Titles carry the matrix status:
 //   [supported]   behaves as the cited reference for the probed case;
@@ -106,15 +109,22 @@ test.describe('scroll regions and origin mode', () => {
   });
 
   probe({
-    id: 'S03', status: 'partial', title: 'CPR reports the absolute row while DECOM is set',
-    sequence: 'CSI 3;5 r, CSI ? 6 h, CSI 1;1 H, CSI 6 n',
+    id: 'S03', status: 'supported', title: 'CPR and DECXCPR report the row relative to the top margin while DECOM is set (adapter)',
+    sequence: 'CSI 3;5 r, CSI ? 6 h, CSI 1;1 H, CSI 6 n, CSI ? 6 n; CSI 2;4 H, CSI 6 n; CSI ? 6 l, CSI 4;2 H, CSI 6 n',
     expected: 'VT100 UG CPR: "The numbering of lines depends on the state of the Origin Mode (DECOM)" -> CSI 1;1 R',
     features: ['T07', 'T21'],
-  }, page => run(page, async h => {
+  }, page => rawAndAdapted(page, async (h: Harness) => {
     await h.write('\x1b[3;5r\x1b[?6h\x1b[1;1H');
-    return h.query('\x1b[6n');
+    const home = await h.query('\x1b[6n');
+    const xcpr = await h.query('\x1b[?6n');
+    await h.write('\x1b[2;4H');
+    const inside = await h.query('\x1b[6n');
+    await h.write('\x1b[?6l\x1b[4;2H');
+    return { home, xcpr, inside, absolute: await h.query('\x1b[6n') };
   }), observed => {
-    expect(observed).toBe(`${ESC}[3;1R`);
+    // Raw xterm.js 6.0.0 reports the absolute row even under DECOM.
+    expect(observed.raw).toEqual({ home: `${ESC}[3;1R`, xcpr: `${ESC}[?3;1R`, inside: `${ESC}[4;4R`, absolute: `${ESC}[4;2R` });
+    expect(observed.adapted).toEqual({ home: `${ESC}[1;1R`, xcpr: `${ESC}[?1;1R`, inside: `${ESC}[2;4R`, absolute: `${ESC}[4;2R` });
   });
 
   probe({
@@ -556,13 +566,21 @@ test.describe('cursor style', () => {
   });
 
   probe({
-    id: 'K02', status: 'partial', title: 'DECRQSS for DECSCUSR reports the configured option, not the DECSCUSR value',
-    sequence: 'CSI 4 SP q, DCS $ q SP q ST', expected: 'VT520 DECRPSS: DCS 1 $ r 4 SP q ST', features: ['T11'],
-  }, page => run(page, async h => {
+    id: 'K02', status: 'supported', title: 'DECRQSS for DECSCUSR reports the DECSCUSR value (adapter); CSI 0 SP q falls back to the option',
+    sequence: 'CSI 4 SP q, DCS $ q SP q ST; CSI 5 SP q, DECRQSS; CSI 0 SP q, DECRQSS',
+    expected: 'VT520 DECRPSS: DCS 1 $ r 4 SP q ST', features: ['T11'],
+  }, page => rawAndAdapted(page, async (h: Harness) => {
+    const request = `\x1bP$q q${'\x1b\\'}`;
     await h.write('\x1b[4 q');
-    return h.query(`\x1bP$q q${'\x1b\\'}`);
+    const underline = await h.query(request);
+    await h.write('\x1b[5 q');
+    const blinkingBar = await h.query(request);
+    await h.write('\x1b[0 q');
+    return { underline, blinkingBar, option: await h.query(request) };
   }), observed => {
-    expect(observed).toBe(`${ESC}P1$r2 q${ST}`);
+    // Raw xterm.js 6.0.0 always reports the cursorStyle/cursorBlink options (block, steady).
+    expect(observed.raw).toEqual({ underline: `${ESC}P1$r2 q${ST}`, blinkingBar: `${ESC}P1$r2 q${ST}`, option: `${ESC}P1$r2 q${ST}` });
+    expect(observed.adapted).toEqual({ underline: `${ESC}P1$r4 q${ST}`, blinkingBar: `${ESC}P1$r5 q${ST}`, option: `${ESC}P1$r2 q${ST}` });
   });
 });
 
@@ -653,54 +671,121 @@ test.describe('SGR rendition and colour', () => {
   });
 
   probe({
-    id: 'R06', status: 'partial', title: 'DECRQSS for SGR always reports 0m',
-    sequence: 'SGR 1;31, DCS $ q m ST', expected: 'VT420 DECRPSS reports the active rendition, e.g. 0;1;31m', features: ['T10', 'T21'],
-  }, page => run(page, async h => {
+    id: 'R06', status: 'supported', title: 'DECRQSS for SGR reports the active rendition from the adapter shadow state',
+    sequence: 'SGR 1;31, DCS $ q m ST; SGR 0;3;4:3;58:5:9;38;5;196;48;2;1;2;3, DECRQSS; SGR 0, DECRQSS',
+    expected: 'VT420 DECRPSS reports the active rendition, e.g. 0;1;31m', features: ['T10', 'T16', 'T21'],
+  }, page => rawAndAdapted(page, async (h: Harness) => {
+    const request = `\x1bP$qm${'\x1b\\'}`;
     await h.write('\x1b[1;31m');
-    return h.query(`\x1bP$qm${'\x1b\\'}`);
+    const basic = await h.query(request);
+    await h.write('\x1b[0;3;4:3;58:5:9;38;5;196;48;2;1;2;3m');
+    const extended = await h.query(request);
+    await h.write('\x1b[0m');
+    return { basic, extended, reset: await h.query(request) };
   }), observed => {
-    expect(observed).toBe(`${ESC}P1$r0m${ST}`);
+    // Raw xterm.js 6.0.0 always answers 0m.
+    expect(observed.raw).toEqual({ basic: `${ESC}P1$r0m${ST}`, extended: `${ESC}P1$r0m${ST}`, reset: `${ESC}P1$r0m${ST}` });
+    expect(observed.adapted).toEqual({
+      basic: `${ESC}P1$r0;1;31m${ST}`,
+      extended: `${ESC}P1$r0;3;4:3;38;5;196;48;2;1;2;3;58;5;9m${ST}`,
+      reset: `${ESC}P1$r0m${ST}`,
+    });
   });
 });
 
 test.describe('identity, conformance and reports', () => {
   probe({
-    id: 'D01', status: 'partial', title: 'DA1/DA2 always identify as a VT100-class xterm',
-    sequence: 'CSI c, CSI > c', expected: 'VT220+ DA1 is CSI ? 6x ; … c with feature list; DA2 Pp > 0 for VT220+',
+    id: 'D01', status: 'supported', title: 'DA1/DA2 follow the session terminal type; xterm-256color keeps the built-in replies (adapter)',
+    sequence: 'CSI c, CSI > c for raw xterm.js and for terminal types xterm-256color, vt100, vt220, vt420, vt520',
+    expected: 'VT220+ DA1 is CSI ? 6x ; … c with feature list; DA2 Pp > 0 for VT220+',
     features: ['T07', 'T08', 'T10', 'T11', 'T20'],
-  }, page => run(page, async h => ({ da1: await h.query('\x1b[c'), da2: await h.query('\x1b[>c') })), observed => {
-    expect(observed).toEqual({ da1: `${ESC}[?1;2c`, da2: `${ESC}[>0;276;0c` });
+  }, async page => {
+    const identify = async (h: Harness) => ({ da1: await h.query('\x1b[c'), da2: await h.query('\x1b[>c') });
+    const byType: Record<string, unknown> = {};
+    for (const terminalType of ['xterm-256color', 'vt100', 'vt220', 'vt420', 'vt520']) {
+      byType[terminalType] = await run(page, identify, { vt: { terminalType } });
+    }
+    return { raw: await run(page, identify, { vt: false }), byType };
+  }, observed => {
+    expect(observed.raw).toEqual({ da1: `${ESC}[?1;2c`, da2: `${ESC}[>0;276;0c` });
+    expect(observed.byType).toEqual({
+      'xterm-256color': { da1: `${ESC}[?1;2c`, da2: `${ESC}[>0;276;0c` }, // byte-identical to raw xterm.js
+      vt100: { da1: `${ESC}[?1;2c`, da2: '' }, // a VT100 does not answer DA2
+      vt220: { da1: `${ESC}[?62;6;9;22c`, da2: `${ESC}[>1;10;0c` },
+      vt420: { da1: `${ESC}[?64;6;9;22c`, da2: `${ESC}[>41;10;0c` },
+      vt520: { da1: `${ESC}[?65;6;9;22c`, da2: `${ESC}[>64;10;0c` },
+    });
   });
 
   probe({
-    id: 'D02', status: 'unsupported', title: 'DECSCL cannot change the conformance level; DECRQSS stays at 61;1"p',
-    sequence: 'CSI 65;1 " p, DCS $ q " p ST, CSI c', expected: 'VT520 DECSCL: DECRQSS 65;1"p and VT500 behaviour',
+    id: 'D02', status: 'partial',
+    title: 'DECSCL changes only the reported conformance level (adapter): no soft reset, no feature gating, 8-bit request ignored',
+    sequence: 'DCS $ q " p ST; CSI 62;1 " p, DECRQSS, CSI c; CSI 65;2 " p, DECRQSS; CSI 62 " p, ESC c, DECRQSS',
+    expected: 'VT520 DECSCL: DECRQSS 62;1"p after CSI 62;1"p, with VT200 behaviour; a VT100 ignores DECSCL',
     features: ['T08', 'T10', 'T11', 'T20', 'T21'],
-  }, page => run(page, async h => {
-    await h.write('\x1b[65;1"p');
-    return { level: await h.query(`\x1bP$q"p${'\x1b\\'}`), da1: await h.query('\x1b[c') };
-  }), observed => {
-    expect(observed).toEqual({ level: `${ESC}P1$r61;1"p${ST}`, da1: `${ESC}[?1;2c` });
+  }, async page => {
+    const select = async (h: Harness) => {
+      const request = `\x1bP$q"p${'\x1b\\'}`;
+      const initial = await h.query(request);
+      await h.write('\x1b[62;1"p');
+      const lowered = await h.query(request);
+      const da1 = await h.query('\x1b[c');
+      await h.write('\x1b[65;2"p');
+      const raised = await h.query(request);
+      await h.write('\x1b[62"p\x1bc');
+      return { initial, lowered, da1, raised, afterRis: await h.query(request) };
+    };
+    return {
+      raw: await run(page, select, { vt: false }),
+      xterm: await run(page, select),
+      vt520: await run(page, select, { vt: { terminalType: 'vt520' } }),
+    };
+  }, observed => {
+    const fixed = { initial: `${ESC}P1$r61;1"p${ST}`, lowered: `${ESC}P1$r61;1"p${ST}`, da1: `${ESC}[?1;2c`, raised: `${ESC}P1$r61;1"p${ST}`, afterRis: `${ESC}P1$r61;1"p${ST}` };
+    expect(observed.raw).toEqual(fixed);
+    // The default type identifies as VT100-class, so like xterm with decTerminalID < 200 it ignores DECSCL.
+    expect(observed.xterm).toEqual(fixed);
+    expect(observed.vt520).toEqual({
+      initial: `${ESC}P1$r65;1"p${ST}`, lowered: `${ESC}P1$r62;1"p${ST}`, da1: `${ESC}[?65;6;9;22c`,
+      raised: `${ESC}P1$r65;1"p${ST}`, afterRis: `${ESC}P1$r65;1"p${ST}`,
+    });
   });
 
   probe({
-    id: 'D03', status: 'unsupported', title: 'DA3, XTVERSION and XTGETTCAP get no reply',
-    sequence: 'CSI = c, CSI > 0 q, DCS + q 544e ST', expected: 'DA3 DECRPTUI DCS ! | … ST; XTVERSION DCS > | … ST; XTGETTCAP DCS 1 + r … ST',
+    id: 'D03', status: 'partial', title: 'DA3 (VT420/VT520 types) and XTVERSION (xterm type) are answered by the adapter; XTGETTCAP is not',
+    sequence: 'CSI = c, CSI > 0 q, DCS + q 544e ST for raw xterm.js and terminal types xterm-256color, vt420',
+    expected: 'DA3 DECRPTUI DCS ! | … ST; XTVERSION DCS > | … ST; XTGETTCAP DCS 1 + r … ST',
     features: ['T10', 'T12', 'T20'],
-  }, page => run(page, async h => ({
-    da3: await h.query('\x1b[=c'), xtversion: await h.query('\x1b[>0q'), xtgettcap: await h.query(`\x1bP+q544e${'\x1b\\'}`),
-  })), observed => {
-    expect(observed).toEqual({ da3: '', xtversion: '', xtgettcap: '' });
+  }, async page => {
+    const ask = async (h: Harness) => ({
+      da3: await h.query('\x1b[=c'), xtversion: await h.query('\x1b[>0q'), xtgettcap: await h.query(`\x1bP+q544e${'\x1b\\'}`),
+    });
+    return {
+      raw: await run(page, ask, { vt: false }),
+      xterm: await run(page, ask),
+      vt420: await run(page, ask, { vt: { terminalType: 'vt420' } }),
+    };
+  }, observed => {
+    expect(observed.raw).toEqual({ da3: '', xtversion: '', xtgettcap: '' });
+    // A VT100-class identity has no unit ID, so DA3 stays unanswered for the default type.
+    expect(observed.xterm).toEqual({ da3: '', xtversion: `${ESC}P>|new-windterm(0.0.1)${ST}`, xtgettcap: '' });
+    expect(observed.vt420).toEqual({ da3: `${ESC}P!|00000000${ST}`, xtversion: '', xtgettcap: '' });
   });
 
   probe({
-    id: 'D04', status: 'unsupported', title: 'S8C1T (ESC SP G) does not switch replies to 8-bit C1',
-    sequence: 'ESC SP G, CSI c', expected: 'VT220 S8C1T: replies use C1 CSI (0x9B)', features: ['T08', 'T21'],
-  }, page => run(page, async h => {
-    await h.write('\x1b G');
-    return h.query('\x1b[c');
-  }), observed => {
-    expect(observed).toBe(`${ESC}[?1;2c`);
+    id: 'D04', status: 'unsupported', title: 'S8C1T (ESC SP G) does not switch replies to 8-bit C1 (adapter replies stay 7-bit by design)',
+    sequence: 'ESC SP G, CSI c (raw, xterm-256color and vt220)', expected: 'VT220 S8C1T: replies use C1 CSI (0x9B)', features: ['T08', 'T21'],
+  }, async page => {
+    const ask = async (h: Harness) => {
+      await h.write('\x1b G');
+      return h.query('\x1b[c');
+    };
+    return {
+      ...(await rawAndAdapted(page, ask)),
+      vt220: await run(page, ask, { vt: { terminalType: 'vt220' } }),
+    };
+  }, observed => {
+    expect(observed).toEqual({ raw: `${ESC}[?1;2c`, adapted: `${ESC}[?1;2c`, vt220: `${ESC}[?62;6;9;22c` });
   });
 
   probe({
@@ -868,14 +953,29 @@ test.describe('OSC', () => {
   });
 
   probe({
-    id: 'O04', status: 'unsupported', title: 'OSC 52 clipboard set/query is ignored by the core (no addon-clipboard)',
-    sequence: 'OSC 52;c;aGVsbG8= BEL, OSC 52;c;? BEL', expected: 'xterm OSC 52: set selection; "?" replies with the data',
-    features: ['T12', 'G29'],
-  }, page => run(page, async h => {
-    const set = await h.query('\x1b]52;c;aGVsbG8=\x07');
-    return { set, query: await h.query('\x1b]52;c;?\x07'), line: h.lines()[0], cursor: h.cursor() };
-  }), observed => {
-    expect(observed).toEqual({ set: '', query: '', line: '', cursor: { x: 0, y: 0 } });
+    id: 'O04', status: 'partial',
+    title: 'OSC 52 writes reach the clipboard only after a per-session opt-in (adapter); reads are always denied by policy',
+    sequence: 'OSC 52;c;aGVsbG8= BEL, OSC 52;c;? BEL — raw, adapter default, adapter with clipboardWrite',
+    expected: 'xterm OSC 52: set selection; "?" replies with the data', features: ['T12', 'G29'],
+  }, async page => {
+    const copy = async (h: Harness) => {
+      const set = await h.query('\x1b]52;c;aGVsbG8=\x07');
+      const query = await h.query('\x1b]52;c;?\x07');
+      await h.frame(); // clipboard writes complete asynchronously
+      return {
+        set, query, line: h.lines()[0], cursor: h.cursor(),
+        clipboard: [...h.clipboard], notices: h.notices.map(n => n.kind).sort(),
+      };
+    };
+    return {
+      ...(await rawAndAdapted(page, copy)),
+      optedIn: await run(page, copy, { vt: { clipboardWrite: true } }),
+    };
+  }, observed => {
+    const quiet = { set: '', query: '', line: '', cursor: { x: 0, y: 0 } };
+    expect(observed.raw).toEqual({ ...quiet, clipboard: [], notices: [] }); // the core has no OSC 52 handler
+    expect(observed.adapted).toEqual({ ...quiet, clipboard: [], notices: ['clipboard-blocked', 'clipboard-read-denied'] });
+    expect(observed.optedIn).toEqual({ ...quiet, clipboard: ['hello'], notices: ['clipboard-read-denied', 'clipboard-written'] });
   });
 });
 
@@ -893,7 +993,7 @@ test.describe('graphics', () => {
   });
 });
 
-test.describe('adapter feasibility through public parser hooks', () => {
+test.describe('adapter feasibility through public parser hooks (raw xterm.js, vt: false)', () => {
   probe({
     id: 'H01', status: 'supported', title: 'registerEscHandler sees ESC # 6 but cannot widen cells (renderer change needed)',
     sequence: 'registerEscHandler({ intermediates: "#", final: "6" }), ESC # 6, "AB"',
@@ -903,7 +1003,7 @@ test.describe('adapter feasibility through public parser hooks', () => {
     h.term.parser.registerEscHandler({ intermediates: '#', final: '6' }, () => { seen.push('DECDWL'); return true; });
     await h.write('\x1b#6AB');
     return { seen, width: h.cell(0, 0).width, cursor: h.cursor() };
-  }), observed => {
+  }, { vt: false }), observed => {
     expect(observed).toEqual({ seen: ['DECDWL'], width: 1, cursor: { x: 2, y: 0 } });
   });
 
@@ -917,7 +1017,7 @@ test.describe('adapter feasibility through public parser hooks', () => {
       return true;
     });
     return h.query('\x1b[>0q');
-  }), observed => {
+  }, { vt: false }), observed => {
     expect(observed).toBe(`${ESC}P>|new-windterm-probe${ST}`);
   });
 
@@ -930,7 +1030,7 @@ test.describe('adapter feasibility through public parser hooks', () => {
     h.term.parser.registerOscHandler(52, (data: string) => { payloads.push(data); return true; });
     await h.write('\x1b]52;c;aGVsbG8=\x07');
     return payloads;
-  }), observed => {
+  }, { vt: false }), observed => {
     expect(observed).toEqual(['c;aGVsbG8=']);
   });
 });

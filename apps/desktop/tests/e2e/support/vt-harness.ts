@@ -1,8 +1,10 @@
 import { test, type Page, type TestInfo } from '@playwright/test';
 
-// Page-side harness for tests/e2e/vt-matrix.spec.ts: one real, independent @xterm/xterm
-// instance per probe, plus helpers that observe it only through public xterm APIs, onData /
-// onBinary replies and the rendered DOM rows.
+// Page-side harness for the VT matrix specs: one real, independent @xterm/xterm instance per
+// probe, plus helpers that observe it only through public xterm APIs, onData / onBinary replies
+// and the rendered DOM rows. By default the production VT adapters
+// (src/terminal-compat/vt-adapters.ts) are attached, exactly as the workspace factory does;
+// `vt: false` measures raw xterm.js instead.
 
 export type Status = 'supported' | 'partial' | 'unsupported';
 export interface Meta {
@@ -13,7 +15,16 @@ export interface Meta {
   expected: string;
   features: string[];
 }
-export interface HarnessOptions { cols?: number; rows?: number; options?: Record<string, unknown> }
+export interface VtOptions { terminalType?: string; clipboardWrite?: boolean }
+export interface HarnessOptions { cols?: number; rows?: number; options?: Record<string, unknown>; vt?: false | VtOptions }
+export interface VtControl {
+  terminalType: string;
+  clipboardWrite: boolean;
+  setTerminalType(type: string): void;
+  setClipboardWrite(enabled: boolean): void;
+  reset(): void;
+  dispose(): void;
+}
 export interface Cell {
   ch: string; width: number; fg: string; bg: string;
   bold: boolean; dim: boolean; italic: boolean; underline: boolean; blink: boolean;
@@ -27,6 +38,11 @@ export interface Harness {
   term: Term;
   holder: HTMLElement;
   titles: string[];
+  /** Production adapters, or null for raw xterm.js. */
+  vt: VtControl | null;
+  /** Adapter notices and what the stub clipboard sink received. */
+  notices: { kind: string }[];
+  clipboard: string[];
   write(data: string): Promise<void>;
   take(): string;
   takeBinary(): string;
@@ -47,10 +63,18 @@ export type VtWindow = Window & { vtHarness(options: HarnessOptions): Promise<Ha
 export function installHarness() {
   const target = window as unknown as { vtHarness?: unknown };
   if (target.vtHarness) return;
-  target.vtHarness = async ({ cols = 20, rows = 6, options = {} }: HarnessOptions) => {
+  target.vtHarness = async ({ cols = 20, rows = 6, options = {}, vt = {} }: HarnessOptions) => {
     const modulePath = '/node_modules/@xterm/xterm/lib/xterm.mjs';
+    const adapterPath = '/src/terminal-compat/vt-adapters.ts';
     const { Terminal } = await import(/* @vite-ignore */ modulePath);
     const term = new Terminal({ cols, rows, allowProposedApi: true, ...options });
+    const notices: { kind: string }[] = [];
+    const clipboard: string[] = [];
+    const adapters = vt === false ? null : (await import(/* @vite-ignore */ adapterPath)).attachVtAdapters(term, {
+      ...vt,
+      onNotice: (notice: { kind: string }) => notices.push(notice),
+      writeClipboard: async (text: string) => { clipboard.push(text); },
+    });
     const holder = document.createElement('div');
     // On-screen: xterm pauses DOM rendering for terminals outside the viewport.
     holder.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;background:#000;width:900px;height:400px';
@@ -75,7 +99,7 @@ export function installHarness() {
     const write = (value: string) => new Promise<void>(resolve => term.write(value, resolve));
     const take = () => data.splice(0).join('');
     return {
-      term, holder, titles, write, take,
+      term, holder, titles, write, take, vt: adapters, notices, clipboard,
       takeBinary: () => binary.splice(0).join(''),
       async query(sequence: string) { take(); await write(sequence); return take(); },
       cursor: () => ({ x: buffer().cursorX, y: buffer().cursorY }),
@@ -112,7 +136,7 @@ export function installHarness() {
           decorationColor: span.style.textDecorationColor, animation: getComputedStyle(span).animationName,
         }));
       },
-      dispose() { subscriptions.forEach(s => s.dispose()); term.dispose(); holder.remove(); },
+      dispose() { subscriptions.forEach(s => s.dispose()); adapters?.dispose(); term.dispose(); holder.remove(); },
     };
   };
 }
@@ -129,12 +153,19 @@ export async function run<T>(page: Page, body: (h: Harness) => Promise<T>, optio
   }, [body.toString(), options] as [string, HarnessOptions]) as Promise<T>;
 }
 
+const ADAPTERS = 'src/terminal-compat/vt-adapters.ts attached unless the probe passes vt: false ("raw")';
+
+/** Run the same body on raw xterm.js (`vt: false`) and with the production adapters. */
+export async function rawAndAdapted<T>(page: Page, body: (h: Harness) => Promise<T>, options: HarnessOptions = {}) {
+  return { raw: await run(page, body, { ...options, vt: false }), adapted: await run(page, body, options) };
+}
+
 export function probe<T>(meta: Meta, body: (page: Page) => Promise<T>, check: (observed: T) => void) {
   const gap = meta.status === 'supported' ? '' : 'known gap: ';
   test(`[${meta.status}] ${meta.id} ${gap}${meta.title}`, async ({ page }, info: TestInfo) => {
     const observed = await body(page);
     await info.attach(`${meta.id}.json`, {
-      body: JSON.stringify({ ...meta, observed, xterm: '@xterm/xterm 6.0.0' }, null, 2),
+      body: JSON.stringify({ ...meta, observed, xterm: '@xterm/xterm 6.0.0', adapters: ADAPTERS }, null, 2),
       contentType: 'application/json',
     });
     check(observed);
