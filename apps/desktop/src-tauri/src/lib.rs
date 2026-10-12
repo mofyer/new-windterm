@@ -49,6 +49,7 @@ fn ssh_context(window: WebviewWindow, service: State<'_, Arc<ssh::Ssh>>) -> Resu
     service.context(window.label())
 }
 
+/// `route` is bound to the returned challenge; later commands cannot change it.
 #[tauri::command]
 async fn ssh_probe(
     window: WebviewWindow,
@@ -56,10 +57,44 @@ async fn ssh_probe(
     request: ssh::Request,
     operation_id: String,
     scope_token: String,
+    route: Option<ssh::RouteSpec>,
+) -> Result<ssh::Challenge, String> {
+    let route = route.unwrap_or_default();
+    service
+        .probe_via(window.label(), &operation_id, request, route, &scope_token)
+        .await
+}
+
+/// Step 2 of a jump route: logs in to the confirmed jump host and returns
+/// the target's challenge, observed through it.
+#[tauri::command]
+async fn ssh_probe_through(
+    window: WebviewWindow,
+    service: State<'_, Arc<ssh::Ssh>>,
+    challenge_token: String,
+    operation_id: String,
+    scope_token: String,
+    credential: ssh::Credential,
 ) -> Result<ssh::Challenge, String> {
     service
-        .probe(window.label(), &operation_id, request, &scope_token)
+        .probe_through(
+            window.label(),
+            &operation_id,
+            &challenge_token,
+            &scope_token,
+            credential,
+        )
         .await
+}
+
+/// The exact argv a ProxyCommand would run, for the user to confirm. Runs nothing.
+#[tauri::command]
+fn ssh_proxy_command_preview(
+    _window: WebviewWindow,
+    request: ssh::Request,
+    command: String,
+) -> Result<Vec<String>, String> {
+    ssh::proxy_command_preview(&request, &command)
 }
 
 #[tauri::command]
@@ -449,6 +484,8 @@ pub fn run() {
             pty_ack,
             pty_close,
             ssh_probe,
+            ssh_probe_through,
+            ssh_proxy_command_preview,
             ssh_accept,
             ssh_sftp_open,
             ssh_sftp_list,

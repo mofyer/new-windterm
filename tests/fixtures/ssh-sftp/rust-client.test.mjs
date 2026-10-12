@@ -46,10 +46,11 @@ const titles = {
   mismatch: 'reconnect host-key mismatch',
   sftp: 'read-only SFTP grant: list, metadata, bounded read, truncation, close',
   scp: 'legacy SCP upload and download of one file through scp -t/-f',
+  routes: 'read-only SFTP through HTTP CONNECT, SOCKS5, ProxyCommand and a jump host',
 };
 // Separate server instances keep intentional pre-auth rejections from accumulating
 // OpenSSH PerSourcePenalties. Server policy remains unchanged; no client retries.
-for (const mode of ['client', 'mismatch', 'sftp', 'scp']) {
+for (const mode of ['client', 'mismatch', 'sftp', 'scp', 'routes']) {
 test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
   await access(binary);
   const fixture = spawn(process.execPath, [fileURLToPath(new URL('./fixture.mjs', import.meta.url)), '--serve'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -98,6 +99,17 @@ test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
     });
     assert.equal(scp.status, 0, scp.stdout + scp.stderr);
     assert.match(scp.stdout, /1 passed/);
+    } else if (mode === 'routes') {
+    // Loopback test proxies, /usr/bin/nc and a russh jump host all reach this
+    // OpenSSH server; the probe and every grant operation cross the route.
+    await populateRemote(metadata.remoteDirectory);
+    const routed = runIgnored('ssh::route::tests::real_fixture_sftp_through_routes', metadata, {
+      P0_SSH_FIXTURE_KEY: metadata.privateKeyPath,
+      P0_SSH_FIXTURE_REMOTE: await realpath(metadata.remoteDirectory),
+      P0_SSH_FIXTURE_FINGERPRINT: fingerprint,
+    });
+    assert.equal(routed.status, 0, routed.stdout + routed.stderr);
+    assert.match(routed.stdout, /1 passed/);
     } else {
     // The Rust service probes, consumes the challenge once, then reuses only the
     // in-memory grant; every operation reconnects and pins the confirmed key.

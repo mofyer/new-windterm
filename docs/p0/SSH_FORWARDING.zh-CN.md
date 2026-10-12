@@ -46,6 +46,7 @@
 
 ## 未完成
 
-- X11 转发（C15，需要本机 X 服务）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。远端与 agent 转发尚无界面，远端监听只在回环地址上验证。代理与 ProxyCommand 尚无界面和配置，代理只在本机测试代理上验证。
-- 转发与跳板没有界面、配置保存、状态显示和错误提示；监听地址只允许回环。
+- X11 转发（C15，需要本机 X 服务）；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。远端与 agent 转发尚无界面，远端监听只在回环地址上验证。
+- 代理、ProxyCommand 与一跳跳板已作为连接路线接入 SSH 对话框（2026-10-12），见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)；仍无配置保存，代理只在本机测试代理上验证。
+- 端口转发没有界面、配置保存、状态显示和错误提示；监听地址只允许回环。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

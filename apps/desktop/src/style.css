@@ -296,6 +296,11 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 .ssh-changed p { margin: 0; }
 .ssh-changed button { justify-self: start; }
 #ssh-verification-dialog select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }
+.ssh-route { border-top: 1px solid var(--line); padding-top: 2px; }
+.ssh-route-step { display: block; font-size: 13px; margin-bottom: 10px; }
+#ssh-proxy-command-preview { min-height: 32px; font-size: 12px; margin-bottom: 10px; }
+.ssh-argv { max-height: 160px; overflow: auto; margin: 0 0 12px; padding: 10px 12px 10px 32px; border-radius: 12px; background: var(--surface); box-shadow: var(--inset-shadow); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; user-select: text; }
+.ssh-argv:empty { display: none; }
 
 /* Telnet / Raw TCP connection sheet (desktop only). */
 #net-terminal-dialog [hidden] { display: none; }

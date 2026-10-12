@@ -237,7 +237,8 @@ fn size(cols: u16, rows: u16) -> Result<(), String> {
     Ok(())
 }
 struct Connection {
-    _socket: SocketGuard,
+    // The route's socket, ProxyCommand process or jump session.
+    _socket: route::Carrier,
     _session: client::Handle<KeyCheck>,
     channel: russh::Channel<client::Msg>,
     initial: Vec<ChannelMsg>,
@@ -252,7 +253,14 @@ async fn connect(
 ) -> Result<Connection, String> {
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let result = async {
-        let (socket, stream) = transport(&pending.request).await?;
+        let (socket, stream) = route::connect(
+            &pending.request,
+            &pending.route,
+            &rekey_rejected,
+            cancel.clone(),
+        )
+        .await
+        .map_err(RouteError::message)?;
         let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let handler = KeyCheck {
             expected: Some(pending.key),

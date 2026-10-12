@@ -13,6 +13,8 @@
     "allow-pty-ack",
     "allow-pty-close",
     "allow-ssh-probe",
+    "allow-ssh-probe-through",
+    "allow-ssh-proxy-command-preview",
     "allow-ssh-accept",
     "allow-ssh-reject",
     "allow-ssh-cancel",

@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { createAuthPrompts, type AuthPrompts } from "./ssh-kbdint";
+import { createRouteForm, ROUTE_FIELDS, routeStep, routeSummary, type JumpCredential, type RouteSummary, type Stage, type SshTargetRequest } from "./ssh-route";
 
 type Trust = "new" | "known" | "changed";
 type Challenge = {
@@ -11,6 +12,9 @@ type Challenge = {
   expiresInSeconds: number;
   trust?: Trust;
   savedFingerprint?: string | null;
+  // Older backends omit these: a missing stage is "target", a missing route is direct.
+  stage?: Stage;
+  route?: RouteSummary;
 };
 type VerificationResult = { stdout: number[]; stderr: number[]; exitCode: number };
 
@@ -53,11 +57,12 @@ export function createSshVerification(
       <label id="ssh-password-row" hidden>密码<input id="ssh-password" type="password" autocomplete="off" maxlength="1024"/></label>
       <div id="ssh-kbdint-fields" hidden><label>第 1 个提示的答案<input id="ssh-kbdint-1" type="password" autocomplete="off" maxlength="1024"/></label>
       <label>第 2 个提示的答案（例如动态验证码，可留空）<input id="ssh-kbdint-2" type="password" autocomplete="off" maxlength="1024"/></label></div>
-      <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p></fieldset>
+      <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p>${ROUTE_FIELDS}</fieldset>
       <div class="dialog-actions"><button type="submit" id="ssh-probe" class="primary">检查主机指纹</button></div>
     </form>
     <section id="ssh-challenge" hidden aria-label="真实主机指纹">
-      <div class="ssh-identity"><strong id="ssh-endpoint"></strong><span id="ssh-algorithm"></span><code id="ssh-fingerprint"></code></div>
+      <strong id="ssh-route-step" class="ssh-route-step" hidden></strong>
+      <div class="ssh-identity"><strong id="ssh-endpoint"></strong><span id="ssh-route-summary"></span><span id="ssh-algorithm"></span><code id="ssh-fingerprint"></code></div>
       <p id="ssh-trust-note"></p>
       <label id="ssh-remember-row" class="ssh-check"><input type="checkbox" id="ssh-remember"/>保存此主机密钥，以后指纹一致时自动信任</label>
       <section id="ssh-changed" class="ssh-changed" hidden aria-label="主机密钥已变化">
@@ -90,6 +95,17 @@ export function createSshVerification(
   const authMethod = get<HTMLSelectElement>("ssh-auth");
   // Held only between probe and accept/hand-off; cleared with the dialog.
   let credential: SshCredential | undefined;
+  // Held only until the jump host key is confirmed; never sent with `ssh_probe`.
+  let jumpCredential: JumpCredential | undefined;
+  const targetRequest = (): SshTargetRequest => ({
+    host: get<HTMLInputElement>("ssh-host").value.trim(),
+    port: Number(get<HTMLInputElement>("ssh-port").value),
+    username: get<HTMLInputElement>("ssh-username").value.trim(),
+    // The probe never authenticates; only the key path travels with it.
+    privateKeyPath: authMethod.value === "key" ? get<HTMLInputElement>("ssh-key-path").value : "",
+  });
+  const routeForm = createRouteForm(dialog, targetRequest, message => { error.textContent = message; });
+  const stageOf = (value: Challenge): Stage => value.stage === "jump" ? "jump" : "target";
   const showAuthFields = () => {
     const method = authMethod.value;
     get("ssh-key-fields").hidden = method !== "key";
@@ -120,6 +136,7 @@ export function createSshVerification(
     challenge = undefined;
     scopeToken = undefined;
     credential = undefined;
+    jumpCredential = undefined;
   };
   const clear = () => {
     form.reset();
@@ -132,8 +149,10 @@ export function createSshVerification(
     get<HTMLInputElement>("ssh-kbdint-2").value = "";
     authMethod.value = "key";
     showAuthFields();
+    routeForm.reset();
     resultView.replaceChildren();
-    for (const id of ["ssh-endpoint", "ssh-algorithm", "ssh-fingerprint", "ssh-expiry", "ssh-trust-note", "ssh-saved-fingerprint"]) get(id).textContent = "";
+    for (const id of ["ssh-endpoint", "ssh-algorithm", "ssh-fingerprint", "ssh-expiry", "ssh-trust-note", "ssh-saved-fingerprint", "ssh-route-step", "ssh-route-summary"]) get(id).textContent = "";
+    get("ssh-route-step").hidden = true;
     remember.checked = replaceConfirm.checked = false;
     replace.disabled = true;
     get("ssh-changed").hidden = true;
@@ -182,14 +201,57 @@ export function createSshVerification(
     if (!challenge || operationId) return;
     void invoke("ssh_reject", { challengeToken: challenge.challengeToken }).catch(() => {});
     challenge = undefined;
+    jumpCredential = undefined;
     accept.disabled = true;
     get("ssh-expiry").textContent = "指纹确认已过期，请重新检查。";
     retry.hidden = false;
   };
 
+  /** Shows a fresh challenge (target, or the jump host in step 1 of 2). */
+  const showChallenge = (response: Challenge) => {
+    challenge = response;
+    const stage = stageOf(response);
+    window.clearTimeout(expiryTimer);
+    expiresAt = Date.now() + response.expiresInSeconds * 1000;
+    expiryTimer = window.setTimeout(expire, response.expiresInSeconds * 1000);
+    get<HTMLInputElement>("ssh-key-path").value = "";
+    routeForm.clearKeyPaths();
+    form.hidden = true;
+    challengeView.hidden = false;
+    remember.checked = replaceConfirm.checked = false;
+    replace.disabled = true;
+    const step = routeStep(stage, response.route);
+    get("ssh-route-step").textContent = step;
+    get("ssh-route-step").hidden = !step;
+    get("ssh-route-summary").textContent = routeSummary(stage, response.route);
+    get("ssh-endpoint").textContent = `${response.host}:${response.port}`;
+    get("ssh-algorithm").textContent = response.algorithm;
+    get("ssh-fingerprint").textContent = response.fingerprint;
+    get("ssh-expiry").textContent = `请在 ${response.expiresInSeconds} 秒内确认，否则需要重新检查。`;
+    showTrust(response.trust ?? "new", response.savedFingerprint ?? "");
+    if ((response.trust ?? "new") === "known") {
+      // Same key as saved trust: continue without asking again.
+      status.textContent = stage === "jump" ? "跳板主机指纹与已保存的记录一致，正在检查目标主机指纹…" : "指纹与已保存的记录一致，正在继续…";
+      queueMicrotask(() => accept.click());
+    } else {
+      status.textContent = stage === "jump"
+        ? "尚未认证。确认跳板主机指纹后，才会发送跳板主机的登录信息。"
+        : "尚未认证。核对指纹后再决定是否信任。";
+      get("ssh-reject").focus();
+    }
+  };
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!desktop || !scopeToken || operationId || challenge || !form.reportValidity()) return;
+    // Validated before anything is read or cleared, so a blocked submit keeps the input.
+    const routed = routeForm.read();
+    if (!routed.ok) {
+      status.textContent = "";
+      error.textContent = routed.error;
+      routed.focus?.focus();
+      return;
+    }
     const version = ++revision;
     const id = crypto.randomUUID();
     operationId = id;
@@ -202,47 +264,20 @@ export function createSshVerification(
       : method === "keyboardInteractive" ? { method: "keyboardInteractive", responses: answers }
       : method === "keyboardInteractivePrompted" ? { method: "keyboardInteractivePrompted" }
       : passphrase ? { method: "key", passphrase } : { method: "key" };
+    jumpCredential = routed.jumpCredential;
     for (const id of ["ssh-passphrase", "ssh-password", "ssh-kbdint-1", "ssh-kbdint-2"]) get<HTMLInputElement>(id).value = "";
     fields.disabled = probe.disabled = true;
     retry.hidden = true;
     error.textContent = "";
-    status.textContent = "正在检查主机指纹…可随时取消。";
+    status.textContent = routed.route.kind === "jump" ? "正在检查跳板主机指纹…可随时取消。" : "正在检查主机指纹…可随时取消。";
     dialog.setAttribute("aria-busy", "true");
     try {
-      const response = await invoke<Challenge>("ssh_probe", {
-        scopeToken,
-        operationId: id,
-        request: {
-          host: get<HTMLInputElement>("ssh-host").value.trim(),
-          port: Number(get<HTMLInputElement>("ssh-port").value),
-          username: get<HTMLInputElement>("ssh-username").value.trim(),
-          // The probe never authenticates; only the key path travels with it.
-          privateKeyPath: method === "key" ? get<HTMLInputElement>("ssh-key-path").value : "",
-        },
-      });
+      const response = await invoke<Challenge>("ssh_probe", { scopeToken, operationId: id, request: targetRequest(), route: routed.route });
       if (!current(version)) {
         void invoke("ssh_reject", { challengeToken: response.challengeToken }).catch(() => {});
         return;
       }
-      challenge = response;
-      expiresAt = Date.now() + response.expiresInSeconds * 1000;
-      expiryTimer = window.setTimeout(expire, response.expiresInSeconds * 1000);
-      get<HTMLInputElement>("ssh-key-path").value = "";
-      form.hidden = true;
-      challengeView.hidden = false;
-      get("ssh-endpoint").textContent = `${response.host}:${response.port}`;
-      get("ssh-algorithm").textContent = response.algorithm;
-      get("ssh-fingerprint").textContent = response.fingerprint;
-      get("ssh-expiry").textContent = `请在 ${response.expiresInSeconds} 秒内确认，否则需要重新检查。`;
-      showTrust(response.trust ?? "new", response.savedFingerprint ?? "");
-      if ((response.trust ?? "new") === "known") {
-        // Same key as saved trust: continue without asking again.
-        status.textContent = "指纹与已保存的记录一致，正在继续…";
-        queueMicrotask(() => accept.click());
-      } else {
-        status.textContent = "尚未认证。核对指纹后再决定是否信任。";
-        get("ssh-reject").focus();
-      }
+      showChallenge(response);
     } catch (reason) {
       if (current(version)) failed(reason);
     } finally {
@@ -252,6 +287,36 @@ export function createSshVerification(
       }
     }
   });
+
+  /** Step 2 of a jump route: consumes the confirmed jump challenge, then shows the target key. */
+  const probeThrough = async (token: string) => {
+    const version = ++revision;
+    const id = crypto.randomUUID();
+    operationId = id;
+    const login = jumpCredential ?? { method: "key" };
+    jumpCredential = undefined;
+    challenge = undefined; // Consumed once; a failure restarts from the form.
+    window.clearTimeout(expiryTimer);
+    accept.disabled = true;
+    error.textContent = "";
+    status.textContent = "正在登录跳板主机并读取目标主机指纹…可随时取消。";
+    dialog.setAttribute("aria-busy", "true");
+    try {
+      const response = await invoke<Challenge>("ssh_probe_through", { scopeToken, challengeToken: token, operationId: id, credential: login });
+      if (!current(version)) {
+        void invoke("ssh_reject", { challengeToken: response.challengeToken }).catch(() => {});
+        return;
+      }
+      showChallenge(response);
+    } catch (reason) {
+      if (current(version)) failed(reason);
+    } finally {
+      if (current(version)) {
+        operationId = undefined;
+        dialog.removeAttribute("aria-busy");
+      }
+    }
+  };
 
   function showTrust(trust: Trust, saved: string) {
     const changed = trust === "changed";
@@ -265,7 +330,9 @@ export function createSshVerification(
       known: "该主机密钥已保存，指纹一致。",
       changed: "",
     }[trust];
-    accept.textContent = trust === "known"
+    accept.textContent = challenge && stageOf(challenge) === "jump"
+      ? trust === "known" ? "继续检查目标指纹" : "信任跳板主机并检查目标指纹"
+      : trust === "known"
       ? { verification: "验证", terminal: "打开终端", files: "浏览文件" }[purpose]
       : { verification: "仅本次信任并验证", terminal: "仅本次信任并打开终端", files: "仅本次信任并浏览文件" }[purpose];
   }
@@ -304,6 +371,10 @@ export function createSshVerification(
       accept.disabled = false;
       if (challenge?.challengeToken !== token || !dialog.open) return;
       challenge.trust = "known";
+    }
+    if (stageOf(challenge) === "jump") {
+      await probeThrough(token);
+      return;
     }
     if (purpose !== "verification") {
       const handoff = {

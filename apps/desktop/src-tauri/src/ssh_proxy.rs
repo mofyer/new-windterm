@@ -1,20 +1,20 @@
-// P0 probe without a UI consumer; the ProxyCommand test is Unix-only.
-#![allow(dead_code)]
-//! Ways to reach an SSH server other than a direct TCP connection (P0 probes
-//! for C07, C19, C20): an HTTP CONNECT proxy, a SOCKS5 proxy and a
-//! ProxyCommand. Each yields a byte stream for `connect_pinned`, so host-key
-//! pinning and authentication are unchanged. No UI or saved settings yet.
+//! Ways to reach an SSH server other than a direct TCP connection (P0 for
+//! C07, C19, C20): an HTTP CONNECT proxy, a SOCKS5 proxy and a ProxyCommand.
+//! Each yields a byte stream that `ssh_route.rs` hands to the pinned SSH
+//! handshake, so host-key pinning and authentication are unchanged. Nothing
+//! is saved; proxy secrets are copied only into zeroized buffers.
 use std::{
     io::{Read, Write},
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, DuplexStream},
-    net::TcpStream,
+    net::{TcpStream, ToSocketAddrs},
 };
+use zeroize::Zeroizing;
 
 const MAX_RESPONSE_HEADER: usize = 8 * 1024;
-const MAX_ARGUMENTS: usize = 64;
+pub(crate) const MAX_ARGUMENTS: usize = 64;
 
 fn base64(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -43,8 +43,9 @@ fn authority(host: &str, port: u16) -> String {
 }
 
 /// `CONNECT host:port` through an HTTP proxy, optionally with Basic auth.
+/// Errors never quote the proxy's reason phrase, which could echo a secret.
 pub(crate) async fn http_connect(
-    proxy: SocketAddr,
+    proxy: impl ToSocketAddrs,
     host: &str,
     port: u16,
     basic: Option<(&str, &str)>,
@@ -58,14 +59,29 @@ pub(crate) async fn http_connect(
         .await
         .map_err(|_| "HTTP proxy is unreachable")?;
     let target = authority(host, port);
-    let mut request = format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n");
-    if let Some((user, password)) = basic {
-        request += &format!(
-            "Proxy-Authorization: Basic {}\r\n",
-            base64(format!("{user}:{password}").as_bytes())
-        );
+    // Buffers holding the secret are sized up front: a reallocation would
+    // free a copy without zeroizing it.
+    let encoded = basic.map(|(user, password)| {
+        let mut pair = Zeroizing::new(String::with_capacity(user.len() + password.len() + 1));
+        pair.push_str(user);
+        pair.push(':');
+        pair.push_str(password);
+        Zeroizing::new(base64(pair.as_bytes()))
+    });
+    const AUTH: &str = "Proxy-Authorization: Basic ";
+    let secret_len = encoded.as_ref().map_or(0, |e| AUTH.len() + e.len() + 2);
+    let mut request = Zeroizing::new(String::with_capacity(2 * target.len() + 40 + secret_len));
+    request.push_str("CONNECT ");
+    request.push_str(&target);
+    request.push_str(" HTTP/1.1\r\nHost: ");
+    request.push_str(&target);
+    request.push_str("\r\n");
+    if let Some(encoded) = &encoded {
+        request.push_str(AUTH);
+        request.push_str(encoded);
+        request.push_str("\r\n");
     }
-    request += "\r\n";
+    request.push_str("\r\n");
     stream
         .write_all(request.as_bytes())
         .await
@@ -85,18 +101,21 @@ pub(crate) async fn http_connect(
     let status_line = String::from_utf8_lossy(&header);
     let status_line = status_line.lines().next().unwrap_or_default();
     let code = status_line.split(' ').nth(1).unwrap_or_default();
-    if !status_line.starts_with("HTTP/1.") || code != "200" {
-        return Err(format!(
-            "HTTP proxy refused the tunnel: {}",
-            status_line.chars().take(80).collect::<String>()
-        ));
+    if !status_line.starts_with("HTTP/1.")
+        || code.len() != 3
+        || !code.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err("HTTP proxy sent an invalid response".into());
+    }
+    if code != "200" {
+        return Err(format!("HTTP proxy refused the tunnel (status {code})"));
     }
     Ok(stream)
 }
 
 /// SOCKS5 CONNECT (RFC 1928), with optional username/password (RFC 1929).
 pub(crate) async fn socks5_connect(
-    proxy: SocketAddr,
+    proxy: impl ToSocketAddrs,
     host: &str,
     port: u16,
     login: Option<(&str, &str)>,
@@ -119,7 +138,9 @@ pub(crate) async fn socks5_connect(
             if user.len() > 255 || password.len() > 255 {
                 return Err("SOCKS5 username and password are limited to 255 bytes".into());
             }
-            let mut request = vec![1, user.len() as u8];
+            // Sized up front so no reallocation leaves an unzeroized copy.
+            let mut request = Zeroizing::new(Vec::with_capacity(3 + user.len() + password.len()));
+            request.extend_from_slice(&[1, user.len() as u8]);
             request.extend_from_slice(user.as_bytes());
             request.push(password.len() as u8);
             request.extend_from_slice(password.as_bytes());
@@ -244,43 +265,132 @@ fn substitute(arg: &str, host: &str, port: u16, user: &str) -> Result<String, St
     Ok(out)
 }
 
-/// The ProxyCommand process; killed and reaped when dropped.
-pub(crate) struct ProxyProcess(std::process::Child);
+/// The exact argv a ProxyCommand runs: split without a shell, then `%h`,
+/// `%p` and `%r` substituted inside each argument. Nothing is started here.
+pub(crate) fn prepare(
+    command: &str,
+    host: &str,
+    port: u16,
+    user: &str,
+) -> Result<Vec<String>, String> {
+    split_command(command)?
+        .iter()
+        .map(|arg| substitute(arg, host, port, user))
+        .collect()
+}
+
+/// The ProxyCommand process. It runs in its own process group (Unix) or
+/// kill-on-close Job Object (Windows), so dropping it ends everything it
+/// started, not only the direct child, and then reaps the child.
+///
+/// Limits: a descendant that leaves the group (`setsid`) survives and can
+/// keep the stdout bridge thread blocked until it exits. On Windows the job
+/// is assigned just after the child starts, so a grandchild it creates in
+/// that instant is outside the job.
+pub(crate) struct ProxyProcess {
+    // Always `Some` until dropped; taken so a stuck child is reaped elsewhere.
+    child: Option<std::process::Child>,
+    #[cfg(windows)]
+    tree: crate::platform::windows::ProcessTree,
+}
 
 impl ProxyProcess {
+    #[cfg(all(test, unix))]
     pub(crate) fn id(&self) -> u32 {
-        self.0.id()
+        self.child.as_ref().map_or(0, std::process::Child::id)
     }
 }
 
 impl Drop for ProxyProcess {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        #[cfg(unix)]
+        if let Ok(group) = libc::pid_t::try_from(child.id()) {
+            // 0 and 1 would signal this process's own group or every process.
+            if group > 1 {
+                // SAFETY: the child is not reaped yet, so its pid, which is
+                // also its process group id, cannot have been reused.
+                unsafe { libc::killpg(group, libc::SIGKILL) };
+            }
+        }
+        #[cfg(windows)]
+        self.tree.terminate();
+        let _ = child.kill();
+        // Drops run on async workers: a child stuck in an uninterruptible
+        // wait is reaped on a detached thread instead of blocking one. Its
+        // pid stays reserved until then, so the group id is never reused.
+        if !matches!(child.try_wait(), Ok(Some(_))) {
+            let _ = std::thread::Builder::new()
+                .name("proxy-command-reaper".into())
+                .spawn(move || {
+                    let _ = child.wait();
+                });
+        }
     }
 }
 
 /// Runs a ProxyCommand (no shell) and returns a stream over its stdio.
 /// Keep the returned process alive as long as the SSH session.
+#[cfg(all(test, unix))]
 pub(crate) fn proxy_command(
     command: &str,
     host: &str,
     port: u16,
     user: &str,
 ) -> Result<(DuplexStream, ProxyProcess), String> {
-    let argv = split_command(command)?
-        .iter()
-        .map(|arg| substitute(arg, host, port, user))
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut child = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
+    spawn(&prepare(command, host, port, user)?)
+}
+
+/// Starts `argv` exactly as given (no shell) and bridges its stdin and
+/// stdout to the returned stream. Keep the process as long as the session.
+pub(crate) fn spawn(argv: &[String]) -> Result<(DuplexStream, ProxyProcess), String> {
+    let (program, args) = argv.split_first().ok_or("ProxyCommand is empty")?;
+    let mut command = std::process::Command::new(program);
+    command
+        .args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    // Its own process group: helpers it forks end with the session.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    // A GUI process must not open a console window for the helper.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command
         .spawn()
         .map_err(|_| "ProxyCommand could not be started")?;
-    let (mut stdin, mut stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    let process = ProxyProcess(child);
+    let pipes = (child.stdin.take(), child.stdout.take());
+    // Without a job the process tree cannot be bounded; refuse to continue.
+    #[cfg(windows)]
+    let tree = {
+        use std::os::windows::io::AsRawHandle;
+        match crate::platform::windows::ProcessTree::adopt(child.as_raw_handle()) {
+            Ok(tree) => tree,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("ProxyCommand could not be contained".into());
+            }
+        }
+    };
+    let process = ProxyProcess {
+        child: Some(child),
+        #[cfg(windows)]
+        tree,
+    };
+    let (Some(mut stdin), Some(mut stdout)) = pipes else {
+        return Err("ProxyCommand pipes are unavailable".into());
+    };
     let (ours, theirs) = tokio::io::duplex(64 * 1024);
     let (mut to_ssh_read, mut to_ssh_write) = tokio::io::split(theirs);
     let runtime = tokio::runtime::Handle::current();
@@ -311,11 +421,15 @@ pub(crate) fn proxy_command(
 }
 
 #[cfg(test)]
+#[path = "../tests/support/test_proxy.rs"]
+#[allow(dead_code)]
+pub(crate) mod test_proxy;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::ssh::{connect_pinned, forward::fixture, observe_host_key, Credential, Request};
     use std::time::Duration;
-    use tokio::net::TcpListener;
 
     fn pin(server: &fixture::Fixture) -> Vec<u8> {
         server.host.lock().unwrap().public_key().to_bytes().unwrap()
@@ -361,101 +475,6 @@ mod tests {
         status
     }
 
-    /// A test proxy: `accept` decides whether to tunnel, then bytes are relayed.
-    async fn proxy(
-        kind: &'static str,
-        credentials: Option<(&'static str, &'static str)>,
-    ) -> SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            while let Ok((mut client, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    let target = if kind == "http" {
-                        http_proxy(&mut client, credentials).await
-                    } else {
-                        socks_proxy(&mut client, credentials).await
-                    };
-                    if let Some(port) = target {
-                        let mut upstream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-                        let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
-                    }
-                });
-            }
-        });
-        address
-    }
-
-    async fn http_proxy(client: &mut TcpStream, credentials: Option<(&str, &str)>) -> Option<u16> {
-        let mut header = Vec::new();
-        while !header.ends_with(b"\r\n\r\n") {
-            header.push(client.read_u8().await.ok()?);
-        }
-        let text = String::from_utf8(header).ok()?;
-        let authorized = credentials.is_none_or(|(user, password)| {
-            text.contains(&format!(
-                "Proxy-Authorization: Basic {}",
-                base64(format!("{user}:{password}").as_bytes())
-            ))
-        });
-        if !authorized {
-            let _ = client
-                .write_all(b"HTTP/1.1 407 Proxy Authentication Required\r\n\r\n")
-                .await;
-            return None;
-        }
-        let port = text
-            .split_whitespace()
-            .nth(1)?
-            .rsplit(':')
-            .next()?
-            .parse()
-            .ok()?;
-        client
-            .write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
-            .await
-            .ok()?;
-        Some(port)
-    }
-
-    async fn socks_proxy(client: &mut TcpStream, credentials: Option<(&str, &str)>) -> Option<u16> {
-        let mut greeting = [0; 2];
-        client.read_exact(&mut greeting).await.ok()?;
-        let mut methods = vec![0; greeting[1] as usize];
-        client.read_exact(&mut methods).await.ok()?;
-        if let Some((user, password)) = credentials {
-            client.write_all(&[5, 2]).await.ok()?;
-            let mut version = [0; 2];
-            client.read_exact(&mut version).await.ok()?;
-            let mut name = vec![0; version[1] as usize];
-            client.read_exact(&mut name).await.ok()?;
-            let length = client.read_u8().await.ok()?;
-            let mut secret = vec![0; length as usize];
-            client.read_exact(&mut secret).await.ok()?;
-            let ok = name == user.as_bytes() && secret == password.as_bytes();
-            client.write_all(&[1, u8::from(!ok)]).await.ok()?;
-            if !ok {
-                return None;
-            }
-        } else {
-            client.write_all(&[5, 0]).await.ok()?;
-        }
-        let mut request = [0; 4];
-        client.read_exact(&mut request).await.ok()?;
-        let length = if request[3] == 1 {
-            4
-        } else {
-            client.read_u8().await.ok()? as usize
-        };
-        let mut address = vec![0; length + 2];
-        client.read_exact(&mut address).await.ok()?;
-        client
-            .write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 0])
-            .await
-            .ok()?;
-        Some(u16::from_be_bytes([address[length], address[length + 1]]))
-    }
-
     #[test]
     fn helpers_encode_and_split_without_a_shell() {
         assert_eq!(base64(b"user:pass"), "dXNlcjpwYXNz");
@@ -478,7 +497,8 @@ mod tests {
     #[tokio::test]
     async fn http_connect_proxy_carries_a_pinned_session_and_reports_refusal() {
         let mut server = fixture::Fixture::start().await;
-        let open = proxy("http", None).await;
+        let open_proxy = test_proxy::start(test_proxy::Kind::Http, None).await;
+        let open = open_proxy.address;
         let observed = observe_host_key(
             http_connect(open, "127.0.0.1", server.port, None)
                 .await
@@ -497,12 +517,20 @@ mod tests {
             .await,
             Some(7)
         );
-        let guarded = proxy("http", Some(("p0", "secret"))).await;
+        let guarded_proxy = test_proxy::start(test_proxy::Kind::Http, Some(("p0", "secret"))).await;
+        let guarded = guarded_proxy.address;
         let refused = http_connect(guarded, "127.0.0.1", server.port, None)
             .await
             .err()
             .unwrap();
-        assert!(refused.contains("407"), "{refused}");
+        assert_eq!(refused, "HTTP proxy refused the tunnel (status 407)");
+        // A wrong password is refused without echoing it.
+        let wrong = http_connect(guarded, "127.0.0.1", server.port, Some(("p0", "wrong-pw")))
+            .await
+            .err()
+            .unwrap();
+        assert!(!wrong.contains("wrong-pw"), "{wrong}");
+        assert_eq!(open_proxy.tunnels(), [server.port, server.port]);
         let stream = http_connect(guarded, "127.0.0.1", server.port, Some(("p0", "secret")))
             .await
             .unwrap();
@@ -520,7 +548,8 @@ mod tests {
     #[tokio::test]
     async fn socks5_proxy_with_and_without_login() {
         let mut server = fixture::Fixture::start().await;
-        let open = proxy("socks", None).await;
+        let open_proxy = test_proxy::start(test_proxy::Kind::Socks5, None).await;
+        let open = open_proxy.address;
         assert_eq!(
             exit_code(
                 socks5_connect(open, "127.0.0.1", server.port, None)
@@ -531,7 +560,9 @@ mod tests {
             .await,
             Some(7)
         );
-        let guarded = proxy("socks", Some(("p0", "secret"))).await;
+        let guarded_proxy =
+            test_proxy::start(test_proxy::Kind::Socks5, Some(("p0", "secret"))).await;
+        let guarded = guarded_proxy.address;
         let wrong = socks5_connect(guarded, "localhost", server.port, Some(("p0", "nope")))
             .await
             .err()
@@ -557,13 +588,44 @@ mod tests {
         let pid = process.id();
         assert_eq!(exit_code(stream, &server).await, Some(7));
         drop(process);
-        // SAFETY: signal 0 only checks whether the reaped pid still exists.
-        assert_ne!(
-            unsafe { libc::kill(pid as i32, 0) },
-            0,
-            "ProxyCommand outlived its session"
-        );
+        assert!(gone(pid).await, "ProxyCommand outlived its session");
         assert!(proxy_command("/nonexistent/p0-proxy %h %p", "h", 1, "u").is_err());
         server.stop().await;
+    }
+
+    /// Whether `pid` disappears (killed and reaped) within two seconds.
+    #[cfg(unix)]
+    async fn gone(pid: u32) -> bool {
+        let pid = libc::pid_t::try_from(pid).unwrap();
+        for _ in 0..200 {
+            // SAFETY: signal 0 only checks whether the pid still exists.
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        false
+    }
+
+    /// A helper the ProxyCommand starts in the background ends with it,
+    /// which killing only the direct child would not achieve.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dropping_a_proxy_command_ends_the_processes_it_started() {
+        let argv = ["/bin/sh", "-c", "sleep 300 & echo $!; wait"].map(String::from);
+        let (mut stream, process) = spawn(&argv).unwrap();
+        let mut line = Vec::new();
+        while !line.ends_with(b"\n") {
+            let byte = tokio::time::timeout(Duration::from_secs(5), stream.read_u8())
+                .await
+                .expect("the helper did not report its background pid")
+                .unwrap();
+            line.push(byte);
+        }
+        let background: u32 = std::str::from_utf8(&line).unwrap().trim().parse().unwrap();
+        let direct = process.id();
+        drop(process);
+        assert!(gone(direct).await, "the ProxyCommand outlived its session");
+        assert!(gone(background).await, "its background helper survived");
     }
 }
