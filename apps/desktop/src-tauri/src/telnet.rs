@@ -30,7 +30,8 @@ enum State {
     Verb(u8),
     Sub,
     SubIac,
-    /// Data CR seen: a following NUL is dropped (RFC 854 bare CR).
+    /// Data CR seen outside binary mode: a following NUL is dropped
+    /// (RFC 854 bare CR).
     Cr,
 }
 
@@ -83,7 +84,8 @@ impl Codec {
             self.state = match (self.state, byte) {
                 (State::Data | State::Cr, IAC) => State::Iac,
                 (State::Cr, 0) => State::Data,
-                (State::Data | State::Cr, b'\r') => {
+                // RFC 856: in binary mode CR NUL is two data bytes.
+                (State::Data | State::Cr, b'\r') if !self.theirs[BINARY as usize] => {
                     out.data.push(b'\r');
                     State::Cr
                 }
@@ -207,7 +209,8 @@ impl Codec {
     }
 
     /// Escapes terminal input for the wire: IAC is doubled and, outside
-    /// binary mode, a bare CR becomes CR NUL (Enter is sent as CR LF).
+    /// binary mode, a CR not already followed by LF in `input` is sent as
+    /// CR LF (Enter). In binary mode CR is sent unchanged (RFC 856).
     pub fn send(&self, input: &[u8]) -> Vec<u8> {
         let binary = self.ours[BINARY as usize];
         let mut out = Vec::with_capacity(input.len());
@@ -289,6 +292,26 @@ mod tests {
             codec.resize(100, 30),
             [IAC, SB, NAWS, 0, 100, 0, 30, IAC, SE]
         );
+    }
+
+    #[test]
+    fn binary_mode_keeps_nul_after_cr_and_sends_bare_cr() {
+        let mut codec = Codec::new("xterm", 80, 24);
+        assert_eq!(codec.receive(b"a\r\0b").data, b"a\rb");
+        assert_eq!(codec.receive(&[IAC, WILL, BINARY]).reply, [IAC, DO, BINARY]);
+        // Found against telnetd 308: in binary mode it sends CR NUL as data.
+        assert_eq!(codec.receive(b"a\r\0b").data, b"a\r\0b");
+        assert_eq!(codec.receive(b"c\r").data, b"c\r");
+        assert_eq!(codec.receive(&[0, IAC, IAC]).data, [0, IAC]);
+        assert_eq!(
+            codec.receive(&[IAC, WONT, BINARY]).reply,
+            [IAC, DONT, BINARY]
+        );
+        assert_eq!(codec.receive(b"a\r\0b").data, b"a\rb");
+        // Sending follows our own side of BINARY.
+        assert_eq!(codec.send(b"x\r"), b"x\r\n");
+        assert_eq!(codec.receive(&[IAC, DO, BINARY]).reply, [IAC, WILL, BINARY]);
+        assert_eq!(codec.send(&[b'x', b'\r', IAC]), [b'x', b'\r', IAC, IAC]);
     }
 
     #[test]
