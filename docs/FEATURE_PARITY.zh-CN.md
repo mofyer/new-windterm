@@ -29,7 +29,7 @@
 | C07 | ProxyCommand | P2 | 命令参数、代理进程关闭和错误反馈 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地) |
 | C08 | ProxyJump | P2 | 跳转链路、逐跳认证和失败定位 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_ROUTES](p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地) |
 | C09 | SSH agent | P2 | agent 发现、选钥、不可用和取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [RESULTS](p0/RESULTS.zh-CN.md#ssh-认证方式) |
-| C10 | agent forwarding | P2 | 明确授权、转发可用、关闭后失效 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10) |
+| C10 | agent forwarding | P2 | 明确授权、转发可用、关闭后失效 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机) |
 | C11 | 密码认证及自动登录 | P2 | 正误密码、取消、可选安全保存和再次登录 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [RESULTS](p0/RESULTS.zh-CN.md#ssh-认证方式) |
 | C12 | 公钥认证及自动登录 | P2 | 带口令/无口令密钥、错误密钥及安全存储 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [RESULTS](p0/RESULTS.zh-CN.md#ssh-认证方式)、[OPENSSH_INTERACTIVE](p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) |
 | C13 | keyboard-interactive | P2 | 多轮提示、隐藏输入和取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_KBDINT](p0/SSH_KBDINT.zh-CN.md#证据macos-arm64本地) |
@@ -49,8 +49,8 @@
 | ID | 能力 | 阶段 | 验收要点 | 状态 | 证据索引 |
 | --- | --- | --- | --- | --- | --- |
 | T01 | macOS bash/zsh/PowerShell Core | P1 | 各 shell 启动、PTY、环境、缩放和退出；提示未安装依赖 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：原型/探针 [PTY_PROBE](p0/PTY_PROBE.zh-CN.md#已执行检查)、[RESULTS](p0/RESULTS.zh-CN.md#当前轮原生-pty-数据路径冒烟) |
-| T02 | Linux bash/zsh/PowerShell Core | P5 | 各 shell 的 PTY、信号和生命周期 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) |
-| T03 | Windows Cmd | P5 | 命令交互、编码、窗口缩放和退出 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：原型/探针 [WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) |
+| T02 | Linux bash/zsh/PowerShell Core | P5 | 各 shell 的 PTY、信号和生命周期 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界)、[NATIVE_WEBVIEW_SMOKE](p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal) |
+| T03 | Windows Cmd | P5 | 命令交互、编码、窗口缩放和退出 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：原型/探针 [WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)、[NATIVE_WEBVIEW_SMOKE](p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal) |
 | T04 | Windows PowerShell | P5 | 交互、渲染、环境和退出 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：仅静态 |
 | T05 | Windows 管理员 Cmd | P5 | 明确提权、授权取消及权限隔离 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：仅静态 |
 | T06 | Windows 管理员 PowerShell | P5 | 明确提权、授权取消及权限隔离 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux)；P0：仅静态 |
@@ -86,8 +86,8 @@
 | F05 | SFTP 重命名 | P3 | 冲突、中文路径和失败反馈 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SFTP_WRITE](p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) |
 | F06 | SFTP 新建文件 | P3 | 内容/空文件、权限及名称冲突 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SFTP_WRITE](p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) |
 | F07 | SFTP 新建目录 | P3 | 权限、名称冲突及刷新 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SFTP_WRITE](p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) |
-| F08 | SCP 下载 | P3 | 协议兼容、路径和完整性、取消 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
-| F09 | SCP 上传 | P3 | 协议兼容、路径和完整性、覆盖 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
+| F08 | SCP 下载 | P3 | 协议兼容、路径和完整性、取消 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)、[SCP](p0/SCP.zh-CN.md#真实-openssh-夹具)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
+| F09 | SCP 上传 | P3 | 协议兼容、路径和完整性、覆盖 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)、[SCP](p0/SCP.zh-CN.md#真实-openssh-夹具)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
 | F10 | XModem | P3 | 收发、校验、失败重试及取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证)、[MODEM](p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12) |
 | F11 | YModem | P3 | 收发、批量和文件元信息、取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证)、[MODEM](p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12) |
 | F12 | ZModem | P3 | 收发协商、终端切换、完整性及取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：仅静态，另有方案记录 [MODEM](p0/MODEM.zh-CN.md#adrzmodemf12)（无运行证据） |
@@ -160,8 +160,8 @@
 | S10 | 启动指定会话集合 | P4 | 集合、顺序、局部失败和取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：仅静态 |
 | S11 | 会话搜索 | P0→P4 | 2.7 路线图标延期；与已打开标签搜索区分，实测确定基线 | 待实测 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [WEB_QA](p0/WEB_QA.zh-CN.md#原有控件与状态覆盖保留历史范围)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a6-其他需要同步决定的措辞) |
 | Q01 | macOS 平台 | P5 | 全部适用项真机回归，arm64 依赖、安装和签名公证 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [PERFORMANCE_BASELINE](p0/PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包)、[RESULTS](p0/RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟)、[RELEASE](p0/RELEASE.zh-CN.md#4-本地验证) |
-| Q02 | Windows 平台 | P5 | 全部适用项实机回归、安装与升级 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) |
-| Q03 | Linux 平台 | P5 | 确定发行版矩阵，全部适用项回归、包和升级 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) |
+| Q02 | Windows 平台 | P5 | 全部适用项实机回归、安装与升级 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)、[NATIVE_WEBVIEW_SMOKE](p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容) |
+| Q03 | Linux 平台 | P5 | 确定发行版矩阵，全部适用项回归、包和升级 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [CROSS_PLATFORM_VALIDATION](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界)、[NATIVE_WEBVIEW_SMOKE](p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容) |
 | Q04 | 动态内存压缩 | P1 | 压缩/解压后内容、搜索一致，固定负载测量空间和 CPU | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [HISTORY_ARCHIVE](p0/HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机) |
 | Q05 | 吞吐与低延迟 | P0→P5 | 建立同负载基线和预算；持续输出背压、交互延迟和峰值内存 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [PERFORMANCE_BASELINE](p0/PERFORMANCE_BASELINE.zh-CN.md#1-rust-pty-吞吐与-ctrl-c-延迟)、[PTY_READINESS](p0/PTY_READINESS.zh-CN.md#本机配对结果) |
 | Q06 | 大规模滚动历史 | P0→P1 | 盘点上游容量行为，验证检索、压缩和资源上限，不静默丢数据 | 待实测 | 静态：[矛盾（弱）](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能)；P0：原型/探针 [HISTORY_ARCHIVE](p0/HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a3-q06unlimited与默认-999999-行) |
