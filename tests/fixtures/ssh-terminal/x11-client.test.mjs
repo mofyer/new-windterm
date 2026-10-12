@@ -104,7 +104,7 @@ test('Rust X11 forwarding: OpenSSH X11Forwarding, xdpyinfo reaches a cookie-prot
     assert.match(result.stdout, /1 passed/);
     // The remote client used sshd's proxy display, not Xvfb's directly.
     const evidence = result.stdout.match(/P0_X11_OK .*/)?.[0];
-    assert.match(evidence ?? '', new RegExp(`^P0_X11_OK localhost:\\d+\\.0 dimensions: ${DIMENSIONS} pixels`));
+    assert.match(evidence ?? '', new RegExp(`^P0_X11_OK localhost:\\d+\\.0\\s+dimensions: ${DIMENSIONS} pixels`));
     console.log(evidence);
   } finally {
     if (fixture) assert.equal(await stop(fixture), 0, fixtureErrors);
