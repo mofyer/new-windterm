@@ -51,7 +51,8 @@
 | keyboard-interactive 实时提示 | 连接时逐轮弹窗作答；`ssh_auth_respond` 绑定窗口、操作和轮次；适用于终端标签页和 SFTP 面板 | loopback 夹具；浏览器测试 | 没有真实 PAM/OpenSSH 验证，没有原生手工测试 |
 | 交互 SSH | Rust `ssh_open` 连接真实 OpenSSH shell | `tests/fixtures/ssh-terminal/rust-client.test.mjs` | 没有长期会话和断线恢复 |
 | 转发 | 本地转发、SOCKS5 动态转发、跳板、远端转发、agent 转发；服务端主动打开的通道默认拒绝，`forwarded-tcpip` 最多 64 个 | loopback 夹具 | 没有界面 |
-| 代理 | HTTP CONNECT、SOCKS5、ProxyCommand（不经过 shell） | loopback 代理 | 没有界面 |
+| 代理与跳板路线 | 连接对话框可选直连、HTTP CONNECT、SOCKS5、ProxyCommand（不经过 shell）、单跳跳板（两步信任）；路线绑定进 challenge 和 SFTP 授权 | loopback 代理；真实 OpenSSH 夹具 | 没有用真实代理软件或 OpenSSH 跳板验证；不支持多跳 |
+| SFTP 写操作原型 | 新建目录、重命名、删除、chmod、上传、下载落盘；需先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有原生窗口实测；写入开关缺少原生确认 |
 | 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
 | SCP | `scp -t/-f` 传单个文件 | 真实 OpenSSH 夹具 | 没有目录、递归或界面 |
 | Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试 | 没有真实 telnetd 或网络设备 |
@@ -71,8 +72,8 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 ## 绝对不能误报的边界
 
 - 不能说 WindTerm 功能已经完整对齐，也不能说 P0 或 P1 已通过。
-- 不能说 SFTP 已完成。现在只有只读浏览，没有以下能力：
-  - 写操作、下载落盘
+- 不能说 SFTP 已完成。现在只有只读浏览和写操作原型，没有以下能力：
+  - 递归、目录传输、断点续传
   - 持久连接、断线恢复
   - 原生面板验收
 - 不能说 Windows 终端可用：

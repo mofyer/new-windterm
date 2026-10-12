@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 文档和提交说明必须区分“已验证”与“未验证”，不得写成：
 
 - WindTerm 功能已对齐、P0/P1 已通过、产品可用；
-- SFTP 已完成（只有只读浏览面板；无写操作、下载落盘、原生 WKWebView 实测）；
+- SFTP 已完成（只读浏览面板加写操作原型，只对 OpenSSH 夹具与 IPC stub 验证；无原生 WKWebView 实测、递归、续传）；
 - Windows 终端已完整可用（ConPTY 只在 CI 上验证了 cmd.exe 的生命周期，未验证 PowerShell、WebView2 原生窗口和输入法）；
 - 浏览器 E2E 通过等于 Rust/原生成功（浏览器测试使用 IPC stub）；
 - loopback russh 测试服务端通过等于真实 OS shell / OpenSSH 互操作通过；
@@ -99,7 +99,7 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 1. `ssh_context` → 取得当前窗口代际的 `scopeToken`；
 2. `ssh_probe` → 连接并返回实际 Ed25519 主机指纹及一次性 `challengeToken`（有 TTL）；
-3. 用户确认后三选一：`ssh_accept`（固定命令，返回有界 stdout/stderr 与退出码）、`ssh_open`（PTY/shell 接入上述字节流）、`ssh_sftp_open`（列出登录目录，成功后签发窗口内、仅内存的 SFTP 浏览授权 `grantToken`）。之后的 `ssh_sftp_list/metadata/read` 使用授权，每次仍重新连接、固定校验已确认的主机密钥并重新读取私钥；`ssh_sftp_close` 吊销授权。只有带安全证据的失败（主机密钥变化、公钥被拒、rekey）才吊销，错误信息以 `reconnect and verify the host again` 结尾，前端据此回到重新核对指纹；
+3. 用户确认后三选一：`ssh_accept`（固定命令，返回有界 stdout/stderr 与退出码）、`ssh_open`（PTY/shell 接入上述字节流）、`ssh_sftp_open`（列出登录目录，成功后签发窗口内、仅内存的 SFTP 浏览授权 `grantToken`）。之后的 `ssh_sftp_list/metadata/read` 与写操作 `ssh_sftp_set_writable/change/upload/download`（需先对授权开启写入，见 `ssh_sftp_write.rs`、`docs/p0/SFTP_WRITE.zh-CN.md`）使用授权，每次仍重新连接（经授权绑定的连接路线）、固定校验已确认的主机密钥并重新读取私钥；`ssh_sftp_close` 吊销授权。只有带安全证据的失败（主机密钥变化、公钥被拒、rekey）才吊销，错误信息以 `reconnect and verify the host again` 结尾，前端据此回到重新核对指纹；
 4. 前端为每个操作生成 `operationId`，可用 `ssh_cancel` 取消；`ssh_reject` 丢弃 challenge。
 
 主机信任：`ssh_probe` 的 Challenge 带 `trust: new | known | changed`，与应用数据目录下 OpenSSH 格式的 `known_hosts`（`known_hosts.rs`）比较；`changed` 的 challenge 不能被消费，只有独立命令 `ssh_trust_replace` 能更新，`ssh_trust_save` 只接受 `new`。前端对 `known` 自动继续。
@@ -111,7 +111,7 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 ### 其它模块
 
 - `net_terminal.rs`：Telnet / Raw TCP 终端标签（`net_open/write/resize/ack/close`），复用同一 `PtyEvent` 字节流和 ACK；Telnet 协商在 `telnet.rs`。
-- SSH 子模块（经 `#[path]` 挂在 `ssh` 下）：`ssh_forward.rs`（本地/动态/远端转发与跳板）、`ssh_proxy.rs`（HTTP CONNECT、SOCKS5、ProxyCommand）、`ssh_scp.rs`。`KeyCheck` 的 `Routes` 拒绝服务端主动打开的通道，只放行登记过的 `forwarded-tcpip`（最多 64 个）与显式开启的 agent。这些探针都还没有界面。
+- SSH 子模块（经 `#[path]` 挂在 `ssh` 下）：`ssh_forward.rs`（本地/动态/远端转发与跳板）、`ssh_proxy.rs`（HTTP CONNECT、SOCKS5、ProxyCommand）、`ssh_route.rs`（连接对话框选择的路线：直连、HTTP/SOCKS5 代理、ProxyCommand、单跳跳板；路线绑定进 challenge 与 SFTP 授权，见 `docs/p0/SSH_ROUTES.zh-CN.md`）、`ssh_scp.rs`。`KeyCheck` 的 `Routes` 拒绝服务端主动打开的通道，只放行登记过的 `forwarded-tcpip`（最多 64 个）与显式开启的 agent。转发、SCP 与 tmux 还没有界面。
 - `modem.rs`：不依赖 I/O 的 XMODEM/YMODEM，未接入任何传输。`tmux_control.rs`：tmux 控制模式解析。
 
 ### 前端
