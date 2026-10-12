@@ -46,11 +46,11 @@ Silver Soft UI 方向参考用户指定的 Health & Wellness 示例与“干净�
 - xterm.js 是唯一实时终端状态；Rust 仅转发原始字节、管理 PTY。
 - 所有工作区实例通过 `src/terminal.ts` 统一启用官方 `@xterm/addon-unicode11@0.9.0` 的 Unicode 11 宽度表。xterm 6 默认 Unicode 6 会把 `🌏` 算为 1 列，与本机 shell 常见的 2 列回显冲突；该修复使用 xterm 标为实验性的 Unicode provider API，依赖升级需重跑宽度回归。它不等于 Unicode 13、较新 emoji / ZWJ 序列或中文输入法已验收。
 - `pty_open({onEvent, cols, rows}) → {id}`；Channel 事件使用 `kind: data | exit | error`。
-- `data` 直接传入 `xterm.write(Uint8Array, callback)`，不逐块 UTF-8 解码；callback 后通过每会话 Promise 链顺序提交 `pty_ack({id,sequence})`。
-- 文本输入按 UTF-8 编码；二进制鼠标输入按单字节传递；大输入每 4096 字节串行提交 `pty_write`；前端未完成输入总量限制为 64 KiB，超额明确拒绝并提示。
+- `data` 经 `Utf8Boundary` 暂留块尾未完整的 UTF-8 序列（最多 3 字节，拼到下一块前面）后传入 `xterm.write(Uint8Array, callback)`，仍不逐块 UTF-8 解码；这是对 xterm.js 6.0.0 拆分解码缺陷的规避，见 [INPUT_PATHS](INPUT_PATHS.zh-CN.md)；callback 后通过每会话 Promise 链顺序提交 `pty_ack({id,sequence})`。
+- 文本输入按 UTF-8 编码；二进制鼠标输入按单字节传递；大输入每 4096 字节串行提交 `pty_write`，同一时间只有一个写入在途；后端队列满时退避重发同一块；前端未完成输入总量限制为 16 MiB，超额的单次输入整体拒绝并提示。粘贴先去除 HT/LF/CR 以外的 C0、DEL 与 C1 控制字符。
 - ResizeObserver 调用 FitAddon，xterm resize 事件调用 `pty_resize`。隐藏标签不进行无效 fit，恢复时重算尺寸。
 - 会话关闭释放 ResizeObserver、xterm、输出任务并调用 `pty_close`。打开途中关闭的会话在取得 PTY ID 后立即关闭；退出事件先于 open 返回时不恢复为运行状态。
-- SSH 使用相同的原始字节、4096 字节输入分块、64 KiB 输入队列、串行 ACK 与 resize 路径，命令为 `ssh_open/write/resize/ack/close`。`ssh_open` 必须携带窗口作用域、一次性挑战和操作 ID；先同步预留标签，再将挑战所有权移交给该标签。满 8 个会话时不消耗挑战。
+- SSH 使用相同的原始字节、4096 字节输入分块、16 MiB 前端输入积压上限（后端 16 × 4 KiB 有界队列满时退避重发）、串行 ACK 与 resize 路径，命令为 `ssh_open/write/resize/ack/close`。`ssh_open` 必须携带窗口作用域、一次性挑战和操作 ID；先同步预留标签，再将挑战所有权移交给该标签。满 8 个会话时不消耗挑战。
 - SSH 打开中关闭先取消操作；迟到的 open ID 再幂等 close。退出或致命错误先于 open 返回时不恢复运行状态；致命错误禁用输入。正常关闭或取消失败保留标签以便重试。页面离开关闭已建立会话、取消仍在打开的操作；原生页面重载清理仍由后端负责。
 - 原型最多打开 8 个会话，xterm 滚动历史明确限制为 5,000 行；这不是无限历史或动态压缩实现。
 - Ctrl-C 不被全局快捷键拦截；⌘K / Ctrl+Shift+K 在 xterm 自定义键盘处理器中让给命令面板。

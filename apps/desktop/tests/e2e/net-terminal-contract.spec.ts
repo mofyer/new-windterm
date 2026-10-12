@@ -110,8 +110,9 @@ test('raw TCP input is bounded and split into ordered writes; resizing uses net 
   await page.evaluate(() => (window as any).netQa.holdWrite = true);
   await paste(page, 5000);
   await expect.poll(async () => (await calls(page, 'net_write')).map(c => c.data.length)).toEqual([4096]);
-  await paste(page, 65536);
-  await expect(page.locator('#toast')).toContainText('64 KiB');
+  // Above the 16 MiB input backlog: refused whole, nothing of it is written.
+  await paste(page, 16 * 1024 * 1024 + 1);
+  await expect(page.locator('#toast')).toContainText('16 MiB');
   await page.evaluate(() => { const s = (window as any).netQa; s.holdWrite = false; s.resolveWrite(null); });
   await expect.poll(async () => (await calls(page, 'net_write')).map(c => c.data.length)).toEqual([4096, 904]);
   const previous = (await calls(page, 'net_resize')).length;
