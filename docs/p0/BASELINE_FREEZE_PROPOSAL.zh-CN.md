@@ -281,8 +281,11 @@
 | [TERMINAL_CORE_ADR](TERMINAL_CORE_ADR.zh-CN.md#原型) | T09 | 无变化（浏览器）；补充隔离 SIXEL 原型。ADR 本身是提议，不计为运行证据 |
 | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#验证记录) | C15 | 仅静态 → 原型/探针，层级为真实对端：Linux CI 上经系统 OpenSSH 在远端运行 `xdpyinfo`，读到带 cookie 保护的 Xvfb（[run 38207141339](https://github.com/mofyer/new-windterm/actions/runs/38207141339)） |
 | [MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | F10、F11 | loopback 夹具 → 真实对端：本机 lrzsz 0.13.1；Linux CI 上 Ubuntu lrzsz 0.12.21rc 10/11。F12 不变（仅静态）：`zmodem2` 评估的是第三方实现，不计为本项目原型 |
+| [SCP](SCP.zh-CN.md#真实-openssh-夹具) | F08、F09 | 无变化（真实对端）；补充 SFTP 文件面板中的 SCP 选项（IPC stub 界面）与经 SFTP 授权的真实 OpenSSH 夹具往返。仍是单文件，无目录与递归，无原生窗口实测 |
+| [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机) | C10 | 无变化（loopback 夹具）：russh 夹具加私有临时 ssh-agent 与 IPC stub 界面；无 OpenSSH 服务端互操作 |
+| [NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容) | T02、T03、Q02、Q03 | 无变化（真实平台）；补充 tauri-driver 在 Linux WebKitGTK 与 Windows WebView2 上的 CI 原生窗口冒烟（工作台、本地终端真实 PTY、SSH 终端）。映射依据：T02、T03 的验收含 shell 命令交互，冒烟在原生窗口中输入命令并读回输出；Q02、Q03 是平台行，冒烟只覆盖其中一部分（仍无完整回归、安装与升级）。T01、Q01 的说明已有 macOS 冒烟，tauri-driver 不支持 macOS，不在本次映射。SSH、转发、SFTP 等其余行未经原生窗口验证，不映射 |
 
-合计：6 个 ID 从“仅静态”移入“原型/探针”（F02–F07）；6 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（C02、C07、C08、C19、C20、C21）；其余 18 个 ID 只更新链接或说明。随后又有 1 个 ID 从“仅静态”移入“原型/探针”（C15），2 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（F10、F11）。
+合计：6 个 ID 从“仅静态”移入“原型/探针”（F02–F07）；6 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（C02、C07、C08、C19、C20、C21）；其余 18 个 ID 只更新链接或说明。随后又有 1 个 ID 从“仅静态”移入“原型/探针”（C15），2 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（F10、F11）。再随后 F08、F09、C10、T02、T03、Q02、Q03 只补充链接与说明，分组和层级不变。
 
 ### C 协议、认证、代理与转发
 
@@ -297,7 +300,7 @@
 | C07 | ProxyCommand | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行 |
 | C08 | ProxyJump | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存 |
 | C09 | SSH agent | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 临时 ssh-agent 认证（russh 集成，仅 macOS 本机）；Windows 命名管道只经交叉编译 |
-| C10 | agent forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10) | agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面 |
+| C10 | agent forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机) | agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测 |
 | C11 | 密码认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式) | 密码正确/错误（russh 集成）；无保存与自动登录 |
 | C12 | 公钥认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) | Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录 |
 | C13 | keyboard-interactive | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_KBDINT](SSH_KBDINT.zh-CN.md#证据macos-arm64本地) | 多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH |
@@ -315,8 +318,8 @@
 | ID | 能力 | 静态结论 | P0 分组 | 证据层级 | P0 证据 | 覆盖范围与缺口 |
 | --- | --- | --- | --- | --- | --- | --- |
 | T01 | macOS bash/zsh/PowerShell Core | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [PTY_PROBE](PTY_PROBE.zh-CN.md#已执行检查)、[RESULTS](RESULTS.zh-CN.md#当前轮原生-pty-数据路径冒烟) | macOS zsh 真实 PTY 探针与 WKWebView 冒烟；bash、PowerShell Core 未测 |
-| T02 | Linux bash/zsh/PowerShell Core | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) | Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测 |
-| T03 | Windows Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测 |
+| T02 | Linux bash/zsh/PowerShell Core | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界)、[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal) | Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；经 tauri-driver 在 WebKitGTK 原生窗口中输入命令并读回 Bash 输出；zsh、PowerShell Core、输入法未测 |
+| T03 | Windows Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 原型/探针 | 真实平台 | [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新)、[CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)、[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal) | cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；经 tauri-driver 在 WebView2 原生窗口中输入命令并读回 cmd.exe 输出；输入法与真实用户环境未测 |
 | T04 | Windows PowerShell | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
 | T05 | Windows 管理员 Cmd | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
 | T06 | Windows 管理员 PowerShell | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#本地-shell终端与-tmux) | 仅静态 | — | — | 无 P0 原型或探针 |
@@ -355,8 +358,8 @@
 | F05 | SFTP 重命名 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 重命名到已存在名称被拒、到新名称成功（真实 OpenSSH sftp-server、IPC stub 面板）；不覆盖只在 OpenSSH 上有服务器端保证，无原生 WKWebView 实测 |
 | F06 | SFTP 新建文件 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 新建空文件即 0 字节不覆盖上传，同名被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
 | F07 | SFTP 新建目录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 中文带空格目录创建，重复创建与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
-| F08 | SCP 下载 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面 |
-| F09 | SCP 上传 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面 |
+| F08 | SCP 下载 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)、[SCP](SCP.zh-CN.md#真实-openssh-夹具) | scp -f 单文件下载（真实 OpenSSH 夹具，经 SFTP 授权；含取消、重名另存、64 MiB 上限）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测 |
+| F09 | SCP 上传 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)、[SCP](SCP.zh-CN.md#真实-openssh-夹具) | scp -t 单文件上传（真实 OpenSSH 夹具，经 SFTP 授权；含只读授权拒绝、父路径检查、同名替换）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测 |
 | F10 | XModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [MODEM](MODEM.zh-CN.md#已验证)、[MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | sans-IO 状态机；本机对 lrzsz 0.13.1 互操作（XMODEM 校验和、CRC、1K 收发，取消与对端退出）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（对端中途被杀一项失败，待查）；未接任何链路 |
 | F11 | YModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [MODEM](MODEM.zh-CN.md#已验证)、[MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | sans-IO 状态机（批量）；本机对 lrzsz 0.13.1 做 YMODEM 批量互操作（空文件、非 ASCII 名、非 128 整数倍大小）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（同 F10）；未接任何链路 |
 | F12 | ZModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | [MODEM](MODEM.zh-CN.md#adrzmodemf12) | 仅 ADR；无代码（不计为运行证据） |
@@ -438,8 +441,8 @@
 | ID | 能力 | 静态结论 | P0 分组 | 证据层级 | P0 证据 | 覆盖范围与缺口 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Q01 | macOS 平台 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包)、[RESULTS](RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟)、[RELEASE](RELEASE.zh-CN.md#4-本地验证) | arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证 |
-| Q02 | Windows 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI |
-| Q03 | Linux 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界) | Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI |
+| Q02 | Windows 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过)、[WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)、[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容) | Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；WebView2 原生窗口冒烟（工作台、本地终端、SSH 终端）；无完整回归、安装与升级 |
+| Q03 | Linux 平台 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [CROSS_PLATFORM_VALIDATION](CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界)、[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容) | Ubuntu 24.04 CI 构建与 PTY 探针；WebKitGTK 原生窗口冒烟（Xvfb 下的工作台、本地终端、SSH 终端）；无完整回归、包与升级 |
 | Q04 | 动态内存压缩 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 浏览器 | [HISTORY_ARCHIVE](HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机) | 压缩冷历史 PoC（约 7.4 倍）；未接生产终端 |
 | Q05 | 吞吐与低延迟 | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 真实平台 | [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.zh-CN.md#1-rust-pty-吞吐与-ctrl-c-延迟)、[PTY_READINESS](PTY_READINESS.zh-CN.md#本机配对结果) | 本机嘈杂环境基线；无 GUI 全链路，无 WindTerm 对比 |
 | Q06 | 大规模滚动历史 | [矛盾（弱）](UPSTREAM_STATIC_REVIEW.zh-CN.md#会话平台与性能) | 原型/探针 | 浏览器 | [HISTORY_ARCHIVE](HISTORY_ARCHIVE.zh-CN.md#实测headless-chromemacos-arm64本机) | 有界热窗口加压缩冷历史与缺口上报 PoC；未接生产终端 |

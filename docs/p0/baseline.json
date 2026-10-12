@@ -378,12 +378,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10",
           "result": "agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#agent-转发实测2026-10-12macos-arm64本机",
+          "result": "agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "agent 转发默认拒绝、显式开启后可用（russh 夹具）；无界面",
+      "p0_evidence_note": "agent 转发默认拒绝、显式开启后可用（russh 夹具、私有临时 ssh-agent）；SSH 终端连接对话框逐连接开启（IPC stub 界面）；无 OpenSSH 服务端互操作，无原生窗口实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -900,12 +905,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界",
           "result": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal",
+          "result": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；经 tauri-driver 在 WebKitGTK 原生窗口中输入命令并读回 Bash 输出；zsh、PowerShell Core、输入法未测"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；zsh、PowerShell Core 与 GUI 未测",
+      "p0_evidence_note": "Ubuntu 24.04 CI 上 Bash 真实 PTY 探针；经 tauri-driver 在 WebKitGTK 原生窗口中输入命令并读回 Bash 输出；zsh、PowerShell Core、输入法未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -944,12 +954,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位",
           "result": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#2-本地终端local-terminal",
+          "result": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；经 tauri-driver 在 WebView2 原生窗口中输入命令并读回 cmd.exe 输出；输入法与真实用户环境未测"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测",
+      "p0_evidence_note": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；经 tauri-driver 在 WebView2 原生窗口中输入命令并读回 cmd.exe 输出；输入法与真实用户环境未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2009,12 +2024,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09",
           "result": "scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SCP.zh-CN.md#真实-openssh-夹具",
+          "result": "scp -f 单文件下载（真实 OpenSSH 夹具，经 SFTP 授权；含取消、重名另存、64 MiB 上限）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测"
         }
       ],
       "static_review_conclusion": "contradicting",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_peer",
-      "p0_evidence_note": "scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面",
+      "p0_evidence_note": "scp -f 单文件下载（真实 OpenSSH 夹具，经 SFTP 授权；含取消、重名另存、64 MiB 上限）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测",
       "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
@@ -2044,12 +2064,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09",
           "result": "scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SCP.zh-CN.md#真实-openssh-夹具",
+          "result": "scp -t 单文件上传（真实 OpenSSH 夹具，经 SFTP 授权；含只读授权拒绝、父路径检查、同名替换）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测"
         }
       ],
       "static_review_conclusion": "contradicting",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_peer",
-      "p0_evidence_note": "scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面",
+      "p0_evidence_note": "scp -t 单文件上传（真实 OpenSSH 夹具，经 SFTP 授权；含只读授权拒绝、父路径检查、同名替换）；SFTP 文件面板有 SCP 选项（IPC stub 界面）；无目录与递归，无原生窗口实测",
       "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
@@ -3823,12 +3848,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位",
           "result": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容",
+          "result": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；WebView2 原生窗口冒烟（工作台、本地终端、SSH 终端）；无完整回归、安装与升级"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI",
+      "p0_evidence_note": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；WebView2 原生窗口冒烟（工作台、本地终端、SSH 终端）；无完整回归、安装与升级",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -3857,12 +3887,17 @@
           "type": "p0_prototype_probe",
           "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#平台边界",
           "result": "Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md#场景与各自证明的内容",
+          "result": "Ubuntu 24.04 CI 构建与 PTY 探针；WebKitGTK 原生窗口冒烟（Xvfb 下的工作台、本地终端、SSH 终端）；无完整回归、包与升级"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "Ubuntu 24.04 CI 构建与 PTY 探针；无 GUI",
+      "p0_evidence_note": "Ubuntu 24.04 CI 构建与 PTY 探针；WebKitGTK 原生窗口冒烟（Xvfb 下的工作台、本地终端、SSH 终端）；无完整回归、包与升级",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
