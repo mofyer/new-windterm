@@ -439,7 +439,10 @@ Rust 评审的 1 个 HIGH 和 3 个 MEDIUM 已修复并复核。安全评审没�
   - 不处理对方的 CAN 取消，传输开始后也没有超时。
 
   它只作为开发依赖，供被忽略的评估测试使用；它的 `build.rs` 只在 PATH 中查找 `rz`/`sz`。准备按公开规范自行实现 ZMODEM，见[说明](MODEM.zh-CN.md)。
-- **CI**：Linux 作业新增一个不阻塞的步骤，安装 apt 版 lrzsz 后运行 X/YMODEM 互操作测试；Ubuntu 上的版本尚待首次运行确认。
+- **CI**：Linux 作业新增一个不阻塞的步骤，安装 apt 版 lrzsz 后运行 X/YMODEM 互操作测试。
+  - Ubuntu 上的 lrzsz 是 0.12.21rc，11 项中 10 项通过（[run 38202512575](https://github.com/mofyer/new-windterm/actions/runs/38202512575)、[run 38206136775](https://github.com/mofyer/new-windterm/actions/runs/38206136775)）。
+  - “对端中途被杀”一项两次都失败，报错是传输在干预前就已结束。可能的原因是这项测试为了快速超时，把重试参数设得很短，而旧版 `rb` 启动较慢；尚未查实。
+  - 这一步设为 `continue-on-error`，所以步骤结论显示为 success，要以日志中的测试结果为准。
 
 边界与限制：
 - **只经过管道**：没有经过 PTY、SSH 或串口链路，也没有与 WindTerm 对比。
@@ -527,7 +530,7 @@ ZMODEM 建议先评估 `zmodem2` crate（MIT/Apache-2.0），否则按公开规�
 | 变异检查 | 拿掉 cookie 替换、cookie 比对、通道上限或槽位释放中的任一项，都会有测试失败 |
 | 合并后 Rust 单元 | 151 passed |
 | 本机一次性互操作 | OpenSSH 10.3p1 sshd 接受了 `x11-req`，cookie 替换和错误 cookie 拒绝都正确；只到消息层 |
-| Linux CI 步骤 | 已加入，尚未运行：安装 Xvfb、xauth、x11-utils，经真实 OpenSSH 远端运行 `xdpyinfo` |
+| Linux CI 步骤 | 安装 Xvfb、xauth、x11-utils，经真实 OpenSSH 在远端运行 `xdpyinfo`。在 [run 38202512575](https://github.com/mofyer/new-windterm/actions/runs/38202512575) 中，`xdpyinfo` 已经经我们的转发读到带 cookie 保护的 Xvfb 的 `1234x567`，但由于测试中两处字符串比对的写法问题（PTY 行尾的 CR、xdpyinfo 输出中的双空格）被判失败；两处已修正，等待复跑 |
 
 两项评审的 MEDIUM 都已修复。
 
