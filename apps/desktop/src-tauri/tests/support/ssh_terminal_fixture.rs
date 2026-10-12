@@ -23,6 +23,18 @@ pub const PASSPHRASE: &str = "fixture-passphrase";
 pub const CODE: &str = "123456";
 /// Output of the `fixture-check` command, which exits with status 7.
 pub const FIXTURE_CHECK: &[u8] = b"P0 fixture check\n";
+/// Payload a fixture X client sends after its setup and expects echoed.
+pub const X11_PING: &[u8] = b"PING";
+
+/// What a client sent with `x11-req`.
+#[derive(Clone, Debug)]
+#[allow(dead_code)] // read only by the X11 tests
+pub struct X11Request {
+    pub single_connection: bool,
+    pub protocol: String,
+    pub cookie: String,
+    pub screen: u32,
+}
 
 pub struct Fixture {
     pub port: u16,
@@ -37,6 +49,9 @@ pub struct Fixture {
     /// Accepted direct-tcpip (local forwarding) channels.
     #[allow(dead_code)] // read only by the forwarding tests
     pub forwards: Arc<AtomicUsize>,
+    /// Every `x11-req` received. Set `denial` to 4 to refuse them.
+    #[allow(dead_code)] // read only by the X11 tests
+    pub x11_requests: Arc<Mutex<Vec<X11Request>>>,
     directory: PathBuf,
     cancel: watch::Sender<bool>,
     task: Option<JoinHandle<()>>,
@@ -81,6 +96,8 @@ impl Fixture {
         let rekey_limit = Arc::new(AtomicUsize::new(1 << 30));
         let forwards = Arc::new(AtomicUsize::new(0));
         let forwarded = forwards.clone();
+        let x11_requests = Arc::new(Mutex::new(Vec::new()));
+        let x11_requested = x11_requests.clone();
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (cancel, mut cancelled) = watch::channel(false);
@@ -109,7 +126,7 @@ impl Fixture {
                             auth_rejection_time_initial: Some(Duration::ZERO),
                             ..Default::default()
                         });
-                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shells: Default::default(), round: 0, listeners: Default::default(), agent_requested: false, output: None };
+                        let handler = Handler { public_key: public_key.clone(), auth: auth.clone(), active: count.clone(), denial: denied.clone(), forwards: forwarded.clone(), shells: Default::default(), round: 0, listeners: Default::default(), agent_requested: false, output: None, x11_requests: x11_requested.clone(), x11_held: Default::default() };
                         count.fetch_add(1, Ordering::SeqCst);
                         connections.spawn(async move {
                             let _guard = guard;
@@ -131,6 +148,7 @@ impl Fixture {
             denial,
             rekey_limit,
             forwards,
+            x11_requests,
             directory,
             cancel,
             task: Some(task),
@@ -178,6 +196,9 @@ struct Handler {
     /// Whether the client asked for agent forwarding on a session channel.
     agent_requested: bool,
     output: Option<JoinHandle<()>>,
+    x11_requests: Arc<Mutex<Vec<X11Request>>>,
+    /// X11 channels kept open by `x11 hold` until the connection ends.
+    x11_held: Arc<Mutex<Vec<Channel<server::Msg>>>>,
 }
 impl Drop for Handler {
     fn drop(&mut self) {
@@ -262,6 +283,29 @@ impl server::Handler for Handler {
             .remove(&port)
             .map(|listener| listener.abort())
             .is_some())
+    }
+    /// Recorded, then accepted unless `denial` is 4.
+    async fn x11_request(
+        &mut self,
+        channel: ChannelId,
+        single_connection: bool,
+        protocol: &str,
+        cookie: &str,
+        screen: u32,
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.x11_requests.lock().unwrap().push(X11Request {
+            single_connection,
+            protocol: protocol.into(),
+            cookie: cookie.into(),
+            screen,
+        });
+        if self.denial.load(Ordering::SeqCst) == 4 {
+            session.channel_failure(channel)?;
+        } else {
+            session.channel_success(channel)?;
+        }
+        Ok(())
     }
     async fn agent_request(
         &mut self,
@@ -544,6 +588,26 @@ impl server::Handler for Handler {
                             .await;
                     });
                 }
+                b"x11 B" | b"x11 l" | b"x11 bad" | b"x11 hold" => {
+                    // Plays a remote X client over a new x11 channel, with
+                    // the cookie of the last x11-req (zeros if none).
+                    let handle = session.handle();
+                    let cookie = self
+                        .x11_requests
+                        .lock()
+                        .unwrap()
+                        .last()
+                        .and_then(|request| unhex(&request.cookie))
+                        .unwrap_or_else(|| vec![0; 16]);
+                    let held = self.x11_held.clone();
+                    let mode = command[4..].to_vec();
+                    tokio::spawn(async move {
+                        let reply = x11_client(&handle, &mode, cookie, &held).await;
+                        let _ = handle
+                            .data(channel, format!("{reply}\r\n> ").into_bytes())
+                            .await;
+                    });
+                }
                 b"exit" => {
                     self.shells.remove(&channel);
                     session.exit_status_request(channel, 7)?;
@@ -556,5 +620,91 @@ impl server::Handler for Handler {
             }
         }
         Ok(())
+    }
+}
+
+/// An X11 connection setup in byte order `order` (`B` or `l`).
+pub fn x11_setup(order: u8, name: &[u8], data: &[u8]) -> Vec<u8> {
+    let encode = |value: usize| {
+        let value = u16::try_from(value).unwrap();
+        if order == b'B' {
+            value.to_be_bytes()
+        } else {
+            value.to_le_bytes()
+        }
+    };
+    let mut setup = vec![order, 0];
+    setup.extend(encode(11));
+    setup.extend(encode(0));
+    setup.extend(encode(name.len()));
+    setup.extend(encode(data.len()));
+    setup.extend([0, 0]);
+    setup.extend(name);
+    setup.resize(setup.len().next_multiple_of(4), 0);
+    setup.extend(data);
+    setup.resize(setup.len().next_multiple_of(4), 0);
+    setup
+}
+
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
+        .collect()
+}
+
+/// `B`/`l`: a valid setup in that byte order, then [`X11_PING`], which must
+/// come back. `bad`: a setup with a wrong cookie, which must be closed with
+/// no data. `hold`: a valid setup, then the channel is kept open.
+async fn x11_client(
+    handle: &server::Handle,
+    mode: &[u8],
+    cookie: Vec<u8>,
+    held: &Mutex<Vec<Channel<server::Msg>>>,
+) -> String {
+    let Ok(mut channel) = handle.channel_open_x11("127.0.0.1", 6010).await else {
+        return "X11 REFUSED".into();
+    };
+    let (order, cookie) = match mode {
+        b"B" => (b'B', cookie),
+        b"bad" => (b'l', cookie.iter().map(|byte| byte ^ 0x5a).collect()),
+        _ => (b'l', cookie),
+    };
+    let mut setup = x11_setup(order, b"MIT-MAGIC-COOKIE-1", &cookie);
+    if mode == b"hold" {
+        if channel.data(&setup[..]).await.is_err() {
+            return "X11 SEND FAILED".into();
+        }
+        held.lock().unwrap().push(channel);
+        return "X11 HELD".into();
+    }
+    // Sent in the same packet as the setup, as X clients pipeline requests.
+    setup.extend_from_slice(X11_PING);
+    if channel.data(&setup[..]).await.is_err() {
+        return "X11 SEND FAILED".into();
+    }
+    let mut received = Vec::new();
+    let mut closed = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while received.len() < X11_PING.len() {
+        match tokio::time::timeout_at(deadline, channel.wait()).await {
+            Ok(Some(russh::ChannelMsg::Data { data })) => received.extend_from_slice(&data),
+            Ok(Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close) | None) => {
+                closed = true;
+                break;
+            }
+            Ok(Some(_)) => {}
+            Err(_) => break,
+        }
+    }
+    // The X client disconnects, as a finished remote program does.
+    let _ = channel.close().await;
+    match (closed, received.as_slice()) {
+        (true, []) => "X11 CLOSED".into(),
+        (_, data) if data == X11_PING => "X11 ECHO PING".into(),
+        _ => format!("X11 UNEXPECTED {} BYTES", received.len()),
     }
 }
