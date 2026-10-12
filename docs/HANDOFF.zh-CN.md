@@ -55,7 +55,8 @@
 | SFTP 写操作原型 | 新建目录、重命名、删除、chmod、上传、下载落盘；需先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有原生窗口实测；写入开关缺少原生确认 |
 | 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
 | SCP | `scp -t/-f` 传单个文件 | 真实 OpenSSH 夹具 | 没有目录、递归或界面 |
-| Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试 | 没有真实 telnetd 或网络设备 |
+| Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试；真实 telnetd 308（6 项，本机） | 没有 login 认证、LINEMODE 或网络设备 |
+| 输入路径 | 有序输入队列（16 MiB）；按 UTF-8 边界分块输出，绕过 xterm.js #6003；粘贴与拖放过滤控制字符；无按键输入的文本会转发；拦截 F 键默认动作 | 浏览器测试（CDP） | 没有原生输入法、VoiceOver 或 WebView 实测 |
 | XMODEM/YMODEM | 不依赖 I/O 的发送与接收 | 23 项单元测试 | 没有 lrzsz 互操作，没有接入终端；ZMODEM 只有决策记录 |
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
@@ -108,7 +109,6 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
 4. **互操作**：
    - lrzsz：XMODEM/YMODEM，并评估 ZMODEM 的 `zmodem2`。
-   - 真实 telnetd。
    - Linux CI 上卡住连接的取消测试。
 5. **VT 差距**：设备身份、DECSCL 与 OSC 52 已用解析器钩子补上；其余按[终端内核决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。
 6. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 需要先评审 CSP 中的 `wasm-unsafe-eval`。
