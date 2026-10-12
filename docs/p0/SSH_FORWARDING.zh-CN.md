@@ -94,7 +94,7 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 
 ## SSH 终端的 agent 转发：IPC 与界面（C10）
 
-2026-10-12 加入。**只对本仓库的 russh 夹具、私有临时 `ssh-agent` 和浏览器 IPC stub 验证过，没有对 OpenSSH 服务端实测，不代表 C10 验收。**
+2026-10-12 加入。**验证过的对端：本仓库的 russh 夹具、浏览器 IPC stub，以及本机 macOS 上的系统 OpenSSH 10.3p1 sshd（只验证了远端 `ssh-add -l` 能列出私有临时 agent 中的密钥，见[下文](#与-openssh-服务端互操作2026-10-12)）。Linux CI 步骤已加入但尚未运行。不代表 C10 验收。**
 
 ### agent 转发的设计
 
@@ -116,10 +116,42 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 | `cargo test --lib forward`：原有的 `agent_forwarding_requires_explicit_enablement`（改为把临时 agent 的路径登记到路由，不再修改环境变量） | 通过：未登记时 `AGENT REFUSED`；登记后 `AGENT 1 KEYS`；`end_relays` 之后再次 `AGENT REFUSED` |
 | Playwright `tests/e2e/ssh-agent-forwarding.spec.ts`（IPC stub，3 项） | 通过：只有终端对话框显示选项，默认不勾选；不勾选时 `ssh_open` 不带 `agentForwarding`；勾选后显示警告和核对指纹时的提醒，`ssh_probe` 不携带选择，`ssh_open` 带 `agentForwarding: true`，状态栏显示已转发；后端拒绝以文本显示；关闭对话框后再次打开为不勾选；本地存储中没有相关内容；文件浏览不发送该参数 |
 
+### 与 OpenSSH 服务端互操作（2026-10-12）
+
+**做法**：
+
+- **夹具**：[`tests/fixtures/ssh-terminal/fixture.mjs`](../../tests/fixtures/ssh-terminal/fixture.mjs) 新增 `--agent` 模式（与 `--x11` 互斥），照 `--x11` 的方式只放开一项：`AllowAgentForwarding yes`，TCP、StreamLocal、隧道、X11 转发仍关闭；`authorized_keys` 只在这一模式下去掉 `no-agent-forwarding`。交互包装脚本多一个 `agent-list` 命令：在远端运行 `/usr/bin/ssh-add -l -E sha256`，输出远端的 `SSH_AUTH_SOCK`、每行结果和退出码。夹具自己的文件仍全部在临时根目录中，进程按原有规则按 PID 清理。
+- **私有 agent**：运行器 [`agent-client.test.mjs`](../../tests/fixtures/ssh-terminal/agent-client.test.mjs) 在私有临时目录中生成一把 Ed25519 密钥（注释 `p0-agent-forward`），以 `HOME` 指向该目录启动 `/usr/bin/ssh-agent -D -a <该目录>/agent.sock`，用 `ssh-add` 载入这把密钥，并先在本机确认 agent 里恰好只有这一把。只有 Rust 测试进程的 `SSH_AUTH_SOCK` 指向它；不使用用户的 agent，不读取 `~/.ssh` 中的任何密钥。结束时按 PID 停止 agent，确认它删除了自己的套接字，再删除临时目录。
+- **我方**：[`tests/ssh_agent_openssh.rs`](../../apps/desktop/src-tauri/tests/ssh_agent_openssh.rs)（`#[ignore]`，只由运行器启动）通过公开的 `Ssh::open_with_agent`，也就是 `ssh_open` 的 `agentForwarding` 所走的方法，先 probe 并核对夹具的主机指纹，再打开两个终端：一个不开启转发，一个开启。
+- **门控**：与其它被忽略的 OpenSSH 夹具测试相同，只在非 root 的 macOS/Linux、且有 `/usr/sbin/sshd`、`ssh`、`ssh-keygen`、`ssh-agent`、`ssh-add` 时运行，否则跳过；`P0_AGENT_REQUIRED=1`（CI）时跳过改为失败。
+
+**sshd 的转发套接字位置（与“只动夹具临时目录”的要求冲突）**：转发套接字由 sshd 自己创建，本机 OpenSSH 10.3p1 的 sshd_config 没有选项可以改它的位置（上游源码中新增的 `AgentSocketPath`，本机 sshd 不认识，报 `Bad configuration option`）。OpenSSH 10.1 起，sshd 把它建在账户 passwd 主目录下的 `~/.ssh/agent/s.<主机哈希>.sshd.<随机>`（目录不存在时会创建）；10.1 之前建在私有的 `/tmp/ssh-XXXXXXXXXX/agent.<pid>`。两者都在夹具临时目录之外，会话结束时都由 sshd 删除。因此：
+
+- 夹具在 `--agent` 模式下按 `ssh -V` 的版本判断位置。在 10.1 及以上，未设置 `P0_AGENT_HOME_SOCKET=1` 时拒绝启动（退出码 2，`SKIP:`），不启动 sshd；运行器据此跳过。
+- 运行器核对远端报告的 `SSH_AUTH_SOCK` 确实位于预期目录，并在会话结束后 5 秒内确认 sshd 已删除它（10.1 之前还确认 `/tmp/ssh-*` 目录已删除）。如果 sshd 被强制结束、没能删除，运行器只删除这一个确切路径的套接字，并让测试失败。
+- CI 的 Linux 步骤同时设置 `P0_AGENT_REQUIRED=1` 和 `P0_AGENT_HOME_SOCKET=1`（运行器主目录是一次性的）；ubuntu-24.04 的 OpenSSH 9.6 预计会使用 `/tmp`。
+
+**实测（2026-10-12，macOS 27.0.1 arm64，OpenSSH_10.3p1，本机）**：
+
+| 命令 | 结果 |
+| --- | --- |
+| `node --test tests/fixtures/ssh-terminal/agent-client.test.mjs`（不设置 `P0_AGENT_HOME_SOCKET`） | 跳过：`OpenSSH 10.3 sshd binds forwarded agents under /Users/<用户>/.ssh/agent; set P0_AGENT_HOME_SOCKET=1 ...`，未启动 sshd |
+| 同上，但设置 `P0_AGENT_REQUIRED=1` | 失败（`P0_AGENT_REQUIRED is set, but SKIP: ...`），不是跳过 |
+| `P0_AGENT_HOME_SOCKET=1 node --test tests/fixtures/ssh-terminal/agent-client.test.mjs`，连续 3 次 | 通过 1/1。未开启转发的终端：远端 `SSH_AUTH_SOCK` 为空，`ssh-add -l` 输出 `Could not open a connection to your authentication agent.`，退出码 2。开启转发的终端：远端 `SSH_AUTH_SOCK=/Users/<用户>/.ssh/agent/s.HsIgctl814.sshd.<随机>`，`ssh-add -l` 恰好列出 1 行 `256 SHA256:<私有密钥指纹> p0-agent-forward (ED25519)`，退出码 0。之后未开启的终端仍然连不上 agent。两个终端 `exit` 后退出码都是 7；sshd 已删除转发套接字；夹具根目录、私有 agent 套接字和临时目录都已删除 |
+| 运行前后对比 `ls -la ~/.ssh/agent/` | 文件列表相同（仍是用户原有的 2 个 agent 套接字），只有目录的修改时间变了（sshd 建立并删除了转发套接字） |
+| `node --test tests/fixtures/ssh-terminal/fixture.test.mjs tests/fixtures/ssh-terminal/rust-client.test.mjs` | 3/3 通过，默认模式（不带 `--agent`）的夹具行为不变 |
+| `node tests/fixtures/ssh-terminal/fixture.mjs --agent --x11` | 用法错误，退出码 2 |
+| `cargo test --locked --all-targets --all-features`（`fmt --check`、`clippy -D warnings` 同时通过） | 全部通过；`ssh_agent_openssh` 1 项 ignored（只由运行器启动） |
+
+清理要求：运行器的清理不会用自己的断言掩盖前面的失败（失败时只打印清理问题）；成功时清理问题（夹具退出码、遗留的转发套接字、私有 agent 套接字、夹具根目录）会让测试失败。
+
+**CI**：`.github/workflows/p0-cross-platform.yml` 在 Linux 作业的 X11 步骤之后新增 `agent_openssh` 步骤：安装 `openssh-server openssh-client`，运行同一个运行器，日志写入 `p0-logs/agent-openssh.log`。Rust 测试二进制已在前面的 `cargo test --all-targets --all-features` 步骤中编译，这一步只额外运行约数秒。**该步骤尚未运行。**
+
 ### agent 转发未验证
 
-- 与 OpenSSH 服务端互操作（`AllowAgentForwarding`、远端 `SSH_AUTH_SOCK` 的建立、远端 `ssh-add -l` / 跳转登录）没有实测；夹具只模拟服务器打开 agent 通道。
-- 原生桌面窗口中的点击与显示没有实测；Windows 的命名管道路径与 Linux 都没有运行（集成测试只在 Unix 上编译运行）。
+- 只验证了远端列出密钥（`ssh-add -l`，即 agent 的 `REQUEST_IDENTITIES`）；远端经转发 agent 签名（例如从远端再 `ssh` 登录第三台主机，或 `ssh-keygen -Y sign`）没有测试。
+- 只在 macOS 上对 OpenSSH 10.3p1 运行过；Linux（OpenSSH 9.6，`/tmp` 位置）只有尚未运行的 CI 步骤。russh 发送的是 `auth-agent-req@openssh.com`，sshd 打开的是 `auth-agent@openssh.com` 通道；OpenSSH 新增的 `agent-req` / `agent-connect` 名称没有使用，也没有测试。
+- 原生桌面窗口中的点击与显示没有实测；Windows 的命名管道路径没有运行（集成测试只在 Unix 上编译运行）。
 - macOS 从访达启动的 `.app` 是否继承 launchd 提供的 `SSH_AUTH_SOCK` 没有验证。
 - 没有 agent 确认提示（`ssh-add -c`）的界面，也不限制可用的密钥；远端能使用 agent 中的全部密钥。
 
@@ -135,7 +167,7 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 
 ## 未完成
 
-- X11 转发（C15）只有 Rust 探针，没有界面，未在真实 X 服务器上验证，见[决策记录](X11_GSSAPI_ADR.zh-CN.md)；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发已有逐连接开启的界面（见上文），但只对 russh 夹具验证；远端监听只在回环地址上验证。
+- X11 转发（C15）只有 Rust 探针，没有界面，未在真实 X 服务器上验证，见[决策记录](X11_GSSAPI_ADR.zh-CN.md)；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发已有逐连接开启的界面（见上文），对 russh 夹具验证过，对系统 OpenSSH 只在 macOS 上验证了远端 `ssh-add -l`；远端监听只在回环地址上验证。
 - 代理、ProxyCommand 与一跳跳板已作为连接路线接入 SSH 对话框（2026-10-12），见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)；仍无配置保存，代理只在本机测试代理上验证。
 - 端口转发只能在已打开的 SSH 终端上临时添加：没有配置保存，也不随会话自动启动；本地与动态监听只允许回环地址。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

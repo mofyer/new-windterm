@@ -14,13 +14,17 @@ const SSHD = '/usr/sbin/sshd';
 const SSH = '/usr/bin/ssh';
 const KEYGEN = '/usr/bin/ssh-keygen';
 const XAUTH = '/usr/bin/xauth';
+const SSH_ADD = '/usr/bin/ssh-add';
 const ARGS = process.argv.slice(2);
 const SERVE = ARGS.includes('--serve');
 // --x11: X11Forwarding yes (all other forwarding stays off) and an
 // `xdpyinfo` command; the server's xauth writes a private file in the root.
 const X11 = ARGS.includes('--x11');
-if (ARGS.some(arg => !['--serve', '--x11'].includes(arg))) {
-  console.error('Usage: node tests/fixtures/ssh-terminal/fixture.mjs [--serve] [--x11]');
+// --agent: AllowAgentForwarding yes (all other forwarding stays off) and an
+// `agent-list` command running `ssh-add -l` against the forwarded agent.
+const AGENT = ARGS.includes('--agent');
+if (ARGS.some(arg => !['--serve', '--x11', '--agent'].includes(arg)) || (X11 && AGENT)) {
+  console.error('Usage: node tests/fixtures/ssh-terminal/fixture.mjs [--serve] [--x11 | --agent]');
   process.exit(2);
 }
 
@@ -33,6 +37,27 @@ if (!['darwin', 'linux'].includes(process.platform) || process.getuid?.() === 0)
 }
 if (![SSHD, SSH, KEYGEN].every(existsSync)) unsupported('OpenSSH sshd, ssh, and ssh-keygen are required');
 if (X11 && !existsSync(XAUTH)) unsupported(`X11 mode needs ${XAUTH} for sshd`);
+if (AGENT && !existsSync(SSH_ADD)) unsupported(`agent mode needs ${SSH_ADD} on the server side`);
+
+// sshd binds the forwarded agent's listener where its release decides; no
+// sshd_config option moves it (OpenSSH 10.3p1 rejects the newer upstream
+// `AgentSocketPath`).
+// From 10.1 it is `<passwd home>/.ssh/agent/s.*.sshd.*` (sshd creates the
+// directories when missing); before, a private `/tmp/ssh-XXXXXXXXXX/agent.*`.
+// sshd removes the socket when the connection ends. A socket in the account's
+// real ~/.ssh is only allowed with P0_AGENT_HOME_SOCKET=1.
+function forwardedAgentDirectory() {
+  const banner = spawnSync(SSH, ['-V'], { encoding: 'utf8', timeout: 5000 });
+  const version = `${banner.stderr ?? ''}${banner.stdout ?? ''}`.match(/OpenSSH_(\d+)\.(\d+)/);
+  if (!version) unsupported(`cannot read the OpenSSH version from ${SSH} -V`);
+  const [major, minor] = [Number(version[1]), Number(version[2])];
+  const directory = major > 10 || (major === 10 && minor >= 1) ? join(userInfo().homedir, '.ssh', 'agent') : '/tmp';
+  if (directory !== '/tmp' && process.env.P0_AGENT_HOME_SOCKET !== '1') {
+    unsupported(`OpenSSH ${major}.${minor} sshd binds forwarded agents under ${directory}; set P0_AGENT_HOME_SOCKET=1 to allow its transient socket there`);
+  }
+  return directory;
+}
+const agentDirectory = AGENT ? forwardedAgentDirectory() : null;
 
 const shell = userInfo().shell;
 if (!['/bin/zsh', '/bin/bash', '/usr/bin/zsh', '/usr/bin/bash'].includes(shell)) {
@@ -181,7 +206,7 @@ async function setup() {
     await chmod(join(root, key), 0o600);
     await chmod(join(root, `${key}.pub`), 0o600);
   }
-  const keyOptions = `no-agent-forwarding,no-port-forwarding,${X11 ? '' : 'no-X11-forwarding,'}no-user-rc`;
+  const keyOptions = `${AGENT ? '' : 'no-agent-forwarding,'}no-port-forwarding,${X11 ? '' : 'no-X11-forwarding,'}no-user-rc`;
   await writeFile(join(root, 'authorized_keys'), `${keyOptions} ${await readFile(join(root, 'client.pub'), 'utf8')}`, { mode: 0o600 });
   await writeFile(join(root, 'empty_known_hosts'), '', { mode: 0o600 });
 
@@ -230,6 +255,13 @@ ${X11 ? `    xdpyinfo)
       fi
       printf 'P0_X11_REMOTE_COOKIE %s\\r\\n' "$(xauth list 2>/dev/null | awk '{print $3}' | head -n 1)"
       ;;
+` : ''}${AGENT ? `    agent-list)
+      agent_status=0
+      listing=$(${SSH_ADD} -l -E sha256 2>&1) || agent_status=$?
+      printf 'P0_AGENT_SOCKET %s\\r\\n' "\${SSH_AUTH_SOCK-}"
+      printf '%s\\n' "$listing" | while IFS= read -r line; do printf 'P0_AGENT_LINE %s\\r\\n' "$line"; done
+      printf 'P0_AGENT_%s %s\\r\\n' STATUS "$agent_status"
+      ;;
 ` : ''}    exit) printf 'P0_SSH_EXIT_7\\r\\n'; exit 7 ;;
     '') ;;
     *) printf 'P0_COMMAND_DENIED\\r\\n' >&2; exit 126 ;;
@@ -274,7 +306,11 @@ PermitTunnel no
 X11Forwarding yes
 X11UseLocalhost yes
 X11DisplayOffset 10
-XAuthLocation ${XAUTH}` : `DisableForwarding yes
+XAuthLocation ${XAUTH}` : AGENT ? `AllowTcpForwarding no
+AllowAgentForwarding yes
+AllowStreamLocalForwarding no
+PermitTunnel no
+X11Forwarding no` : `DisableForwarding yes
 X11Forwarding no`}
 StrictModes yes
 UseDNS no
@@ -310,8 +346,9 @@ ForceCommand /bin/sh ${join(root, 'dispatch.sh')}
     username: account.username, privateKeyPath: join(root, 'client'), wrongKeyPath: join(root, 'wrong-client'),
     knownHostsPath: join(root, 'known_hosts'), emptyKnownHostsPath: join(root, 'empty_known_hosts'),
     fingerprint, rootDirectory: root, serverConfigPath: join(root, 'sshd_config'),
-    allowedCommands: ['printf', 'stty size', 'generate', ...(X11 ? ['xdpyinfo'] : []), 'exit'],
+    allowedCommands: ['printf', 'stty size', 'generate', ...(X11 ? ['xdpyinfo'] : []), ...(AGENT ? ['agent-list'] : []), 'exit'],
     x11: X11, remoteXauthority: X11 ? join(root, 'remote.xauth') : null,
+    agent: AGENT, forwardedAgentDirectory: agentDirectory,
     exitCode: 7, maxGeneratorBytes: 2 * 1024 * 1024,
   };
   await writeFile(join(root, 'connection.json'), JSON.stringify(metadata, null, 2), { mode: 0o600 });
