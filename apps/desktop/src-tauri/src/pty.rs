@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     io::{Read, Write},
     sync::{
-        mpsc::{sync_channel, SyncSender},
+        mpsc::{sync_channel, SyncSender, TrySendError},
         Arc, Condvar, Mutex,
     },
     thread,
@@ -49,6 +49,18 @@ pub const OUTPUT_BUDGET: usize = 64 * 1024;
 const MAX_IN_FLIGHT: usize = 64;
 const ACK_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_SESSIONS: usize = 8;
+
+/// The front end waits briefly and resends the same chunk on exactly this error, so input
+/// larger than the bounded queue (a long paste) is delivered in order instead of being cut.
+/// Keep in sync with `QUEUE_FULL` in `apps/desktop/src/input-queue.ts`.
+const INPUT_QUEUE_FULL: &str = "PTY input queue is full; retry after drain";
+
+fn input_queue_error<T>(error: TrySendError<T>) -> String {
+    match error {
+        TrySendError::Full(_) => INPUT_QUEUE_FULL.into(),
+        TrySendError::Disconnected(_) => "PTY session is closed".into(),
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -225,9 +237,7 @@ impl Session {
         if data.is_empty() {
             return Ok(());
         }
-        self.input
-            .try_send(data)
-            .map_err(|_| "PTY input queue is full or closed; retry after drain".into())
+        self.input.try_send(data).map_err(input_queue_error)
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
@@ -924,6 +934,21 @@ fn checked_size(cols: u16, rows: u16) -> Result<PtySize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_input_queue_is_retryable_and_a_closed_one_is_final() {
+        let (sender, receiver) = sync_channel::<Vec<u8>>(1);
+        sender.try_send(vec![1]).unwrap();
+        let full = sender.try_send(vec![2]).map_err(input_queue_error);
+        assert_eq!(full, Err(INPUT_QUEUE_FULL.to_string()));
+        // The refused chunk was not queued, so resending it cannot duplicate input.
+        assert_eq!(receiver.try_recv(), Ok(vec![1]));
+        assert!(receiver.try_recv().is_err());
+        sender.try_send(vec![2]).unwrap();
+        drop(receiver);
+        let closed = sender.try_send(vec![3]).map_err(input_queue_error);
+        assert_eq!(closed, Err("PTY session is closed".to_string()));
+    }
 
     #[test]
     fn destroyed_window_cannot_open_a_queued_session() {

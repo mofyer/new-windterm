@@ -56,6 +56,19 @@ enum Control {
     Input(Vec<u8>),
     Resize(u16, u16),
 }
+
+/// The front end waits briefly and resends the same chunk on exactly this error: the channel
+/// task is still waiting for the server's window, so the input is delayed, not lost. Keep in
+/// sync with `QUEUE_FULL` in `apps/desktop/src/input-queue.ts`.
+const INPUT_QUEUE_FULL: &str = "SSH input queue is full; retry after drain";
+
+fn control_queue_error(error: mpsc::error::TrySendError<Control>) -> String {
+    match error {
+        mpsc::error::TrySendError::Full(_) => INPUT_QUEUE_FULL.into(),
+        mpsc::error::TrySendError::Closed(_) => "SSH terminal is closed".into(),
+    }
+}
+
 pub(super) struct Terminal {
     owner: String,
     input: mpsc::Sender<Control>,
@@ -78,14 +91,14 @@ impl Ssh {
         self.terminal(owner, id)?
             .input
             .try_send(Control::Input(data))
-            .map_err(|_| "SSH input queue unavailable".into())
+            .map_err(control_queue_error)
     }
     pub fn resize(&self, owner: &str, id: &str, cols: u16, rows: u16) -> Result<(), String> {
         size(cols, rows)?;
         self.terminal(owner, id)?
             .input
             .try_send(Control::Resize(cols, rows))
-            .map_err(|_| "SSH input queue unavailable".into())
+            .map_err(control_queue_error)
     }
     pub fn ack(&self, owner: &str, id: &str, sequence: u64) -> Result<(), String> {
         let terminal = match self.terminal(owner, id) {
@@ -517,6 +530,24 @@ mod tests {
         }
         assert_eq!(flow.reserve(1), None);
         assert!(flow.deadline().is_some());
+    }
+    #[test]
+    fn full_input_queue_is_retryable_and_a_closed_one_is_final() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        sender.try_send(Control::Input(vec![1])).unwrap();
+        let full = sender
+            .try_send(Control::Input(vec![2]))
+            .map_err(control_queue_error);
+        assert_eq!(full, Err(INPUT_QUEUE_FULL.to_string()));
+        // The refused chunk was not queued, so resending it cannot duplicate input.
+        assert!(matches!(receiver.try_recv(), Ok(Control::Input(data)) if data == [1]));
+        assert!(receiver.try_recv().is_err());
+        sender.try_send(Control::Input(vec![2])).unwrap();
+        drop(receiver);
+        let closed = sender
+            .try_send(Control::Resize(80, 24))
+            .map_err(control_queue_error);
+        assert_eq!(closed, Err("SSH terminal is closed".to_string()));
     }
     #[test]
     fn invalid_dimensions_are_rejected() {

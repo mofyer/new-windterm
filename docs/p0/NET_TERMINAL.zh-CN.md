@@ -10,7 +10,7 @@
 - `net_open({ target: { kind: "telnet" | "raw", host, port }, id, cols, rows, onEvent })`：`target` 拒绝未知字段；`id` 是前端生成的 UUID，open 一开始就登记，因此连接期间也能用 `net_close(id)` 取消。比 open 先到达的 close 会让随后的 open 直接失败。
 - 主机和端口按 `ssh.rs` 的 `validate` 规则校验（仅字母、数字和 `.-:`，最长 253，端口非 0），终端尺寸 1–1000。TCP 连接超时 15 秒，超时、拒绝和取消分别返回 `… connection timed out / failed / cancelled`。
 - 输出与 PTY、SSH 共用 `PtyEvent` 字节流：每块不超过 4096 字节，未 ACK 上限 64 KiB / 64 块，ACK 必须按序（重复 ACK 幂等），最早一块 15 秒未 ACK 即报错。预算用尽时不再读 socket，由 TCP 流控把压力传回对端，进程内不另外缓冲。
-- 输入每次 1–4096 字节，进入 16 项有界队列；队列满时 `net_write` 等待（最多 15 秒），压力因此传回前端的 64 KiB 输入上限，而不是让大段粘贴失败。Telnet 协商应答和用户输入共用一个有界、有序的发送队列，单次 socket 写入超时 15 秒。
+- 输入每次 1–4096 字节，进入 16 项有界队列；队列满时 `net_write` 等待（最多 15 秒），压力因此传回前端的有序输入队列（积压上限 16 MiB，见 [INPUT_PATHS](INPUT_PATHS.zh-CN.md)），而不是让大段粘贴失败。Telnet 协商应答和用户输入共用一个有界、有序的发送队列，单次 socket 写入超时 15 秒。
 - Telnet 使用 [`telnet.rs`](../../apps/desktop/src-tauri/src/telnet.rs)：`receive` 拆出的数据交给终端，应答写回 socket；输入经 `send` 转义（0xFF 双写，非二进制模式下单独的 CR 发送为 CR LF）；`resize` 在协商 NAWS 后发送新尺寸。TTYPE 报告 `xterm-256color`，初始尺寸取 open 时的列数和行数。
 - Raw TCP 双向原样传字节；`net_resize` 只做校验，不发送任何内容。
 - 生命周期：对端关闭和本地关闭都报告 `exit`（code 为 null），读写失败或 ACK 超时报告 `error`；结束时立即关闭写方向（发送 FIN）再释放 socket。`write/resize/ack/close` 都校验所属窗口；含连接中在内最多 8 个会话；页面开始加载和窗口销毁时调用 `close_owner`，应用退出时调用 `shutdown`。会话结束后的 ACK 和 close 按最近 128 个 ID 幂等成功，ID 不能重复使用。
@@ -44,7 +44,7 @@ macOS arm64 本机（Rust 1.99.0）：
 - 对端主动关闭报告 `exit`；8 个会话后第 9 个被拒绝；`close_owner` 关闭全部 8 个会话（服务器看到 8 次 FIN），之后同一窗口可以重新打开；`shutdown` 后关闭现有会话并拒绝新会话；连接被拒绝、非法主机、端口 0 和非法尺寸都不建立会话。
 - 连接中关闭：Linux 在监听端口 accept 队列占满时丢弃新的 SYN，`connect` 卡在内核中，测试在此期间关闭并断言 open 返回 `cancelled`。macOS（以及 Windows）对溢出连接直接回 RST，无法制造卡住的连接，该测试跳过，由上面的单元测试覆盖；Linux 上的结果尚待 CI。
 
-Playwright（`tests/e2e/net-terminal-contract.spec.ts`）：浏览器入口仅提示不可用；`net_open` 参数形状；分块 UTF-8 先渲染再按序 `net_ack`，HTML 只作为文本显示；输入按 4096 字节有序拆分、64 KiB 上限；窗口尺寸变化走 `net_resize`；非法主机/端口不发起 IPC；连接中关闭与迟到结果的关闭；远端退出、open 前的错误和 open 失败后不再发送输入；关闭失败保留标签；卸载时关闭两种状态的会话；8 个会话上限；全程不调用 `pty_`/`ssh_` 命令。
+Playwright（`tests/e2e/net-terminal-contract.spec.ts`）：浏览器入口仅提示不可用；`net_open` 参数形状；分块 UTF-8 先渲染再按序 `net_ack`，HTML 只作为文本显示；输入按 4096 字节有序拆分、超过 16 MiB 积压的单次输入整体拒绝；窗口尺寸变化走 `net_resize`；非法主机/端口不发起 IPC；连接中关闭与迟到结果的关闭；远端退出、open 前的错误和 open 失败后不再发送输入；关闭失败保留标签；卸载时关闭两种状态的会话；8 个会话上限；全程不调用 `pty_`/`ssh_` 命令。
 
 ## 限制与未验收
 

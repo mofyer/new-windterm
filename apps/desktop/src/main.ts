@@ -4,6 +4,12 @@ import { authPromptsFor, createSshVerification, type SshTerminalRequest } from "
 import { createSftpPanel } from "./sftp-panel";
 import { createNetTerminalDialog, netLabel, type NetTerminalRequest } from "./net-terminal";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
+import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
+import { Utf8Boundary } from "./utf8-boundary";
+import {
+  attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, clipToGraphemes, dropLastGrapheme,
+  sendUnmappedControl,
+} from "./terminal-input";
 import { FitAddon } from "@xterm/addon-fit";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
@@ -33,13 +39,12 @@ type Session = {
   status: string;
   ended: boolean;
   bytes: number;
-  pendingInput: number;
   // Input produced before the native ID exists, e.g. xterm's automatic reply
   // to ConPTY's startup cursor-position query. Flushed in order once opened.
   early: Uint8Array[];
   earlyBytes: number;
   ack: Promise<unknown>;
-  input: Promise<unknown>;
+  input: InputQueue;
 };
 const EARLY_INPUT_LIMIT = 4096;
 const icon = (name: string) => {
@@ -275,7 +280,23 @@ function stress(s: Session) {
   s.terminal.write("\r\n");
   step();
 }
+/** Demo line length bound, in UTF-16 code units (cut back to a whole grapheme). */
+const DEMO_LINE_LIMIT = 4096;
+/** The demo echoes like a line editor: a paste may hold several lines; escape sequences are not emulated. */
 function demoInput(s: Session, data: string) {
+  if (data.startsWith("\x1b")) return;
+  for (const [token] of data.matchAll(/[\x00-\x1f\x7f]|[^\x00-\x1f\x7f]+/g)) demoToken(s, token);
+}
+/** Redraws the prompt row(s) after an erase; wide characters can make the line wrap early. */
+function demoRedraw(s: Session) {
+  const buffer = s.terminal.buffer.active;
+  let up = 0;
+  while (up < buffer.cursorY && buffer.getLine(buffer.baseY + buffer.cursorY - up)?.isWrapped) up++;
+  s.terminal.write(
+    `${up ? `\x1b[${up}A` : ""}\r\x1b[J\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % ${s.line}`,
+  );
+}
+function demoToken(s: Session, data: string) {
   if (data === "\x03") {
     s.outputRun++;
     s.line = "";
@@ -311,50 +332,37 @@ function demoInput(s: Session, data: string) {
   }
   if (data === "\x7f") {
     if (s.line) {
-      s.line = [...s.line].slice(0, -1).join("");
-      s.terminal.write(
-        "\r\x1b[2K\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % " + s.line,
-      );
+      // One Backspace removes one visible character, not one code point of it.
+      s.line = dropLastGrapheme(s.line);
+      demoRedraw(s);
     }
     return;
   }
   if (!/[\x00-\x1f\x7f]/.test(data)) {
-    const input = data.slice(0, Math.max(0, 4096 - s.line.length));
+    const input = clipToGraphemes(data, Math.max(0, DEMO_LINE_LIMIT - s.line.length));
     s.line += input;
     s.terminal.write(input);
   }
 }
 function sendInput(s: Session, bytes: Uint8Array) {
-  const id = s.ptyId;
-  if (!id || s.disposed || s.ended || s.closing) return;
-  if (s.pendingInput + bytes.length > 65536) {
-    toast("输入队列已满（64 KiB）；请等待后分段发送。");
-    return;
-  }
-  s.pendingInput += bytes.length;
-  const enqueuedAt = diagnostics ? performance.now() : 0;
-  if (diagnostics) {
-    diagnostics.inputEvents++;
-    diagnostics.pendingInputBytes += bytes.length;
-    diagnostics.maxPendingInputBytes = Math.max(diagnostics.maxPendingInputBytes, diagnostics.pendingInputBytes);
-  }
-  s.input = s.input
-    .then(async () => {
-      if (diagnostics) diagnostics.maxInputWaitMs = Math.max(diagnostics.maxInputWaitMs, performance.now() - enqueuedAt);
-      for (let offset = 0; offset < bytes.length; offset += 4096) {
-        if (s.disposed || s.ended || s.closing) return;
-        if (diagnostics) diagnostics.inputCalls++;
-        await invoke(`${transport(s)}_write`, {
-          id,
-          data: Array.from(bytes.subarray(offset, offset + 4096)),
-        });
-      }
-    })
-    .catch((error) => { if (!s.ended) backendError(s, error); })
-    .finally(() => {
-      s.pendingInput -= bytes.length;
-      if (diagnostics) diagnostics.pendingInputBytes -= bytes.length;
-    });
+  if (!s.ptyId || s.disposed || s.ended || s.closing) return;
+  if (!s.input.push(bytes))
+    toast(`输入队列已满（${INPUT_BACKLOG_BYTES / 1024 / 1024} MiB）；本次输入未发送，请等待前面的内容发送完成。`);
+}
+function inputQueue(s: () => Session) {
+  return new InputQueue({
+    write: (chunk) => invoke(`${transport(s())}_write`, { id: s().ptyId, data: Array.from(chunk) }),
+    writable: () => {
+      const session = s();
+      return !!session.ptyId && !session.disposed && !session.ended && !session.closing;
+    },
+    failed: (error, discarded) => {
+      const session = s();
+      if (session.ended || session.disposed) return;
+      backendError(session, error);
+      if (discarded) toast(`输入发送失败；已丢弃其后尚未发送的 ${discarded.toLocaleString()} B，避免内容出现缺口。`);
+    },
+  });
 }
 function queueInput(s: Session, bytes: Uint8Array) {
   if (s.ptyId) {
@@ -412,13 +420,17 @@ function createSession(name: string, mode: Mode): Session | undefined {
     status: mode === "demo" ? "演示就绪" : "正在启动…",
     ended: false,
     bytes: 0,
-    pendingInput: 0,
     early: [],
     earlyBytes: 0,
     ack: Promise.resolve(),
-    input: Promise.resolve(),
+    input: inputQueue(() => s),
   };
   s.observer.observe(element);
+  attachPasteGuard(element, terminal, (removed) =>
+    toast(`已从粘贴内容中移除 ${removed} 个控制字符（仅保留制表符和换行）。`),
+  );
+  attachInsertTextBridge(terminal);
+  attachKeyDefaultGuard(terminal);
   sessions.set(s.key, s);
   activeKey = s.key;
   terminal.onData((data) => {
@@ -444,7 +456,7 @@ function createSession(name: string, mode: Mode): Session | undefined {
       !(
         event.key.toLowerCase() === "k" &&
         (event.metaKey || (event.ctrlKey && event.shiftKey))
-      ),
+      ) && !sendUnmappedControl(terminal, event),
   );
   element.addEventListener("focusin", () => {
     if (activeKey !== s.key) {
@@ -462,8 +474,14 @@ function createSession(name: string, mode: Mode): Session | undefined {
   terminal.focus();
   return s;
 }
+/** Shows a character the stream ended in the middle of as U+FFFD; output is over. */
+function endOutput(s: Session, utf8: Utf8Boundary) {
+  const tail = utf8.flush();
+  if (tail.length) s.terminal.write(tail);
+}
 function terminalChannel(s: Session) {
   const onEvent = new Channel<PtyEvent>();
+  const utf8 = new Utf8Boundary();
   onEvent.onmessage = (event) => {
     if (s.disposed) return;
     if (event.kind === "data") {
@@ -473,7 +491,7 @@ function terminalChannel(s: Session) {
         diagnostics.receivedChunks++;
         diagnostics.receivedBytes += event.data.length;
       }
-      s.terminal.write(new Uint8Array(event.data), () => {
+      s.terminal.write(utf8.take(new Uint8Array(event.data)), () => {
         if (s.disposed) return;
         const parsedAt = diagnostics ? performance.now() : 0;
         if (diagnostics) {
@@ -494,17 +512,21 @@ function terminalChannel(s: Session) {
         if (s.key === activeKey) scheduleStatusUpdate();
       });
     } else if (event.kind === "exit") {
+      endOutput(s, utf8);
       s.ended = true;
       s.early = [];
       s.earlyBytes = 0;
+      s.input.clear();
       s.status = `已退出 · code ${event.code ?? "unknown"}`;
       s.ptyId = undefined;
       updateStatus();
     } else {
       // Network errors are terminal lifecycle events; the backend releases the session.
       if (s.mode === "ssh" || s.mode === "net") {
+        endOutput(s, utf8);
         s.ended = true;
         s.ptyId = undefined;
+        s.input.clear();
       }
       backendError(s, event.message);
     }
@@ -642,6 +664,7 @@ async function closeSession(key: number) {
   s.disposed = true;
   s.early = [];
   s.earlyBytes = 0;
+  s.input.clear();
   s.outputRun++;
   s.observer.disconnect();
   s.terminal.dispose();
