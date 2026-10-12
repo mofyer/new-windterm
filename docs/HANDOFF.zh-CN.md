@@ -68,7 +68,7 @@
 | 依赖与许可证 | 依赖清单 | [清单](p0/DEPENDENCIES.zh-CN.md) | — |
 | 安全评审 | 网络探针没有 CRITICAL 或 HIGH 问题；MEDIUM 已修复或已写明不采纳的理由 | RESULTS「网络探针安全评审」一节 | — |
 
-X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有实现代码。
+X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb 和 OpenSSH 的真实互操作放在 Linux CI 上运行。GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)。
 
 ## 绝对不能误报的边界
 
@@ -95,7 +95,7 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 - **合并**：同意把 `p0/integration` 合并到 `main`（需要在 CI 通过之后）。
 - **功能基线冻结**：对[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)中的 E1–E12 作出决定。最先要定的是：以 README 和静态证据为准直接冻结，还是先在隔离环境中运行上游 2.7.0，记录与本项目的差异。
 - **串口（C04）**：需要一个真实的 USB 串口设备。
-- **X11 转发（C15）**：需要批准安装 XQuartz，或改用 Xvfb 在 Linux 上验证。
+- **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
 - **辅助功能**：输入法与 VoiceOver 需要在真机上测试。
 - **发行**：签名与公证需要凭据。

@@ -504,6 +504,41 @@ ZMODEM 建议先评估 `zmodem2` crate（MIT/Apache-2.0），否则按公开规�
 
 仍是低风险项：ProxyCommand 子进程不关闭 stdout 时，读取线程会一直阻塞；`Drop` 时会结束子进程。
 
+## X11 转发探针（C15）
+
+按[决策记录](X11_GSSAPI_ADR.zh-CN.md)实现了 X11 转发，暂时只有 Rust 入口 `Ssh::open_with_x11`，没有界面，也没有 IPC。
+
+**机制：**
+- 在会话通道上发送 `x11-req`，携带随机生成的 16 字节假 cookie，屏幕 0。
+- 只有对这条连接开启了 X11，才接受 x11 通道，同时最多 32 个。
+- 对每个通道：
+  - 按两种字节序解析连接建立报文；
+  - 用不随差异位置变化耗时的方式比对假 cookie，不匹配就直接关闭，不连接本地显示；
+  - 匹配时换成从 `xauth` 读出的真实 cookie，再开始转发。
+- 终端结束时，所有 X11 中继随之结束。
+
+**安全限制：** 与 `ssh -X` 不同，这里没有生成受限的 untrusted cookie，远端 X 程序拥有与本地程序相同的显示权限。
+
+**测试：**
+
+| 检查 | 结果 |
+| --- | --- |
+| X11 模块单元测试 | 11 项通过（loopback 夹具加假 X server） |
+| 变异检查 | 拿掉 cookie 替换、cookie 比对、通道上限或槽位释放中的任一项，都会有测试失败 |
+| 合并后 Rust 单元 | 151 passed |
+| 本机一次性互操作 | OpenSSH 10.3p1 sshd 接受了 `x11-req`，cookie 替换和错误 cookie 拒绝都正确；只到消息层 |
+| Linux CI 步骤 | 已加入，尚未运行：安装 Xvfb、xauth、x11-utils，经真实 OpenSSH 远端运行 `xdpyinfo` |
+
+两项评审的 MEDIUM 都已修复。
+
+**没有验证：**
+- 真实 X 程序和 XQuartz。
+- Windows：没有 xauth，目前拒绝 X11。
+- Wayland。
+- 经代理或跳板的 X11。
+
+GSSAPI（C14）仍然只有决策记录。
+
 ## X11 转发与 GSSAPI（C15/C14）决策记录
 
 russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项都不阻断当前路线。X11 将作为显式开启的第三种路由，采用不可信转发（假 cookie 替换）；GSSAPI 需要接系统 GSS（macOS GSS.framework、Linux libgssapi、Windows SSPI）。验证分别需要 XQuartz/Xvfb 与测试 Kerberos 领域，本机均不具备，未写实现代码。[决策记录与所需条件](X11_GSSAPI_ADR.zh-CN.md)
