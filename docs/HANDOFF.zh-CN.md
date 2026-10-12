@@ -54,7 +54,9 @@
 | 代理与跳板路线 | 连接对话框可选直连、HTTP CONNECT、SOCKS5、ProxyCommand（不经过 shell）、单跳跳板（两步信任）；路线绑定进 challenge 和 SFTP 授权 | loopback 代理；真实 OpenSSH 夹具 | 没有用真实代理软件或 OpenSSH 跳板验证；不支持多跳 |
 | SFTP 写操作原型 | 新建目录、重命名、删除、chmod、上传、下载落盘；需先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有原生窗口实测；写入开关缺少原生确认 |
 | 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
-| SCP | `scp -t/-f` 传单个文件 | 真实 OpenSSH 夹具 | 没有目录、递归或界面 |
+| SCP | `scp -t -d/-f` 传单个文件；SFTP 面板中可选，上传需要先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有目录或递归；没有原生窗口实测 |
+| agent 转发 | 终端连接对话框中按连接开启，默认关闭，不保存 | loopback 夹具与私有临时 ssh-agent | 没有与 OpenSSH 服务端互操作 |
+| 原生 WebView 冒烟 | 用 tauri-driver 驱动真实应用：工作台、本地终端、SSH 终端 | CI：Linux WebKitGTK 2.52.6、Windows WebView2 131 | 没有 macOS WKWebView、输入法和屏幕阅读器 |
 | Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试；真实 telnetd 308（6 项，本机） | 没有 login 认证、LINEMODE 或网络设备 |
 | 输入路径 | 有序输入队列（16 MiB）；按 UTF-8 边界分块输出，绕过 xterm.js #6003；粘贴与拖放过滤控制字符；无按键输入的文本会转发；拦截 F 键默认动作 | 浏览器测试（CDP） | 没有原生输入法、VoiceOver 或 WebView 实测 |
 | XMODEM/YMODEM | 不依赖 I/O 的发送与接收；评估了 ZMODEM 的 `zmodem2`，结论是不采用 | 单元测试；与真实 lrzsz 0.13.1 互操作 11/11 | 没有接入终端、SSH 或串口；ZMODEM 需要自行实现 |
@@ -106,7 +108,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 1. **合并到 `main`**：取得一次全绿的集成 CI 后，向用户申请把 `p0/integration` 合并到 `main`。Windows 句柄泄漏已定位，见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)。
 2. **把探针接入界面**：SCP、agent 转发和 tmux 还只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
-3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
+3. **原生验收**：Linux 和 Windows 的原生 WebView 冒烟已经在 CI 上跑通。macOS WKWebView 只能在真机上手工验证，例如 SFTP 面板和 Telnet 标签页。
 4. **互操作**：
    - Linux CI 上卡住连接的取消测试。
 5. **VT 差距**：设备身份、DECSCL 与 OSC 52 已用解析器钩子补上；其余按[终端内核决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。

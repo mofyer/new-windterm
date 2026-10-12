@@ -507,6 +507,57 @@ ZMODEM 建议先评估 `zmodem2` crate（MIT/Apache-2.0），否则按公开规�
 
 仍是低风险项：ProxyCommand 子进程不关闭 stdout 时，读取线程会一直阻塞；`Drop` 时会结束子进程。
 
+## 原生 WebView 冒烟（Linux WebKitGTK、Windows WebView2）
+
+此前所有界面测试都在 Chrome 加 IPC stub 下进行。现在 CI 新增 `native-webview` 作业：
+- 构建真实的 Tauri 应用（生产前端，`custom-protocol`）；
+- 经官方 tauri-driver 2.0.6 驱动真实原生 WebView，在 Linux 上是 WebKitGTK 2.52.6（xvfb），在 Windows 上是 WebView2 131.0.2903.86（msedgedriver 版本与之完全一致）；
+- 不引入任何 npm 依赖，WebDriver 客户端只用 Node 内置的 `fetch` 实现。
+
+三个场景在 [run 38211278428](https://github.com/mofyer/new-windterm/actions/runs/38211278428) 中两个平台都通过：
+
+| 场景 | 证明的内容 |
+| --- | --- |
+| 工作台 | 页面从打包源 `tauri://localhost` 加载，Tauri IPC 存在，xterm 正常渲染 |
+| 本地终端 | 真实 PTY（Linux bash、Windows `cmd.exe`），经真实 IPC 与 ACL 完成输入和回显，用带随机标记的 `echo` 判定 |
+| SSH 终端 | 走真实的连接对话框，核对夹具指纹后，连上 loopback russh 夹具，`size` 与 `unicode` 往返成功，`exit` 退出码为 7 |
+
+第一次运行时，三个场景里的 SSH 场景失败了。证据显示终端已经出现 `> SIZE 136 24`，失败只是因为匹配没有考虑夹具输出前的提示符 `> `，已修正。截图、日志和版本信息都作为 CI 附件上传。
+
+没有验证：
+- macOS WKWebView：tauri-driver 不支持 macOS。
+- 输入法：按键是经 WebDriver 合成的，不是经系统输入法输入。
+- 屏幕阅读器、签名、release 构建、高输出性能、PowerShell、Wayland，以及真实 OpenSSH。
+
+另外，Tauri 只要设置了 `TAURI_WEBVIEW_AUTOMATION=true`，任何构建都会开启 WebView 自动化，包括 release 构建。这一点需要在发行前做安全评审。见[说明](NATIVE_WEBVIEW_SMOKE.zh-CN.md)。
+
+## SCP 界面与 agent 转发（F08/F09、C10）
+
+**SCP（F08/F09）**：SFTP 面板新增“用旧版 SCP 协议传输单个文件”选项，默认关闭，每次新授权时重置。
+- **新增命令**：`ssh_scp_upload` 和 `ssh_scp_download`，三处都已登记。
+- **连接**：经授权绑定的路线重新连接，并固定校验主机密钥。
+- **上传**：需要先开启授权的写入，远端命令为 `scp -t -d`。没有 `-d` 时，如果父路径是普通文件或不存在，OpenSSH 可能把父路径本身当作目标写入。这是评审提出的 HIGH，已修复。
+- **下载**：规则与 SFTP 下载相同（“下载”文件夹、文件名清理、`create_new`、上限 64 MiB、失败时删除不完整的文件）。
+
+**agent 转发（C10）**：连接对话框新增“转发本机 ssh-agent（仅对信任的主机）”。
+- 默认关闭，不保存，勾选后显示警告。
+- 本机 agent 的路径只读取一次，并在连接前检查。只有这一条连接接受 `auth-agent` 通道。
+- 服务端拒绝转发时，终端不会打开。
+
+| 检查 | 结果 |
+| --- | --- |
+| Rust 单元 | 161 passed |
+| `ssh_agent_forwarding` | 1 项，使用私有临时 ssh-agent |
+| 真实 OpenSSH 夹具 | 6/6，含 SCP 直连、经授权和 `-d` 父路径用例 |
+| 浏览器全套 | 370/370 |
+
+Rust 评审的 HIGH、3 个 MEDIUM 和 5 个 LOW 都已修复。代码评审结论为 APPROVE。
+
+没有验证：
+- 原生窗口中的 SCP 上传和下载。
+- agent 转发与 OpenSSH 服务端的互操作，目前只对 russh 夹具测过。
+- SCP 只能传单个普通文件。
+
 ## X11 转发探针（C15）
 
 按[决策记录](X11_GSSAPI_ADR.zh-CN.md)实现了 X11 转发，暂时只有 Rust 入口 `Ssh::open_with_x11`，没有界面，也没有 IPC。
