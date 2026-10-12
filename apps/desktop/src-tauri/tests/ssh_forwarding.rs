@@ -233,8 +233,12 @@ async fn refused(address: SocketAddr) {
     .unwrap_or_else(|_| panic!("{address} still accepts connections"));
 }
 
-async fn wait_for(mut done: impl FnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(3), async {
+async fn wait_for(done: impl FnMut() -> bool) {
+    wait_within(Duration::from_secs(3), done).await;
+}
+
+async fn wait_within(limit: Duration, mut done: impl FnMut() -> bool) {
+    tokio::time::timeout(limit, async {
         while !done() {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -635,8 +639,11 @@ async fn a_local_client_that_stops_reading_does_not_stall_the_shared_connection(
             .await
             .expect("the shared SSH connection stayed stalled"),
     );
+    // With large kernel socket buffers (Linux, Windows) the other forward
+    // answers before the stalled relay has even filled up, so its 5 s stall
+    // limit may still be running here.
     let stalled_count = || service.forward_list("main", &id).unwrap()[0].connections;
-    wait_for(|| stalled_count() == Some(0)).await;
+    wait_within(Duration::from_secs(15), || stalled_count() == Some(0)).await;
     drop(held);
 
     service.write("main", &id, b"exit\n".to_vec()).unwrap();
