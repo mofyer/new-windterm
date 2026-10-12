@@ -1007,6 +1007,8 @@ pub(crate) struct Routes {
     pub(crate) agent: std::sync::atomic::AtomicBool,
     /// Bounds concurrent forwarded-tcpip channels, as local forwards are.
     remote_channels: Arc<tokio::sync::Semaphore>,
+    /// Raised by [`Routes::end_relays`]; relays of server-opened channels end then.
+    relays_ended: watch::Sender<bool>,
 }
 
 impl Routes {
@@ -1015,7 +1017,31 @@ impl Routes {
             remote: Mutex::default(),
             agent: std::sync::atomic::AtomicBool::default(),
             remote_channels: Arc::new(tokio::sync::Semaphore::new(remote_channels)),
+            relays_ended: watch::channel(false).0,
         }
+    }
+
+    /// Ends the relays of channels the server opened (remote forwards and
+    /// agent), idle ones included, and refuses new ones: no route is left.
+    pub(crate) fn end_relays(&self) {
+        self.remote
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.agent.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.relays_ended.send_replace(true);
+    }
+
+    /// Runs `relay` until it finishes or [`Routes::end_relays`] is called.
+    fn relay(&self, relay: impl std::future::Future<Output = ()> + Send + 'static) {
+        let mut ended = self.relays_ended.subscribe();
+        tokio::spawn(async move {
+            tokio::select! {
+                () = relay => {}
+                // Also resolves once the routes are gone with their connection.
+                _ = ended.wait_for(|ended| *ended) => {}
+            }
+        });
     }
 }
 
@@ -1077,14 +1103,16 @@ impl client::Handler for KeyCheck {
         let Ok(permit) = self.routes.remote_channels.clone().try_acquire_owned() else {
             return Ok(());
         };
-        let connect = TcpStream::connect((host.as_str(), port));
-        let Ok(Ok(target)) = tokio::time::timeout(Duration::from_secs(5), connect).await else {
-            return Ok(());
-        };
-        reply.accept().await;
-        tokio::spawn(async move {
+        // Connect outside this handler: it runs on the connection's event
+        // loop, which every channel (an interactive terminal too) waits on.
+        self.routes.relay(async move {
+            let _permit = permit;
+            let connect = TcpStream::connect((host.as_str(), port));
+            let Ok(Ok(target)) = tokio::time::timeout(Duration::from_secs(5), connect).await else {
+                return; // dropping `reply` refuses the channel
+            };
+            reply.accept().await;
             forward::pump(channel, target).await;
-            drop(permit);
         });
         Ok(())
     }
@@ -1108,7 +1136,7 @@ impl client::Handler for KeyCheck {
             .ok();
         let Some(agent) = agent else { return Ok(()) };
         reply.accept().await;
-        tokio::spawn(forward::pump(channel, agent));
+        self.routes.relay(forward::pump(channel, agent));
         Ok(())
     }
     async fn server_channel_open_session(
@@ -1445,16 +1473,48 @@ pub(crate) async fn connect_routed<S>(
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    // Forwarding probes have no window to ask: prompted credentials fail closed.
+    let tuning = Tuning {
+        config: config(),
+        prompter: None,
+        rekey_rejected: Arc::default(),
+    };
+    connect_routed_with(stream, request, key, credential, cancel, routes, tuning).await
+}
+
+/// What a [`connect_routed_with`] caller sets per connection: transport
+/// settings, where to ask prompted keyboard-interactive rounds, and the flag
+/// raised when a (always refused) server rekey is seen.
+pub(crate) struct Tuning<'a> {
+    pub(crate) config: Arc<client::Config>,
+    pub(crate) prompter: Option<&'a Prompter>,
+    pub(crate) rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// [`connect_routed`] with the caller's [`Tuning`]; the interactive terminal
+/// uses it so its connection can carry the terminal's port forwards.
+pub(crate) async fn connect_routed_with<S>(
+    stream: S,
+    request: &Request,
+    key: Vec<u8>,
+    credential: &Credential,
+    cancel: watch::Receiver<bool>,
+    routes: Arc<Routes>,
+    tuning: Tuning<'_>,
+) -> Result<client::Handle<KeyCheck>, String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handler = KeyCheck {
         expected: Some(key),
         observed: Arc::default(),
         mismatch: mismatch.clone(),
         kex_seen: false,
-        rekey_rejected: Arc::default(),
+        rekey_rejected: tuning.rekey_rejected,
         routes,
     };
-    let mut session = client::connect_stream(config(), stream, handler)
+    let mut session = client::connect_stream(tuning.config, stream, handler)
         .await
         .map_err(|_| {
             if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
@@ -1463,8 +1523,7 @@ where
                 "SSH handshake failed"
             }
         })?;
-    // Forwarding probes have no window to ask: prompted credentials fail closed.
-    auth::authenticate(&mut session, request, credential, cancel, None)
+    auth::authenticate(&mut session, request, credential, cancel, tuning.prompter)
         .await
         .map_err(AuthFailure::message)?;
     Ok(session)

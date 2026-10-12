@@ -1,4 +1,6 @@
 //! Interactive SSH channel transport. Host trust remains in the parent service.
+#[path = "ssh_tunnels.rs"]
+pub mod tunnels;
 use super::*;
 use crate::pty::{EventSink, PtyEvent};
 use tokio::sync::{mpsc, Notify};
@@ -61,6 +63,8 @@ pub(super) struct Terminal {
     input: mpsc::Sender<Control>,
     flow: Mutex<Flow>,
     changed: Notify,
+    /// Port forwards over this terminal's connection; closed with it.
+    tunnels: tunnels::Tunnels,
 }
 impl Ssh {
     fn terminal(&self, owner: &str, id: &str) -> Result<Arc<Terminal>, String> {
@@ -182,6 +186,7 @@ impl Ssh {
             input,
             flow: Mutex::default(),
             changed: Notify::new(),
+            tunnels: tunnels::Tunnels::new(connection.session.clone(), connection.routes.clone()),
         });
         {
             let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
@@ -198,8 +203,9 @@ impl Ssh {
         let id = id.to_string();
         let owner = owner.to_string();
         let cancel = operation.cancel.clone();
+        let socket = connection.socket.clone();
         tokio::spawn(async move {
-            let result = run(&id, connection, terminal, receiver, cancel, &sink).await;
+            let result = run(&id, connection, terminal.clone(), receiver, cancel, &sink).await;
             match result {
                 Ok(code) => {
                     let _ = sink(PtyEvent::Exit {
@@ -215,6 +221,10 @@ impl Ssh {
                 }
             }
             service.finish(&owner, &id);
+            // Reported first: the server may take a while to answer. The
+            // connection stays open until then.
+            terminal.tunnels.cancel_remote_left().await;
+            drop(socket);
         });
         Ok(operation.id.clone())
     }
@@ -237,9 +247,12 @@ fn size(cols: u16, rows: u16) -> Result<(), String> {
     Ok(())
 }
 struct Connection {
-    // The route's socket, ProxyCommand process or jump session.
-    _socket: route::Carrier,
-    _session: client::Handle<KeyCheck>,
+    /// The route's socket, ProxyCommand process or jump session. Shared so
+    /// remote forwards can be cancelled after `run` returns.
+    socket: Arc<route::Carrier>,
+    session: Arc<client::Handle<KeyCheck>>,
+    /// This connection's own routes, so remote forwards can be registered.
+    routes: Arc<Routes>,
     channel: russh::Channel<client::Msg>,
     initial: Vec<ChannelMsg>,
     rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
@@ -252,6 +265,7 @@ async fn connect(
     (cols, rows): (u16, u16),
 ) -> Result<Connection, String> {
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let routes = Arc::new(Routes::default());
     let result = async {
         let (socket, stream) = route::connect(
             &pending.request,
@@ -261,15 +275,6 @@ async fn connect(
         )
         .await
         .map_err(RouteError::message)?;
-        let mismatch = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let handler = KeyCheck {
-            expected: Some(pending.key),
-            observed: Arc::default(),
-            mismatch: mismatch.clone(),
-            kex_seen: false,
-            rekey_rejected: rekey_rejected.clone(),
-            routes: Arc::default(),
-        };
         let config = Arc::new(client::Config {
             inactivity_timeout: None,
             window_size: 65536,
@@ -277,24 +282,21 @@ async fn connect(
             channel_buffer_size: 16,
             ..Default::default()
         });
-        let mut session = client::connect_stream(config, stream, handler)
-            .await
-            .map_err(|_| {
-                if mismatch.load(std::sync::atomic::Ordering::Relaxed) {
-                    "SSH host key changed; authentication was not attempted"
-                } else {
-                    "SSH handshake failed"
-                }
-            })?;
-        auth::authenticate(
-            &mut session,
+        let tuning = Tuning {
+            config,
+            prompter,
+            rekey_rejected: rekey_rejected.clone(),
+        };
+        let session = connect_routed_with(
+            stream,
             &pending.request,
+            pending.key,
             &credential,
             cancel,
-            prompter,
+            routes.clone(),
+            tuning,
         )
-        .await
-        .map_err(AuthFailure::message)?;
+        .await?;
         let mut channel = session
             .channel_open_session()
             .await
@@ -311,8 +313,9 @@ async fn connect(
             .map_err(|_| "SSH shell request failed")?;
         reply(&mut channel, &mut initial).await?;
         Ok(Connection {
-            _socket: socket,
-            _session: session,
+            socket: Arc::new(socket),
+            session: Arc::new(session),
+            routes: routes.clone(),
             channel,
             initial,
             rekey_rejected: rekey_rejected.clone(),
@@ -365,8 +368,9 @@ async fn run(
     sink: &EventSink,
 ) -> Result<Option<u32>, String> {
     let Connection {
-        _socket,
-        _session,
+        socket: _socket,
+        session: _session,
+        routes: _,
         channel,
         initial,
         rekey_rejected,
@@ -496,6 +500,8 @@ async fn run(
         result = controls => result,
         result = reader => result,
     };
+    // Forwards end with the terminal, before its end is reported.
+    terminal.tunnels.close().await;
     if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(REKEY_ERROR.into());
     }
