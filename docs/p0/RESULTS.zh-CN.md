@@ -294,6 +294,33 @@ Rust 评审的 1 个 HIGH 和 3 个 MEDIUM 已修复并复核。安全评审没�
 | 真实 OpenSSH 夹具 | 4/4 与 1/1 |
 | `pty_probe` | 加 `dev-tools` 时三项 PASS；不加时 Cargo 拒绝构建 |
 
+## E11：Windows 与 Linux 上游包静态核对
+
+对官方 2.7.0 的 Windows 与 Linux 便携包做了只读静态核对，没有运行包内任何内容，见[记录](UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md)：
+- **默认资源**：三个平台的默认资源几乎完全相同，菜单、动作、键位、设置都没有平台专属项。
+- **G13**：三端默认键位都是 Ctrl+Enter；macOS 二进制中的文案暗示那里可能是 ⌘↩。
+- **F08/F09**：三端主程序都没有引用 scp 函数，Windows 和 Linux 二进制中甚至没有 “scp” 字样。E3 条件中“各平台发布包”这一半结果为否，实机确认还没做，计数标记保持不变。
+- **C23**：只有 Windows 包附带 VcXsrv 1.20.14.0，包内没有它的许可证文本。
+- **C14**：Windows 与 Linux 的 libssh 没有链接 GSSAPI，这两个平台上 gssapi-with-mic 很可能不可用。
+- **新候选**：WL-1 WSL 发行版作为本地 shell、WL-2 自动发现 Git Bash 与 Cygwin、WL-3 Clink 注入。都只是提议，按冻结规则需要用户批准才能新增 ID。
+
+## agent 转发与真实 OpenSSH 互操作（C10）
+
+新增 ignored 测试和夹具 `--agent` 模式，测试对象是本机 OpenSSH 10.3p1，使用私有临时 ssh-agent：
+- 不开启转发时，远端拿不到 agent；
+- 开启后，远端 `ssh-add -l` 正好列出私有 agent 中的那把密钥；
+- 本机连续 3 次通过。Linux CI 新增一个步骤，尚待运行。
+
+需要说明的一点：从 OpenSSH 10.1 起，sshd 会把转发的 agent 套接字建在账户真实的 `~/.ssh/agent/` 下，无法改到别处。所以在本机运行这项测试需要显式开关 `P0_AGENT_HOME_SOCKET=1`，默认会跳过。代理在本机运行时开了这个开关：sshd 每次都删除了自己建的套接字，目录中原有内容不变，只有目录的修改时间变了。
+
+只验证了列出密钥，没有验证经转发的 agent 签名。
+
+## lrzsz 0.12.21 失败的根因
+
+Ubuntu 上的 lrzsz 0.12.21 以整秒计时，`rb` 在每次请求文件头之前都会等满 1 秒，而“对端中途被杀”测试的快速超时只能容忍 0.8 秒的静默。测试已改为在杀掉对端之后才开始计时，断言不变，并补充了诊断输出。
+
+根因来自阅读 lrzsz 源码和本机模拟，尚待 CI 在 Ubuntu 上确认。读过 GPL 源码这一点已写进 [MODEM](MODEM.zh-CN.md)：将来自研 ZMODEM 的人不应读过它。
+
 ## 功能基线已冻结（2026-10-12）
 
 用户对[冻结方案](BASELINE_FREEZE_PROPOSAL.zh-CN.md)中的 E1–E12 全部采用推荐选项，基线已冻结（`scope_frozen: true`）：

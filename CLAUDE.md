@@ -68,6 +68,8 @@ node --test tests/fixtures/ssh-sftp/fixture.test.mjs      # 夹具自身的启�
 node --test tests/fixtures/ssh-sftp/rust-client.test.mjs  # 自行以 dev-tools 构建 ssh_probe 与 lib 测试二进制；启动夹具并以 P0_SSH_FIXTURE_* 环境变量运行被 #[ignore] 的 Rust 真实夹具测试（含只读 SFTP 验收）
 node --test tests/fixtures/ssh-terminal/fixture.test.mjs  # 系统 OpenSSH 交互 PTY 夹具自检
 node --test tests/fixtures/ssh-terminal/rust-client.test.mjs  # Rust ssh_open 对真实 OpenSSH shell 的互操作（ignored 测试）
+node --test tests/fixtures/ssh-terminal/x11-client.test.mjs    # X11 转发对 OpenSSH + Xvfb（仅 Linux，其它平台跳过）
+P0_AGENT_HOME_SOCKET=1 node --test tests/fixtures/ssh-terminal/agent-client.test.mjs  # agent 转发对 OpenSSH；OpenSSH 10.1+ 会在真实 ~/.ssh/agent/ 下建临时套接字，默认跳过
 ```
 
 VT 兼容矩阵：`tests/e2e/vt-matrix.spec.ts` 记录 xterm.js 6.0.0 的 63 项 VT 行为（结论见 `docs/p0/VT_MATRIX.zh-CN.md`）。
