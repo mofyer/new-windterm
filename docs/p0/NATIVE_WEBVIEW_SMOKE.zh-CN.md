@@ -1,6 +1,10 @@
 # 原生 WebView 冒烟测试（tauri-driver）
 
-日期：2026-10-12。状态：**脚本与 CI job 已提交，CI 尚未运行，以下场景均未在原生 WebView 中得到通过回执。** 首次运行后应在本页补记运行编号、提交、各平台结果和实际版本号。
+日期：2026-10-12。状态：**三个场景在 [run 38211278428](https://github.com/mofyer/new-windterm/actions/runs/38211278428)（提交 `2b336a9`）中，于 Linux WebKitGTK 2.52.6 与 Windows WebView2 131.0.2903.86 上全部通过。**
+
+首次运行是 [run 38209483600](https://github.com/mofyer/new-windterm/actions/runs/38209483600)：
+- 两个平台的工作台和本地终端场景都已通过。
+- SSH 场景也已经在终端中显示 `> SIZE 136 24`（Windows 上是 `> SIZE 94 20`），但匹配规则没有考虑夹具输出前的提示符 `> `，被判失败。匹配规则已修正。
 
 ## 为什么需要
 
@@ -125,7 +129,7 @@ node --test tests/native/webdriver.test.mjs tests/native/support.test.mjs   # �
 
 尚未验证或不在本测试范围：
 
-- **CI 尚未运行**：Linux WebKitGTK 与 Windows WebView2 下三个场景是否通过、tauri-driver 与驱动能否在 runner 上启动应用，都还没有回执；
+- **只覆盖 CI runner**：Linux WebKitGTK 与 Windows WebView2 的三个场景已通过，但只在 GitHub runner 上运行，没有在真实用户桌面环境中运行；
 - macOS WKWebView（tauri-driver 不支持）；
 - 输入法（中文、日文等组合输入）、操作系统级键盘布局；
 - 可访问性：终端开启了 `screenReaderMode`，但没有任何读屏软件或平台无障碍 API 的验收；
