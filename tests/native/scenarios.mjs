@@ -183,7 +183,8 @@ export async function sshTerminal(ctx) {
   const connected = await waitForSessionState(ctx, 'SSH 已连接', 'ssh_open to return a session');
   await waitForRow(ctx, row => row.startsWith('P0 SSH terminal fixture'), 'fixture shell banner');
   const input = await typeInTerminal(ctx, `size${Keys.ENTER}`);
-  const size = await waitForRow(ctx, row => /^SIZE \d+ \d+$/.test(row), 'fixture SIZE reply');
+  // The fixture prints its `> ` prompt before each reply.
+  const size = await waitForRow(ctx, row => /^(?:> )?SIZE \d+ \d+$/.test(row), 'fixture SIZE reply');
   const sizeStatus = await statusLine(session);
   await typeInTerminal(ctx, `unicode${Keys.ENTER}`);
   const unicode = await waitForRow(ctx, row => row.includes('中文') && row.includes('🌏'), 'fixture UTF-8 reply');

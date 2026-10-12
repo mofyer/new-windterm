@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
 for (const listenerFailure of [false, true]) {
 test(`real SSH/SFTP cleanup after ${listenerFailure ? 'listener failure (SFTP, ssh -N, pending auth)' : 'normal shutdown'}`, { timeout: 25_000 }, async () => {
   const fixture = spawn(process.execPath, [fileURLToPath(new URL('./fixture.mjs', import.meta.url)), '--serve'],
@@ -73,7 +75,12 @@ test(`real SSH/SFTP cleanup after ${listenerFailure ? 'listener failure (SFTP, s
     if (listenerFailure) process.kill(listener, 'SIGTERM');
     else fixture.kill('SIGTERM');
     assert.deepEqual(await Promise.race([fixtureClosed, delay(listenerFailure ? 16_000 : 4000).then(() => { throw new Error('Fixture shutdown deadline exceeded'); })]), [listenerFailure ? 1 : 0, null], errors);
-    for (const pid of serverPids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'Fixture server child survived shutdown');
+    // sshd's per-connection children exit a moment after the fixture itself;
+    // allow them 3 s before calling one a survivor.
+    for (const pid of serverPids) {
+      for (let attempt = 0; attempt < 60 && alive(pid); attempt++) await delay(50);
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'Fixture server child survived shutdown');
+    }
     if (listenerFailure) {
       assert.match(errors, /Temporary sshd exited during serve/);
       assert.notEqual(idleClient.exitCode, null, 'Authenticated channel-less SSH client survived');
