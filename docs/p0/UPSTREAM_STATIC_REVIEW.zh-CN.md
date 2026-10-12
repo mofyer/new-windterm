@@ -269,6 +269,8 @@ grep -n '"<Ctrl+Enter>"\|"<Shift+Enter>"' "$R/MacOS/global/wind.keymaps"  # G13
 
 以下序号只用于本文引用，**不是稳定 ID**。候选是否成立、是否与已有行合并，需要上游实测后另行决定。“低置信”表示动作只定义在通用资源中，终端菜单未暴露。
 
+2026-10-12 补记：用户在基线冻结时按[冻结提议 (b)](BASELINE_FREEZE_PROPOSAL.zh-CN.md#b-36-项静态候选)的建议决定了这些候选的去留。31 项已分配稳定 ID 并写入三处台账，序号与 ID 的对应见 (b) 表和 baseline.json 的 `baseline_freeze.candidate_id_map`；序号 7 不纳入，并入 T12、G12；序号 5、24、35、36 暂缓。本节标题、序号与下表内容保持原样，以免已有链接失效；下表仍是 2026-10-11 的静态复核原文，不代表上游行为已验证。
+
 | 序号 | 候选能力 | 静态证据（相对 `.reference/`） | 可能关联 |
 | --- | --- | --- | --- |
 | 1 | 触发器（全局/会话级） | `MNU:747/270` `Terminal.ManageTriggers`/`ManageSessionTriggers`；`TRG` 默认 4 条（Decompressor、Hyperlink、Ip Address、Number Convertor）；`BIN` 类型 “Custom link”“Custom menu”“Highlight text”“Play sound”“Run command”“Send text”“Show tooltip”，事件 “Event: before/after connection/disconnection”；`LOC:4030` | `RD:389` v2.x 自动化方向 |
