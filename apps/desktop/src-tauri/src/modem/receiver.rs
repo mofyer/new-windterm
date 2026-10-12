@@ -77,6 +77,27 @@ pub struct Receiver {
     files: Vec<ReceivedFile>,
     link: Link,
     transferred: u64,
+    /// Requests (`C`, NAK) sent that no complete frame has answered yet.
+    requests: u32,
+    /// Copies of the newest block that our surplus requests may still draw.
+    /// They are dropped unanswered: an extra ACK would confirm the sender's
+    /// next block before we saw it, and it would run ahead (see the lrzsz
+    /// `--delay-startup` interop tests). Echoes follow the new block back to
+    /// back, so a timeout clears the count: a later copy means a lost ACK.
+    echoes: u32,
+    /// The first XMODEM frame failed as checksum after the fallback; one more
+    /// byte tries it as CRC, for a sender that read an earlier `C` first.
+    crc_probe: bool,
+}
+
+/// Splits a complete frame into block number and payload when it checks out.
+fn frame_parts(packet: &[u8], crc: bool) -> Option<(u8, &[u8])> {
+    let [_, block, inverse, rest @ ..] = packet else {
+        return None;
+    };
+    let check_len = if crc { 2 } else { 1 };
+    let (body, check) = rest.split_at(rest.len().checked_sub(check_len)?);
+    (*block == !*inverse && check == check_bytes(body, crc).as_slice()).then_some((*block, body))
 }
 
 impl Receiver {
@@ -111,6 +132,9 @@ impl Receiver {
             files: Vec::new(),
             link: Link::new(limits),
             transferred: 0,
+            requests: 0,
+            echoes: 0,
+            crc_probe: false,
         };
         receiver.request_start();
         receiver
@@ -147,10 +171,12 @@ impl Receiver {
         if !self.link.timed_out() {
             return;
         }
+        self.echoes = 0;
         self.packet.clear();
         self.packet_len = 0;
+        self.crc_probe = false;
         match self.phase {
-            RxPhase::Data { started: true, .. } => self.link.out.push(NAK),
+            RxPhase::Data { started: true, .. } => self.request(NAK),
             _ => {
                 if !self.batch && !self.heard && self.link.retries >= CRC_ATTEMPTS {
                     self.crc = false;
@@ -185,12 +211,30 @@ impl Receiver {
     }
 
     fn request_start(&mut self) {
-        self.link.out.push(if self.crc { CRC_REQUEST } else { NAK });
+        self.request(if self.crc { CRC_REQUEST } else { NAK });
+    }
+
+    /// Sends a request that the sender answers with a frame.
+    fn request(&mut self, byte: u8) {
+        self.link.out.push(byte);
+        self.requests = self.requests.saturating_add(1);
+    }
+
+    /// A new block answered one request; each other one may still draw a copy.
+    fn answered(&mut self) {
+        self.echoes = self.requests.saturating_sub(1);
+        self.requests = 0;
+    }
+
+    /// XMODEM before its first block, when the checksum fallback may be wrong.
+    fn first_xmodem_block(&self) -> bool {
+        !self.batch && matches!(self.phase, RxPhase::Data { started: false, .. })
     }
 
     fn start_packet(&mut self, kind: u8) {
         let size = if kind == STX { LONG_BLOCK } else { SHORT_BLOCK };
         self.heard = true;
+        self.crc_probe = false;
         self.link.idle = 0;
         self.packet.clear();
         self.packet.push(kind);
@@ -201,16 +245,23 @@ impl Receiver {
     fn finish_packet(&mut self) -> bool {
         let packet = std::mem::take(&mut self.packet);
         self.packet_len = 0;
-        let check_len = if self.crc { 2 } else { 1 };
-        if let [_, block, inverse, rest @ ..] = packet.as_slice() {
-            let (body, check) = rest.split_at(rest.len().saturating_sub(check_len));
-            if *block == !*inverse && check == check_bytes(body, self.crc).as_slice() {
-                self.accept_block(*block, body);
-                return true;
-            }
+        let crc = self.crc || std::mem::take(&mut self.crc_probe);
+        if let Some((block, body)) = frame_parts(&packet, crc) {
+            self.crc = crc;
+            self.accept_block(block, body);
+            return true;
         }
+        if !crc && self.first_xmodem_block() {
+            // A sender that read one of our `C` requests only after we fell back
+            // to NAK sends a CRC frame, one byte longer than a checksum frame.
+            self.crc_probe = true;
+            self.packet_len = packet.len() + 1;
+            self.packet = packet;
+            return true;
+        }
+        self.requests = self.requests.saturating_sub(1);
         if self.link.retry() {
-            self.link.out.push(NAK);
+            self.request(NAK);
         }
         false
     }
@@ -218,8 +269,12 @@ impl Receiver {
     fn accept_block(&mut self, block: u8, body: &[u8]) {
         self.eot_pending = false;
         match self.phase {
-            RxPhase::Header if block == 0 => self.header(body),
+            RxPhase::Header if block == 0 => {
+                self.answered();
+                self.header(body);
+            }
             RxPhase::Data { expected, .. } if block == expected => {
+                self.answered();
                 if self.store(body) {
                     self.link.retries = 0;
                     self.phase = RxPhase::Data {
@@ -229,11 +284,19 @@ impl Receiver {
                     self.link.out.push(ACK);
                 }
             }
+            // A copy drawn by one of our surplus requests: the sender already
+            // has our ACK for the original, so stay silent.
+            RxPhase::Data { expected, .. }
+                if block == expected.wrapping_sub(1) && self.echoes > 0 =>
+            {
+                self.echoes -= 1;
+            }
             RxPhase::Data { expected, started } if block == expected.wrapping_sub(1) => {
                 // Duplicate after a lost ACK: confirm again and store nothing.
+                self.requests = self.requests.saturating_sub(1);
                 self.link.out.push(ACK);
                 if self.batch && !started {
-                    self.link.out.push(CRC_REQUEST);
+                    self.request_start();
                 }
             }
             _ => self.link.fail(Failure::SequenceError),
@@ -256,7 +319,8 @@ impl Receiver {
                     expected: 1,
                     started: false,
                 };
-                self.link.out.extend_from_slice(&[ACK, CRC_REQUEST]);
+                self.link.out.push(ACK);
+                self.request_start();
             }
             Err(failure) => self.link.fail(failure),
         }
@@ -293,7 +357,8 @@ impl Receiver {
         match self.phase {
             // Our ACK for the previous EOT was lost: confirm it again.
             RxPhase::Header if !self.files.is_empty() => {
-                self.link.out.extend_from_slice(&[ACK, CRC_REQUEST]);
+                self.link.out.push(ACK);
+                self.request_start();
             }
             RxPhase::Header => {}
             // YMODEM confirms EOT twice: NAK the first, ACK the second.

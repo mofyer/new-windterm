@@ -672,3 +672,114 @@ fn crc_mode_is_kept_once_the_sender_has_answered() {
     assert!(ticks >= Limits::default().timeout_ticks);
     assert!(frames.iter().all(|&len| len == 3 + SHORT_BLOCK + 2));
 }
+
+/// Times the receiver out `count` times so it repeats its start request.
+fn time_out(rx: &mut Receiver, count: u32) {
+    for _ in 0..count * Limits::default().timeout_ticks {
+        rx.tick();
+    }
+}
+
+#[test]
+fn surplus_start_requests_do_not_ack_echoed_first_blocks() {
+    // Found with `sb --delay-startup`: a late sender reads all our queued `C`s
+    // and resends block 0 for each; ACKing every copy made it run ahead and
+    // send EOT and the next header before we had confirmed the last block.
+    let mut rx = Receiver::ymodem(Limits::default());
+    time_out(&mut rx, 2);
+    assert_eq!(rx.take_output(), [CRC_REQUEST; 3]);
+    let header = build_frame(0, b"late.bin\x00100", SHORT_BLOCK, 0, true);
+    rx.feed(&header.repeat(3));
+    assert_eq!(rx.take_output(), [ACK, CRC_REQUEST]);
+    let block = build_frame(1, &[7; 100], SHORT_BLOCK, SUB, true);
+    rx.feed(&block);
+    assert_eq!(rx.take_output(), [ACK]);
+    // With no surplus request outstanding, a copy still means our ACK was lost.
+    rx.feed(&block);
+    assert_eq!(rx.take_output(), [ACK]);
+    rx.feed(&[EOT, EOT]);
+    rx.feed(&build_frame(0, &[], SHORT_BLOCK, 0, true));
+    assert_eq!(rx.status(), Status::Done);
+    assert_eq!(rx.files()[0].data, [7; 100]);
+
+    // XMODEM: the same echo of block 1 is dropped once per surplus request.
+    let mut rx = Receiver::xmodem(Limits::default());
+    time_out(&mut rx, 1);
+    assert_eq!(rx.take_output(), [CRC_REQUEST; 2]);
+    let first = build_frame(1, &[1; 128], SHORT_BLOCK, SUB, true);
+    rx.feed(&first.repeat(2));
+    assert_eq!(rx.take_output(), [ACK]);
+    rx.feed(&first);
+    assert_eq!(
+        rx.take_output(),
+        [ACK],
+        "a third copy is a lost-ACK duplicate"
+    );
+
+    // Echoes arrive right behind the new block; after a timeout a copy is a
+    // lost-ACK duplicate again, however many requests went unanswered.
+    let mut rx = Receiver::xmodem(Limits::default());
+    time_out(&mut rx, 2);
+    assert_eq!(rx.take_output(), [CRC_REQUEST; 3]);
+    rx.feed(&first);
+    assert_eq!(rx.take_output(), [ACK]);
+    time_out(&mut rx, 1);
+    assert_eq!(rx.take_output(), [NAK]);
+    rx.feed(&first);
+    assert_eq!(
+        rx.take_output(),
+        [ACK],
+        "the timeout cleared the echo budget"
+    );
+    rx.feed(&[EOT]);
+    assert_eq!(rx.status(), Status::Done);
+    assert_eq!(rx.files()[0].data, [1; 128]);
+}
+
+#[test]
+fn crc_frame_after_the_checksum_fallback_is_accepted() {
+    // Found with `sx --delay-startup`: the sender read our first `C` only
+    // after we had fallen back to NAK, so its frames carry a CRC.
+    let mut rx = Receiver::xmodem(Limits::default());
+    time_out(&mut rx, CRC_ATTEMPTS);
+    assert_eq!(
+        rx.take_output(),
+        [CRC_REQUEST, CRC_REQUEST, CRC_REQUEST, NAK]
+    );
+    let first = build_frame(1, &[3; 128], SHORT_BLOCK, SUB, true);
+    rx.feed(&first[..first.len() - 1]);
+    assert!(
+        rx.take_output().is_empty(),
+        "131 + 1 bytes may still be CRC"
+    );
+    rx.feed(&first[first.len() - 1..]);
+    assert_eq!(rx.take_output(), [ACK]);
+    // The sender also answered our NAKs with copies: they are echoes.
+    rx.feed(&first.repeat(3));
+    assert!(rx.take_output().is_empty());
+    rx.feed(&build_frame(2, &[4; 5], SHORT_BLOCK, SUB, true));
+    assert_eq!(rx.take_output(), [ACK], "CRC is kept for later blocks");
+    rx.feed(&[EOT]);
+    assert_eq!(rx.status(), Status::Done);
+    assert_eq!(
+        rx.files()[0].data,
+        padded(&[[3; 128].as_slice(), &[4; 5]].concat())
+    );
+
+    // A corrupt checksum frame now waits for the probe byte, then times out.
+    let mut rx = Receiver::xmodem(Limits::default());
+    time_out(&mut rx, CRC_ATTEMPTS);
+    rx.take_output();
+    let mut bad = build_frame(1, &[5; 128], SHORT_BLOCK, SUB, false);
+    bad[40] ^= 0x5A;
+    rx.feed(&bad);
+    assert!(rx.take_output().is_empty());
+    time_out(&mut rx, 1);
+    assert_eq!(rx.take_output(), [NAK]);
+    rx.feed(&build_frame(1, &[5; 128], SHORT_BLOCK, SUB, false));
+    assert_eq!(
+        rx.take_output(),
+        [ACK],
+        "checksum still works after a failed probe"
+    );
+}
