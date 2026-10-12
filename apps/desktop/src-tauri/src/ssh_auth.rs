@@ -18,8 +18,6 @@ const MAX_ROUNDS: u32 = 8;
 pub(super) const MAX_PROMPTS: usize = 16;
 /// Servers commonly allow six attempts; never exhaust them on agent keys.
 const MAX_AGENT_KEYS: usize = 4;
-#[cfg(windows)]
-const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
 /// How to authenticate. `Key` uses the private key path sent with the probe.
 #[derive(Clone, Deserialize)]
@@ -164,7 +162,7 @@ async fn agent(session: &mut client::Handle<KeyCheck>, user: String) -> Result<(
         .await
         .map_err(|_| unavailable())?;
     #[cfg(windows)]
-    let mut agent = AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE)
+    let mut agent = AgentClient::connect_named_pipe(super::AGENT_PIPE)
         .await
         .map_err(|_| unavailable())?;
     let identities = agent

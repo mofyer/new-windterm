@@ -77,7 +77,7 @@ const RESERVED: [&str; 30] = [
 /// Runs local file work without stalling the other tasks on this worker.
 /// Tauri's runtime is multi-threaded; a current-thread runtime (unit tests)
 /// cannot hand the worker over, so the work then runs inline.
-fn blocking<T>(work: impl FnOnce() -> T) -> T {
+pub(crate) fn blocking<T>(work: impl FnOnce() -> T) -> T {
     use tokio::runtime::{Handle, RuntimeFlavor};
     match Handle::try_current() {
         Ok(handle) if handle.runtime_flavor() == RuntimeFlavor::MultiThread => {
@@ -222,7 +222,7 @@ impl LocalTarget {
         Err("Too many files with this name in the download folder".into())
     }
 
-    fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
+    pub(crate) fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
         let file = self.file.as_mut().ok_or("The download file is closed")?;
         blocking(|| file.write_all(bytes)).map_err(|_| "Cannot write the download file".into())
     }

@@ -1,4 +1,6 @@
 //! Interactive SSH channel transport. Host trust remains in the parent service.
+#[path = "ssh_agent_forward.rs"]
+pub mod agent;
 #[path = "ssh_tunnels.rs"]
 pub mod tunnels;
 use super::*;
@@ -171,12 +173,13 @@ impl Ssh {
         sink: EventSink,
     ) -> Result<String, String> {
         let size = (cols, rows);
-        self.open_session(owner, id, token, scope, login, size, sink, None)
+        self.open_session(owner, id, token, scope, login, size, sink, None, None)
             .await
     }
 
     /// [`Ssh::open_with`], with X11 forwarding requested on the session
-    /// channel when `x11` is set (see [`x11`]).
+    /// channel when `x11` is set (see [`x11`]), and agent forwarding to the
+    /// local agent at `agent` when it is set (see [`agent`]).
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn open_session(
         self: &Arc<Self>,
@@ -188,6 +191,7 @@ impl Ssh {
         (cols, rows): (u16, u16),
         sink: EventSink,
         x11: Option<x11::LocalDisplay>,
+        agent: Option<std::path::PathBuf>,
     ) -> Result<String, String> {
         let Login {
             credential,
@@ -207,6 +211,7 @@ impl Ssh {
             prompter.as_ref(),
             (cols, rows),
             x11,
+            agent,
         );
         let connection = tokio::select! {
             biased;
@@ -298,6 +303,7 @@ async fn connect(
     prompter: Option<&Prompter>,
     (cols, rows): (u16, u16),
     x11: Option<x11::LocalDisplay>,
+    forward_agent: Option<std::path::PathBuf>,
 ) -> Result<Connection, String> {
     let rekey_rejected = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let routes = Arc::new(Routes::default());
@@ -342,6 +348,12 @@ async fn connect(
             .map_err(|_| "SSH PTY request failed")?;
         let mut initial = Vec::new();
         reply(&mut channel, &mut initial).await?;
+        if let Some(local) = forward_agent {
+            agent::request(&channel, &routes, local).await?;
+            reply(&mut channel, &mut initial)
+                .await
+                .map_err(|e| agent::refused(&routes, e))?;
+        }
         if let Some(display) = x11 {
             x11::request(&channel, &routes, display).await?;
             reply(&mut channel, &mut initial).await.map_err(|e| {

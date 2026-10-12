@@ -37,6 +37,8 @@
     "allow-ssh-sftp-change",
     "allow-ssh-sftp-upload",
     "allow-ssh-sftp-download",
+    "allow-ssh-scp-upload",
+    "allow-ssh-scp-download",
     "allow-ssh-trust-save",
     "allow-ssh-trust-replace",
     "allow-net-open",

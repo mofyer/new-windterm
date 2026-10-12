@@ -268,6 +268,8 @@ fn ssh_cancel(
     service.cancel(window.label(), &operation_id)
 }
 
+/// `agent_forwarding` is the per-connection opt-in to forward the local
+/// ssh-agent; absent means off.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn ssh_open(
@@ -281,11 +283,12 @@ async fn ssh_open(
     rows: u16,
     on_event: Channel<PtyEvent>,
     on_auth: Option<JavaScriptChannelId>,
+    agent_forwarding: Option<bool>,
 ) -> Result<Opened, String> {
     let login = login(&window, credential, on_auth);
     service
         .inner()
-        .open_with(
+        .open_with_agent(
             window.label(),
             &operation_id,
             &challenge_token,
@@ -294,6 +297,7 @@ async fn ssh_open(
             cols,
             rows,
             Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
+            agent_forwarding.unwrap_or(false),
         )
         .await
         .map(|id| Opened { id })
@@ -534,6 +538,8 @@ pub fn run() {
             sftp_ipc::ssh_sftp_change,
             sftp_ipc::ssh_sftp_upload,
             sftp_ipc::ssh_sftp_download,
+            sftp_ipc::ssh_scp_upload,
+            sftp_ipc::ssh_scp_download,
             ssh_trust_save,
             ssh_trust_replace,
             ssh_reject,

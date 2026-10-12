@@ -36,14 +36,14 @@ const MAX_NAME_BYTES: usize = 255;
 pub type Progress = Arc<dyn Fn(u64, u64) + Send + Sync>;
 
 /// Throttles progress callbacks to one per [`PROGRESS_STEP`] plus the last.
-pub(super) struct Meter<'a> {
+pub(crate) struct Meter<'a> {
     progress: Option<&'a Progress>,
     total: u64,
     reported: u64,
 }
 
 impl<'a> Meter<'a> {
-    pub(super) fn new(progress: Option<&'a Progress>, total: u64) -> Self {
+    pub(crate) fn new(progress: Option<&'a Progress>, total: u64) -> Self {
         Self {
             progress,
             total,
@@ -51,7 +51,7 @@ impl<'a> Meter<'a> {
         }
     }
 
-    pub(super) fn update(&mut self, done: u64) {
+    pub(crate) fn update(&mut self, done: u64) {
         let Some(progress) = self.progress else {
             return;
         };

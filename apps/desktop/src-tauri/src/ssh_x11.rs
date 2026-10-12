@@ -519,6 +519,7 @@ impl Ssh {
             (cols, rows),
             sink,
             Some(display),
+            None,
         )
         .await
     }

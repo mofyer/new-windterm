@@ -31,6 +31,8 @@ fn main() {
             "ssh_sftp_change",
             "ssh_sftp_upload",
             "ssh_sftp_download",
+            "ssh_scp_upload",
+            "ssh_scp_download",
             "ssh_trust_save",
             "ssh_trust_replace",
             "net_open",

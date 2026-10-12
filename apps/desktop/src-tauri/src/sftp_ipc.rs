@@ -1,5 +1,6 @@
-//! Tauri commands for SFTP writes and downloads (WindTerm F02–F07 prototype).
-//! Thin wrappers like the rest of `lib.rs`: the window label is the owner, and
+//! Tauri commands for SFTP writes and downloads (WindTerm F02–F07 prototype)
+//! and for legacy SCP transfers through the same grant (F08/F09). Thin
+//! wrappers like the rest of `lib.rs`: the window label is the owner, and
 //! the WebView never chooses the local download folder.
 //!
 //! Uploads arrive as a raw IPC body so up to 16 MiB of bytes are not inflated
@@ -127,6 +128,19 @@ impl UploadHeaders {
             "false" => false,
             _ => return Err(BAD_HEADERS.into()),
         };
+        Self::with_overwrite(headers, overwrite)
+    }
+
+    /// SCP cannot refuse to replace a file, so `x-sftp-overwrite` must be
+    /// absent rather than suggest a choice that is not honored.
+    fn parse_scp(headers: &HeaderMap) -> Result<Self, String> {
+        if header(headers, "x-sftp-overwrite")?.is_some() {
+            return Err(BAD_HEADERS.into());
+        }
+        Self::with_overwrite(headers, true)
+    }
+
+    fn with_overwrite(headers: &HeaderMap, overwrite: bool) -> Result<Self, String> {
         Ok(Self {
             grant: required(headers, "x-sftp-grant")?.into(),
             scope: required(headers, "x-sftp-scope")?.into(),
@@ -225,6 +239,58 @@ pub async fn ssh_sftp_upload(
         .ok_or_else(|| "Unexpected SFTP result".into())
 }
 
+/// Writes the raw request body as one remote file with legacy SCP
+/// (`scp -t`), replacing an existing file. Same headers as
+/// [`ssh_sftp_upload`] without `x-sftp-overwrite`; needs a writable grant.
+#[tauri::command]
+pub async fn ssh_scp_upload(
+    window: WebviewWindow,
+    service: State<'_, Arc<Ssh>>,
+    request: Request<'_>,
+) -> Result<(), String> {
+    let InvokeBody::Raw(data) = request.body() else {
+        return Err(BAD_HEADERS.into());
+    };
+    if data.len() > MAX_UPLOAD_BYTES {
+        return Err("Upload exceeds the 16 MiB limit".into());
+    }
+    let headers = UploadHeaders::parse_scp(request.headers())?;
+    let progress = progress(&window, headers.on_progress);
+    let call = call(
+        &window,
+        headers.grant,
+        headers.id,
+        headers.scope,
+        headers.on_auth,
+    );
+    service
+        .scp_upload(call, headers.path, data.clone(), progress)
+        .await
+}
+
+/// Saves one remote file into the user's Downloads folder with legacy SCP
+/// (`scp -f`), never overwriting. Allowed on read-only grants.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn ssh_scp_download(
+    window: WebviewWindow,
+    service: State<'_, Arc<Ssh>>,
+    grant_token: String,
+    operation_id: String,
+    scope_token: String,
+    path: String,
+    on_auth: Option<JavaScriptChannelId>,
+    on_progress: Option<JavaScriptChannelId>,
+) -> Result<Downloaded, String> {
+    let directory = window
+        .path()
+        .download_dir()
+        .map_err(|_| "The download folder is unavailable".to_string())?;
+    let progress = progress(&window, on_progress);
+    let call = call(&window, grant_token, operation_id, scope_token, on_auth);
+    service.scp_download(call, path, directory, progress).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +365,32 @@ mod tests {
         let mut oversize = upload_headers("/a", "false");
         oversize[3].1 = "2f".repeat(MAX_HEADER_BYTES);
         assert!(parse(&oversize).is_err());
+    }
+
+    #[test]
+    fn scp_upload_headers_have_no_overwrite_switch() {
+        let mut pairs = upload_headers("/home/用户/scp.bin", "false");
+        pairs.retain(|(name, _)| *name != "x-sftp-overwrite");
+        let borrowed: Vec<_> = pairs.iter().map(|(n, v)| (*n, v.as_str())).collect();
+        let parsed = UploadHeaders::parse_scp(&headers(&borrowed)).unwrap();
+        assert_eq!(parsed.path, "/home/用户/scp.bin");
+        assert!(parsed.overwrite);
+        // The SFTP form needs the switch; the SCP form refuses any value.
+        assert!(UploadHeaders::parse(&headers(&borrowed)).is_err());
+        for value in ["true", "false"] {
+            let full = upload_headers("/a", value);
+            let borrowed: Vec<_> = full.iter().map(|(n, v)| (*n, v.as_str())).collect();
+            assert_eq!(
+                UploadHeaders::parse_scp(&headers(&borrowed))
+                    .err()
+                    .as_deref(),
+                Some(BAD_HEADERS)
+            );
+        }
+        let mut missing = pairs.clone();
+        missing.remove(0);
+        let borrowed: Vec<_> = missing.iter().map(|(n, v)| (*n, v.as_str())).collect();
+        assert!(UploadHeaders::parse_scp(&headers(&borrowed)).is_err());
     }
 
     #[test]
