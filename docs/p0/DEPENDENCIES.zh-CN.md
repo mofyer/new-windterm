@@ -13,6 +13,7 @@
 - 开发依赖中的 `lightningcss`（MPL-2.0，Vite 构建期 CSS 工具）不进入发行产物。
 - Rust 开发依赖 `zmodem2 =0.7.3`（MIT OR Apache-2.0）只被 `tests/zmodem_lrzsz.rs` 的 ZMODEM 评估测试使用，不进入库、应用或发行包。它的依赖 `bitflags`/`hex`/`thiserror` 原本就在锁文件中，引入后锁文件只多了它一项。评估结论是不作为产品依赖采用，见 [MODEM](MODEM.zh-CN.md#zmodem2-评估2026-10-12)。
 - 互操作测试使用的 lrzsz（GPL）是测试机上安装的外部程序，只作为独立进程运行；没有链接或复制它的代码，也不随应用分发。
+- 原生 WebView 冒烟测试（[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md)）只在 CI runner 上安装三个外部工具，均作为独立进程运行，不进入锁文件、应用或发行包：`tauri-driver =2.0.6`（Apache-2.0 OR MIT，`cargo install --locked`）；Linux 的 apt `webkit2gtk-driver`（WebKit 的 LGPL/BSD 许可，版本与已安装的 `libwebkit2gtk-4.1-0` 相同）；Windows 的 msedgedriver（Microsoft 软件许可条款，按 WebView2 Runtime 版本下载，不再分发）。测试客户端只用 Node 内置 `fetch`，没有新增 npm 依赖。
 - `@xterm/addon-image 0.9.0`（MIT）只作为开发依赖，供隔离的 SIXEL 原型与其 Playwright 测试使用，生产入口没有引用它，`vite build` 产物中不含该插件。它的发布包内联了两个 MIT 库编译出的 WebAssembly：`sixel`（jerch/node-sixel）和 `xterm-wasm-parts`，没有运行时依赖。评估过程见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md)。
 
 ## 直接依赖
