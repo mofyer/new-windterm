@@ -1,6 +1,6 @@
-# 端口转发与跳板概念验证（C08、C16、C17、C18）
+# 端口转发与跳板概念验证（C08、C10、C16、C17、C18）
 
-日期：2026-10-11，2026-10-12 补充 SSH 终端的端口转发。状态：**Rust 协议层探针通过；已打开的交互 SSH 终端可经 IPC 与「端口转发」面板添加本地、动态、远端转发，但只对本仓库的 russh 夹具和浏览器 IPC stub 验证过，没有配置保存，不代表这些功能验收。** 对端为本仓库的 russh 有限命令服务端（已加入只连回环地址的 `direct-tcpip` 支持），不是 OpenSSH。
+日期：2026-10-11，2026-10-12 补充 SSH 终端的端口转发与 agent 转发界面。状态：**Rust 协议层探针通过；已打开的交互 SSH 终端可经 IPC 与「端口转发」面板添加本地、动态、远端转发，但只对本仓库的 russh 夹具和浏览器 IPC stub 验证过，没有配置保存，不代表这些功能验收。** 对端为本仓库的 russh 有限命令服务端（已加入只连回环地址的 `direct-tcpip` 支持），不是 OpenSSH。
 
 ## 结论
 
@@ -92,6 +92,37 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 - 远端转发的本地目标不可达时，服务器打开的通道在 5 秒连接期限后被拒绝；这一路径（终端不再停顿）没有单独的自动化测试。
 - 服务器一直不应答 `tcpip-forward` 时的期限与撤回路径没有测试（夹具总是立即应答）。
 
+## SSH 终端的 agent 转发：IPC 与界面（C10）
+
+2026-10-12 加入。**只对本仓库的 russh 夹具、私有临时 `ssh-agent` 和浏览器 IPC stub 验证过，没有对 OpenSSH 服务端实测，不代表 C10 验收。**
+
+### agent 转发的设计
+
+- **逐连接显式开启**：连接 SSH 终端的对话框里有复选框“转发本机 ssh-agent（仅对信任的主机）”，只在终端用途中出现（验证与文件浏览不显示），默认不勾选，关闭对话框即清除，不写入任何存储。勾选后立即显示警告：连接期间远端主机（以及能控制它的任何人）可以让本机 agent 用其中的全部密钥代你签名，私钥本身不离开本机；核对指纹时再次提醒（跳板主机那一步不提醒，转发只发生在目标主机的连接上）。
+- **IPC**：`ssh_open` 增加可选参数 `agentForwarding`（缺省为关闭），前端只在勾选时发送 `true`。没有新增命令。探针 `ssh_probe` 不携带这个选择。
+- **Rust**：`Ssh::open_with_agent`（[`ssh_agent_forward.rs`](../../apps/desktop/src-tauri/src/ssh_agent_forward.rs)，挂在 `ssh::terminal::agent`）在开启时：
+  1. 只读取一次本机 agent 的位置（Unix `$SSH_AUTH_SOCK`；Windows 为 OpenSSH agent 命名管道，与 agent 认证共用 `AGENT_PIPE` 常量），并在不连网络、不消费 challenge 的情况下确认它现在能连上（Unix 2 秒期限）；连不上时直接失败，不认证；
+  2. 连接、认证并申请 PTY 后，先把这个位置登记到这条连接自己的 `Routes`（`Routes` 现在保存 agent 的路径，而不是一个开关；中继不再读取进程环境变量），再在终端的 session 通道上发送 `auth-agent-req@openssh.com`（要求应答）；
+  3. 服务器拒绝时清除这条路由，整个打开失败（`SSH server refused agent forwarding`），而不是静默地不转发；与 X11 的逐连接开启一致；
+  4. 之后服务器打开的 `auth-agent@openssh.com` 通道由已有的 `KeyCheck` 路由接受并中继到登记的位置；其他连接（包括同一窗口的其他终端、SFTP 授权的每次重连、跳板主机那一跳）没有登记，始终拒绝。
+- **生命周期**：终端结束时 `Tunnels::close` 调用 `Routes::end_relays`，关闭 agent 路由并结束已建立的 agent 中继，与端口转发、X11 相同。
+- 打开成功后，终端状态栏显示“SSH 已连接 · 已转发本机 ssh-agent”。
+
+### agent 转发实测（2026-10-12，macOS arm64，本机）
+
+| 测试 | 结果 |
+| --- | --- |
+| `cargo test --locked --test ssh_agent_forwarding --all-features`（russh 夹具 + 私有临时 `/usr/bin/ssh-agent`，载入夹具客户端密钥；该测试独占一个测试二进制，因为它修改 `SSH_AUTH_SOCK`） | 通过：未开启的终端里服务器得到 `AGENT OFF`（没有收到转发请求）；开启的终端里服务器经转发通道查到临时 agent 中的 1 把公钥（`AGENT 1 KEYS`）；两者同时打开时互不影响；夹具拒绝转发请求时打开失败并报告 `SSH server refused agent forwarding`；`SSH_AUTH_SOCK` 未设置或指向不存在的套接字时打开失败，服务器的认证次数不变 |
+| `cargo test --lib forward`：原有的 `agent_forwarding_requires_explicit_enablement`（改为把临时 agent 的路径登记到路由，不再修改环境变量） | 通过：未登记时 `AGENT REFUSED`；登记后 `AGENT 1 KEYS`；`end_relays` 之后再次 `AGENT REFUSED` |
+| Playwright `tests/e2e/ssh-agent-forwarding.spec.ts`（IPC stub，3 项） | 通过：只有终端对话框显示选项，默认不勾选；不勾选时 `ssh_open` 不带 `agentForwarding`；勾选后显示警告和核对指纹时的提醒，`ssh_probe` 不携带选择，`ssh_open` 带 `agentForwarding: true`，状态栏显示已转发；后端拒绝以文本显示；关闭对话框后再次打开为不勾选；本地存储中没有相关内容；文件浏览不发送该参数 |
+
+### agent 转发未验证
+
+- 与 OpenSSH 服务端互操作（`AllowAgentForwarding`、远端 `SSH_AUTH_SOCK` 的建立、远端 `ssh-add -l` / 跳转登录）没有实测；夹具只模拟服务器打开 agent 通道。
+- 原生桌面窗口中的点击与显示没有实测；Windows 的命名管道路径与 Linux 都没有运行（集成测试只在 Unix 上编译运行）。
+- macOS 从访达启动的 `.app` 是否继承 launchd 提供的 `SSH_AUTH_SOCK` 没有验证。
+- 没有 agent 确认提示（`ssh-add -c`）的界面，也不限制可用的密钥；远端能使用 agent 中的全部密钥。
+
 ## 经代理连接与 ProxyCommand（C07、C19、C20）
 
 [`ssh_proxy.rs`](../../apps/desktop/src-tauri/src/ssh_proxy.rs) 把三种连接方式都变成一条字节流，再交给与直连相同的“固定主机密钥 + 认证”流程：
@@ -104,7 +135,7 @@ russh 0.64.1 客户端在**收到**数据时就扩大服务器的发送窗口，
 
 ## 未完成
 
-- X11 转发（C15）只有 Rust 探针，没有界面，未在真实 X 服务器上验证，见[决策记录](X11_GSSAPI_ADR.zh-CN.md)；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发尚无界面；远端监听只在回环地址上验证。
+- X11 转发（C15）只有 Rust 探针，没有界面，未在真实 X 服务器上验证，见[决策记录](X11_GSSAPI_ADR.zh-CN.md)；ControlMaster 见[决策记录](CONTROLMASTER_ADR.zh-CN.md)。agent 转发已有逐连接开启的界面（见上文），但只对 russh 夹具验证；远端监听只在回环地址上验证。
 - 代理、ProxyCommand 与一跳跳板已作为连接路线接入 SSH 对话框（2026-10-12），见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)；仍无配置保存，代理只在本机测试代理上验证。
 - 端口转发只能在已打开的 SSH 终端上临时添加：没有配置保存，也不随会话自动启动；本地与动态监听只允许回环地址。
 - 只针对 russh 对端验证；OpenSSH 的 `AllowTcpForwarding`、`PermitOpen` 等策略与真实网络行为未覆盖。

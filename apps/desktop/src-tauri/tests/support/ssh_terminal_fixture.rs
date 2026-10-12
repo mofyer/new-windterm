@@ -49,7 +49,8 @@ pub struct Fixture {
     /// Accepted direct-tcpip (local forwarding) channels.
     #[allow(dead_code)] // read only by the forwarding tests
     pub forwards: Arc<AtomicUsize>,
-    /// Every `x11-req` received. Set `denial` to 4 to refuse them.
+    /// Every `x11-req` received. Set `denial` to 4 to refuse them, or to 5
+    /// to refuse agent forwarding requests instead.
     #[allow(dead_code)] // read only by the X11 tests
     pub x11_requests: Arc<Mutex<Vec<X11Request>>>,
     directory: PathBuf,
@@ -312,6 +313,9 @@ impl server::Handler for Handler {
         _channel: ChannelId,
         _session: &mut server::Session,
     ) -> Result<bool, Self::Error> {
+        if self.denial.load(Ordering::SeqCst) == 5 {
+            return Ok(false);
+        }
         self.agent_requested = true;
         Ok(true)
     }

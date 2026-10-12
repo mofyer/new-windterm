@@ -5,6 +5,7 @@ import {
   askSftp, dismissSftpDialog, parseMode, remoteNameError, uploadHeaders,
   MAX_DOWNLOAD_BYTES, MAX_UPLOAD_BYTES, READ_ONLY_ERROR, type AskOptions, type Downloaded, type TransferProgress,
 } from "./sftp-write";
+import { scpUploadHeaders, SCP_NOTE, SCP_OPTION_LABEL, SCP_UPLOAD_CANCELLED } from "./sftp-scp";
 
 type RemoteKind = "directory" | "file" | "symlink" | "other";
 interface RemoteEntry {
@@ -76,6 +77,8 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     <div class="inspector-title"><strong>文件浏览器</strong><span class="badge" id="sftp-mode">SFTP · 只读</span></div>
     <div class="sftp-host"><span id="sftp-host"></span><button type="button" id="sftp-disconnect">断开</button></div>
     <div class="sftp-toolbar"><button type="button" id="sftp-up" aria-label="上级目录">上级</button><button type="button" id="sftp-refresh">刷新</button><button type="button" id="sftp-writable" aria-pressed="false">允许写入…</button></div>
+    <label class="sftp-scp"><input type="checkbox" id="sftp-scp" /><span id="sftp-scp-label"></span></label>
+    <p id="sftp-scp-note" class="caption" hidden></p>
     <div class="sftp-toolbar" id="sftp-write-tools" hidden><button type="button" id="sftp-mkdir">新建目录…</button><button type="button" id="sftp-touch">新建空文件…</button><button type="button" id="sftp-upload">上传文件…</button><input type="file" id="sftp-upload-input" hidden /></div>
     <code id="sftp-path"></code>
     <div class="sftp-status"><span id="sftp-status" role="status" aria-live="polite"></span><button type="button" id="sftp-cancel" hidden>取消</button></div>
@@ -100,6 +103,9 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
   const previewNote = get("sftp-preview-note");
   const progress = get<HTMLProgressElement>("sftp-progress");
   const uploadInput = get<HTMLInputElement>("sftp-upload-input");
+  const scpToggle = get<HTMLInputElement>("sftp-scp");
+  get("sftp-scp-label").textContent = SCP_OPTION_LABEL;
+  get("sftp-scp-note").textContent = SCP_NOTE;
   const actionButtons = ["sftp-up", "sftp-refresh", "sftp-enter", "sftp-resolve", "sftp-preview"].map(id => get<HTMLButtonElement>(id));
   const writeButtons = ["sftp-mkdir", "sftp-touch", "sftp-upload", "sftp-rename", "sftp-chmod", "sftp-delete"].map(id => get<HTMLButtonElement>(id));
 
@@ -113,6 +119,8 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
   let writable = false;
   // A confirmation is open: actions wait for it like for a busy operation.
   let asking = false;
+  // Single-file transfers use legacy SCP instead of SFTP; off for every new grant.
+  let scp = false;
   let revision = 0;
   // A prompted grant keeps no answers, so every reconnect asks the user again.
   let credential: SshCredential | undefined;
@@ -188,6 +196,11 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     const download = get<HTMLButtonElement>("sftp-download");
     download.hidden = current?.kind !== "file";
     download.disabled = !idle || !current || current.size > MAX_DOWNLOAD_BYTES;
+    download.textContent = scp ? "用 SCP 下载到“下载”文件夹" : "下载到“下载”文件夹";
+    get("sftp-upload").textContent = scp ? "用 SCP 上传文件…" : "上传文件…";
+    scpToggle.checked = scp;
+    scpToggle.disabled = !idle;
+    get("sftp-scp-note").hidden = !scp;
     const writableButton = get<HTMLButtonElement>("sftp-writable");
     writableButton.textContent = writable ? "恢复只读" : "允许写入…";
     writableButton.setAttribute("aria-pressed", String(writable));
@@ -340,10 +353,12 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     const file = target();
     if (busy || asking || !current || file?.kind !== "file" || file.size > MAX_DOWNLOAD_BYTES) return;
     const name = current.entry.name;
-    const result = await run(`正在下载“${name}”…可随时取消。`, common => invoke<Downloaded>("ssh_sftp_download", {
-      ...common, path: current.path, onProgress: transferProgress(common.operationId, "下载", name),
+    const viaScp = scp;
+    const verb = viaScp ? "用 SCP 下载" : "下载";
+    const result = await run(`正在${verb}“${name}”…可随时取消。`, common => invoke<Downloaded>(viaScp ? "ssh_scp_download" : "ssh_sftp_download", {
+      ...common, path: current.path, onProgress: transferProgress(common.operationId, verb, name),
     }), DOWNLOAD_CANCELLED);
-    if (result) status.textContent = `已下载 ${formatSize(result.bytes)}，保存为 ${result.path}`;
+    if (result) status.textContent = `已${verb} ${formatSize(result.bytes)}，保存为 ${result.path}`;
   }
   async function toggleWritable() {
     const token = grantToken;
@@ -383,6 +398,14 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     }), overwrite ? OVERWRITE_CANCELLED : UPLOAD_CANCELLED);
     if (result) await refresh(directory, name, done);
   }
+  // SCP replaces the target in place; the caller has confirmed any existing file.
+  async function sendScp(directory: string, name: string, bytes: Uint8Array, message: string, done: string) {
+    const path = joinRemotePath(directory, name);
+    const result = await run(message, common => invoke<null>("ssh_scp_upload", bytes, {
+      headers: scpUploadHeaders({ ...common, path, onProgress: transferProgress(common.operationId, "用 SCP 上传", name) }),
+    }), SCP_UPLOAD_CANCELLED);
+    if (result !== undefined) await refresh(directory, name, done);
+  }
   const taken = (name: string) => listing?.entries.some(entry => entry.name === name) ? "当前目录已有同名项。" : undefined;
   async function create(kind: "directory" | "file") {
     const directory = listing?.path;
@@ -403,6 +426,7 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     const directory = listing?.path;
     if (busy || asking || !directory || !writable) return;
     const name = file.name;
+    const viaScp = scp;
     const problem = remoteNameError(name);
     if (problem) { error.textContent = `无法上传“${name}”：${problem}`; return; }
     if (file.size > MAX_UPLOAD_BYTES) { error.textContent = `“${name}”超过 16 MiB 上传上限。`; return; }
@@ -415,7 +439,9 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
       }
       const answer = await ask({
         title: "覆盖远端文件？", confirm: "覆盖", danger: true,
-        message: `“${name}”已存在（${formatSize(existing.size)}）。覆盖后无法恢复原内容；失败或取消可能留下不完整的文件。`,
+        message: viaScp
+          ? `“${name}”已存在（${formatSize(existing.size)}）。SCP 会直接写入这个文件，没有临时文件；覆盖后无法恢复原内容，失败或取消会留下不完整的文件。`
+          : `“${name}”已存在（${formatSize(existing.size)}）。覆盖后无法恢复原内容；失败或取消可能留下不完整的文件。`,
       });
       if (answer === null) return;
       overwrite = true;
@@ -428,6 +454,10 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
       return;
     }
     if (busy || listing?.path !== directory || bytes.length > MAX_UPLOAD_BYTES) return;
+    if (viaScp) {
+      await sendScp(directory, name, bytes, `正在用 SCP 上传“${name}”…可随时取消。`, `已用 SCP 上传“${name}”（${formatSize(bytes.length)}）。`);
+      return;
+    }
     await send(directory, name, bytes, overwrite, `正在上传“${name}”…可随时取消。`, `已上传“${name}”（${formatSize(bytes.length)}）。`);
   }
   async function rename() {
@@ -492,6 +522,7 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
     revision++;
     dismissSftpDialog();
     setWritable(false);
+    scp = false;
     grantToken = scopeToken = listing = selection = credential = undefined;
     hostName = "";
     setBusy(undefined);
@@ -519,6 +550,11 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
   get("sftp-preview").onclick = () => void preview();
   get("sftp-download").onclick = () => void download();
   get("sftp-writable").onclick = () => void toggleWritable();
+  scpToggle.onchange = () => {
+    scp = scpToggle.checked && !busy && !asking;
+    error.textContent = "";
+    paintActions();
+  };
   get("sftp-mkdir").onclick = () => void create("directory");
   get("sftp-touch").onclick = () => void create("file");
   get("sftp-upload").onclick = () => { uploadInput.value = ""; uploadInput.click(); };

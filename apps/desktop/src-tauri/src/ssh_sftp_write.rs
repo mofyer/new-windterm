@@ -114,7 +114,7 @@ pub struct TransferProgress {
 pub type ProgressSink = Arc<dyn Fn(TransferProgress) -> Result<(), String> + Send + Sync>;
 
 /// A closed progress channel never fails the transfer itself.
-fn meter(operation_id: &str, sink: ProgressSink) -> Progress {
+pub(super) fn meter(operation_id: &str, sink: ProgressSink) -> Progress {
     let operation_id = operation_id.to_string();
     Arc::new(move |transferred, total| {
         let _ = sink(TransferProgress {
@@ -127,12 +127,17 @@ fn meter(operation_id: &str, sink: ProgressSink) -> Progress {
 
 impl SftpRequest {
     pub(super) fn writes(&self) -> bool {
-        matches!(self, Self::Change(_))
+        match self {
+            Self::Change(_) => true,
+            Self::Scp(job) => job.writes(),
+            _ => false,
+        }
     }
 
     pub(super) fn deadline(&self) -> Duration {
         match self {
             Self::Fetch(_)
+            | Self::Scp(_)
             | Self::Change(Change {
                 mutation: Mutation::Upload { .. },
                 ..

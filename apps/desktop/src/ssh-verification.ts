@@ -26,7 +26,11 @@ export type SshCredential =
   | { method: "keyboardInteractive"; responses: string[] }
   // Answers are typed into a dialog per server round while connecting.
   | { method: "keyboardInteractivePrompted" };
-export type SshTerminalRequest = { challengeToken: string; operationId: string; scopeToken: string; name: string; credential: SshCredential };
+export type SshTerminalRequest = {
+  challengeToken: string; operationId: string; scopeToken: string; name: string; credential: SshCredential;
+  // Terminal only: forward the local ssh-agent for this one connection. Never saved.
+  agentForwarding?: boolean;
+};
 type Purpose = "verification" | "terminal" | "files";
 
 /** The `onAuth` channel for a credential that asks the user while connecting. */
@@ -57,7 +61,9 @@ export function createSshVerification(
       <label id="ssh-password-row" hidden>密码<input id="ssh-password" type="password" autocomplete="off" maxlength="1024"/></label>
       <div id="ssh-kbdint-fields" hidden><label>第 1 个提示的答案<input id="ssh-kbdint-1" type="password" autocomplete="off" maxlength="1024"/></label>
       <label>第 2 个提示的答案（例如动态验证码，可留空）<input id="ssh-kbdint-2" type="password" autocomplete="off" maxlength="1024"/></label></div>
-      <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p>${ROUTE_FIELDS}</fieldset>
+      <p class="caption">支持 Ed25519/ECDSA 私钥（可带口令）、密码与本机 SSH agent；暂不支持 RSA 私钥。输入文件路径，不粘贴私钥；路径、密码与口令都不保存，仅在核对指纹后发送给桌面后端。</p>
+      <div id="ssh-agent-forward-fields" hidden><label class="ssh-check"><input type="checkbox" id="ssh-agent-forward"/>转发本机 ssh-agent（仅对信任的主机）</label>
+      <p id="ssh-agent-forward-warning" class="ssh-warning" hidden>开启后，在这次连接期间，远端主机（以及能控制它的任何人）可以让本机 ssh-agent 用其中的全部密钥代你签名，例如登录其他服务器；私钥本身不会离开本机。只对完全信任的主机开启。只对这一次连接有效，不保存。</p></div>${ROUTE_FIELDS}</fieldset>
       <div class="dialog-actions"><button type="submit" id="ssh-probe" class="primary">检查主机指纹</button></div>
     </form>
     <section id="ssh-challenge" hidden aria-label="真实主机指纹">
@@ -73,6 +79,7 @@ export function createSshVerification(
         <button type="button" id="ssh-replace" disabled>替换已保存的密钥</button>
       </section>
       <p id="ssh-expiry"></p>
+      <p id="ssh-agent-forward-reminder" class="ssh-warning" hidden>将转发本机 ssh-agent：连接期间，这台主机可以用你的密钥代你签名。</p>
       <div class="dialog-actions"><button type="button" id="ssh-reject">拒绝并关闭</button><button type="button" id="ssh-accept" class="primary">仅本次信任并验证</button></div>
     </section>
     <section id="ssh-result" hidden aria-label="SSH 验证输出"></section>
@@ -93,10 +100,14 @@ export function createSshVerification(
   const desktop = isTauri();
   const remember = get<HTMLInputElement>("ssh-remember");
   const authMethod = get<HTMLSelectElement>("ssh-auth");
+  const agentForward = get<HTMLInputElement>("ssh-agent-forward");
+  agentForward.addEventListener("change", () => { get("ssh-agent-forward-warning").hidden = !agentForward.checked; });
   // Held only between probe and accept/hand-off; cleared with the dialog.
   let credential: SshCredential | undefined;
   // Held only until the jump host key is confirmed; never sent with `ssh_probe`.
   let jumpCredential: JumpCredential | undefined;
+  // The terminal's agent-forwarding choice, held like the credential until hand-off.
+  let agentForwarding = false;
   const targetRequest = (): SshTargetRequest => ({
     host: get<HTMLInputElement>("ssh-host").value.trim(),
     port: Number(get<HTMLInputElement>("ssh-port").value),
@@ -137,6 +148,7 @@ export function createSshVerification(
     scopeToken = undefined;
     credential = undefined;
     jumpCredential = undefined;
+    agentForwarding = false;
   };
   const clear = () => {
     form.reset();
@@ -156,6 +168,8 @@ export function createSshVerification(
     remember.checked = replaceConfirm.checked = false;
     replace.disabled = true;
     get("ssh-changed").hidden = true;
+    agentForward.checked = false;
+    get("ssh-agent-forward-warning").hidden = get("ssh-agent-forward-reminder").hidden = true;
     error.textContent = status.textContent = "";
   };
   const close = () => {
@@ -224,6 +238,7 @@ export function createSshVerification(
     get("ssh-route-step").textContent = step;
     get("ssh-route-step").hidden = !step;
     get("ssh-route-summary").textContent = routeSummary(stage, response.route);
+    get("ssh-agent-forward-reminder").hidden = !agentForwarding || stage === "jump";
     get("ssh-endpoint").textContent = `${response.host}:${response.port}`;
     get("ssh-algorithm").textContent = response.algorithm;
     get("ssh-fingerprint").textContent = response.fingerprint;
@@ -265,6 +280,7 @@ export function createSshVerification(
       : method === "keyboardInteractivePrompted" ? { method: "keyboardInteractivePrompted" }
       : passphrase ? { method: "key", passphrase } : { method: "key" };
     jumpCredential = routed.jumpCredential;
+    agentForwarding = purpose === "terminal" && agentForward.checked;
     for (const id of ["ssh-passphrase", "ssh-password", "ssh-kbdint-1", "ssh-kbdint-2"]) get<HTMLInputElement>(id).value = "";
     fields.disabled = probe.disabled = true;
     retry.hidden = true;
@@ -380,6 +396,7 @@ export function createSshVerification(
       const handoff = {
         challengeToken: token, scopeToken, operationId: crypto.randomUUID(),
         name: `${challenge.host}:${challenge.port}`, credential: credential ?? { method: "key" },
+        ...(purpose === "terminal" && agentForwarding ? { agentForwarding: true } : {}),
       };
       const started = purpose === "terminal" ? openTerminal(handoff) : openFiles(handoff);
       if (!started) {
@@ -464,6 +481,7 @@ export function createSshVerification(
         files: "核对真实主机指纹后，通过 SFTP 只读浏览远端目录、查看属性并预览不超过 64 KiB 的文件。不上传、删除或改名；信任仅在本窗口内存中保留，空闲 5 分钟失效。",
       }[mode];
       accept.textContent = { verification: "仅本次信任并验证", terminal: "仅本次信任并打开终端", files: "仅本次信任并浏览文件" }[mode];
+      get("ssh-agent-forward-fields").hidden = mode !== "terminal";
       clear();
       resetView();
       get("ssh-browser-note").hidden = desktop;

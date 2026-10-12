@@ -772,23 +772,21 @@ mod tests {
             .output()
             .unwrap();
         assert!(added.status.success());
-        let previous = std::env::var_os("SSH_AUTH_SOCK");
-        std::env::set_var("SSH_AUTH_SOCK", &socket);
         let (ssh, routes) = routed(&server).await;
         let mut channel = shell(&ssh, 80).await;
         channel.agent_forward(true).await.unwrap();
         let refused = ask(&mut channel, b"agent\n", "AGENT REFUSED").await;
-        routes.agent.store(true, Ordering::SeqCst);
+        // The path is the connection's own: no process environment is read.
+        routes.set_agent(Some(socket.clone()));
         let forwarded = ask(&mut channel, b"agent\n", "AGENT 1 KEYS").await;
-        match previous {
-            Some(value) => std::env::set_var("SSH_AUTH_SOCK", value),
-            None => std::env::remove_var("SSH_AUTH_SOCK"),
-        }
+        routes.end_relays();
+        let ended = ask(&mut channel, b"agent\n", "AGENT REFUSED").await;
         let _ = agent.kill();
         let _ = agent.wait();
         let _ = std::fs::remove_file(&socket);
         assert!(refused, "agent channel accepted while disabled");
         assert!(forwarded, "forwarded agent did not answer");
+        assert!(ended, "agent channel accepted after the routes ended");
         server.stop().await;
     }
 

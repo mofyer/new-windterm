@@ -58,6 +58,9 @@ const MAX_SFTP_GRANTS: usize = 4;
 const SFTP_EXPIRED: &str = "SFTP session expired; reconnect and verify the host again";
 const SFTP_REVOKED: &str = "SFTP session closed; reconnect and verify the host again";
 const SFTP_CAPACITY: &str = "SFTP session capacity reached; disconnect another file browser";
+/// Where the Windows OpenSSH agent service listens.
+#[cfg(windows)]
+pub(crate) const AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 static KEY_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(MAX_ACTIVE);
 
 #[derive(Clone, Deserialize)]
@@ -189,6 +192,14 @@ struct AuthenticatedSftp {
     rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// A grant's connection after authentication, before any channel is open.
+struct Authenticated {
+    // The route's socket, ProxyCommand process or jump session.
+    _socket: route::Carrier,
+    session: client::Handle<KeyCheck>,
+    rekey_rejected: Arc<std::sync::atomic::AtomicBool>,
+}
+
 enum SftpRequest {
     Open,
     List(String),
@@ -196,6 +207,8 @@ enum SftpRequest {
     Read(String),
     Change(sftp_write::Change),
     Fetch(sftp_write::Fetch),
+    /// Legacy SCP on an exec channel of the same pinned connection.
+    Scp(scp::Job),
 }
 
 enum SftpResult {
@@ -1005,8 +1018,9 @@ type Observed = Arc<Mutex<Option<PublicKey>>>;
 pub(crate) struct Routes {
     /// Remote forwards: (bind address, bound port) → local host and port.
     pub(crate) remote: Mutex<HashMap<(String, u32), (String, u16)>>,
-    /// Agent forwarding, enabled per connection by an explicit user choice.
-    pub(crate) agent: std::sync::atomic::AtomicBool,
+    /// Agent forwarding, enabled per connection by an explicit user choice:
+    /// the local agent's socket (or pipe), fixed when it was enabled.
+    agent: Mutex<Option<std::path::PathBuf>>,
     /// Bounds concurrent forwarded-tcpip channels, as local forwards are.
     remote_channels: Arc<tokio::sync::Semaphore>,
     /// X11 forwarding, enabled per connection by an explicit user choice.
@@ -1019,7 +1033,7 @@ impl Routes {
     pub(crate) fn limited(remote_channels: usize) -> Self {
         Self {
             remote: Mutex::default(),
-            agent: std::sync::atomic::AtomicBool::default(),
+            agent: Mutex::default(),
             remote_channels: Arc::new(tokio::sync::Semaphore::new(remote_channels)),
             x11: x11::Slot::default(),
             relays_ended: watch::channel(false).0,
@@ -1033,9 +1047,19 @@ impl Routes {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
-        self.agent.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.set_agent(None);
         self.x11.clear();
         self.relays_ended.send_replace(true);
+    }
+
+    /// Accepts agent channels from the server, relayed to `local`, or
+    /// refuses them again with `None`.
+    pub(crate) fn set_agent(&self, local: Option<std::path::PathBuf>) {
+        *self.agent.lock().unwrap_or_else(|e| e.into_inner()) = local;
+    }
+
+    fn agent(&self) -> Option<std::path::PathBuf> {
+        self.agent.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Runs `relay` until it finishes or [`Routes::end_relays`] is called.
@@ -1128,17 +1152,14 @@ impl client::Handler for KeyCheck {
         reply: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
-        if !self.routes.agent.load(std::sync::atomic::Ordering::SeqCst) {
+        let Some(local) = self.routes.agent() else {
             return Ok(());
-        }
-        #[cfg(unix)]
-        let agent = match std::env::var_os("SSH_AUTH_SOCK") {
-            Some(path) => tokio::net::UnixStream::connect(path).await.ok(),
-            None => None,
         };
+        #[cfg(unix)]
+        let agent = tokio::net::UnixStream::connect(local).await.ok();
         #[cfg(windows)]
         let agent = tokio::net::windows::named_pipe::ClientOptions::new()
-            .open(r"\\.\pipe\openssh-ssh-agent")
+            .open(local)
             .ok();
         let Some(agent) = agent else { return Ok(()) };
         reply.accept().await;
@@ -1357,6 +1378,13 @@ async fn execute_sftp(
     request: SftpRequest,
     prompter: Option<&Prompter>,
 ) -> Result<SftpResult, SftpFailure> {
+    let request = match request {
+        SftpRequest::Scp(job) => {
+            let connection = connect_grant(target, cancel, prompter).await?;
+            return scp::execute(connection, job).await;
+        }
+        request => request,
+    };
     let authenticated = connect_sftp(target, cancel, prompter).await?;
     let AuthenticatedSftp {
         _socket,
@@ -1374,6 +1402,7 @@ async fn execute_sftp(
         SftpRequest::Read(path) => sftp.read(&path).await.map(SftpResult::Read),
         SftpRequest::Change(change) => sftp_write::apply(&sftp, change).await,
         SftpRequest::Fetch(fetch) => sftp_write::fetch(&sftp, fetch).await,
+        SftpRequest::Scp(_) => Err("Unexpected SFTP request".into()),
     };
     let _ = sftp.close().await;
     if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1395,6 +1424,35 @@ async fn connect_sftp(
     cancel: watch::Receiver<bool>,
     prompter: Option<&Prompter>,
 ) -> Result<AuthenticatedSftp, SftpFailure> {
+    let Authenticated {
+        _socket,
+        session,
+        rekey_rejected,
+    } = connect_grant(target, cancel, prompter).await?;
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|_| SftpFailure::Keep("SSH channel open failed".into()))?;
+    let sftp = ReadOnlySftp::from_channel(channel)
+        .await
+        .map_err(SftpFailure::Keep)?;
+    if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(SftpFailure::Revoke(REKEY_ERROR.into()));
+    }
+    Ok(AuthenticatedSftp {
+        _socket,
+        session,
+        sftp,
+        rekey_rejected,
+    })
+}
+
+/// Reconnects through the grant's route, pins its key and authenticates.
+async fn connect_grant(
+    target: Target,
+    cancel: watch::Receiver<bool>,
+    prompter: Option<&Prompter>,
+) -> Result<Authenticated, SftpFailure> {
     let Target {
         request: target,
         key,
@@ -1432,20 +1490,9 @@ async fn connect_sftp(
             AuthFailure::Rejected(message) => SftpFailure::Revoke(message),
             AuthFailure::Failed(message) => SftpFailure::Keep(message),
         })?;
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|_| SftpFailure::Keep("SSH channel open failed".into()))?;
-    let sftp = ReadOnlySftp::from_channel(channel)
-        .await
-        .map_err(SftpFailure::Keep)?;
-    if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err(SftpFailure::Revoke(REKEY_ERROR.into()));
-    }
-    Ok(AuthenticatedSftp {
+    Ok(Authenticated {
         _socket: carrier,
         session,
-        sftp,
         rekey_rejected,
     })
 }

@@ -10,14 +10,14 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
-// Accepts exactly `scp -f|-t -- '<path>'` (sh single-quoting, `'\''` for a
+// Accepts exactly `scp -f|-t|-t -d -- '<path>'` (sh single-quoting, `'\''` for a
 // quote) whose resolved path stays inside `base`; anything else is denied.
 function scpTarget(command, base) {
-  const match = /^scp -([ft]) -- '((?:[^']|'\\'')*)'$/.exec(command);
+  const match = /^scp (-t -d|-t|-f) -- '((?:[^']|'\\'')*)'$/.exec(command);
   if (!match) return null;
   const target = resolve(match[2].replaceAll("'\\''", "'"));
   if (target !== base && !target.startsWith(`${base}/`)) return null;
-  return { mode: match[1], target };
+  return { flags: match[1].split(' '), target };
 }
 
 // Internal ForceCommand mode. The private lifetime socket owns the session even
@@ -55,8 +55,8 @@ if (process.argv.length === 4 && process.argv[2] === '--session') {
       child.once('exit', code => finish(code ?? 1));
     } else if (scpTarget(process.env.SSH_ORIGINAL_COMMAND ?? '', `${root}/remote`)) {
       // Legacy SCP server mode, confined to the fixture's remote directory.
-      const { mode, target } = scpTarget(process.env.SSH_ORIGINAL_COMMAND, `${root}/remote`);
-      child = spawn('/usr/bin/scp', [`-${mode}`, '--', target], { stdio: 'inherit' });
+      const { flags, target } = scpTarget(process.env.SSH_ORIGINAL_COMMAND, `${root}/remote`);
+      child = spawn('/usr/bin/scp', [...flags, '--', target], { stdio: 'inherit' });
       child.once('error', () => finish(1));
       child.once('exit', code => finish(code ?? 1));
     } else {

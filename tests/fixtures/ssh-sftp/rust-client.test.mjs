@@ -46,7 +46,7 @@ const titles = {
   mismatch: 'reconnect host-key mismatch',
   sftp: 'read-only SFTP grant: list, metadata, bounded read, truncation, close',
   'sftp-write': 'SFTP write prototype: download, mkdir, upload, rename, chmod, delete, cancel',
-  scp: 'legacy SCP upload and download of one file through scp -t/-f',
+  scp: 'legacy SCP upload and download through scp -t/-f, directly and through an SFTP grant',
   routes: 'read-only SFTP through HTTP CONNECT, SOCKS5, ProxyCommand and a jump host',
 };
 // Separate server instances keep intentional pre-auth rejections from accumulating
@@ -93,10 +93,16 @@ test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
     assert.equal(mutation.status, 0, mutation.stdout + mutation.stderr);
     assert.match(mutation.stdout, /1 passed/);
     } else if (mode === 'scp') {
+    // The grant part saves downloads into a folder inside the fixture root
+    // (removed with it), never ~/Downloads. The remote path is not resolved:
+    // the fixture's SCP allow-list compares it with its own spelling.
+    const downloads = join(dirname(metadataPath), 'downloads');
+    await mkdir(downloads);
     const scp = runIgnored('ssh::scp::tests::real_fixture_scp_round_trip', metadata, {
       P0_SSH_FIXTURE_KEY: metadata.privateKeyPath,
       P0_SSH_FIXTURE_REMOTE: metadata.remoteDirectory,
       P0_SSH_FIXTURE_FINGERPRINT: fingerprint,
+      P0_SSH_FIXTURE_DOWNLOADS: await realpath(downloads),
     });
     assert.equal(scp.status, 0, scp.stdout + scp.stderr);
     assert.match(scp.stdout, /1 passed/);

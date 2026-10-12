@@ -601,6 +601,7 @@ async function openSsh(s: Session, request: SshTerminalRequest) {
       challengeToken: request.challengeToken, operationId: request.operationId,
       scopeToken: request.scopeToken, credential: request.credential, onEvent: terminalChannel(s),
       cols: s.terminal.cols, rows: s.terminal.rows, onAuth: prompts?.channel,
+      ...(request.agentForwarding ? { agentForwarding: true } : {}),
     }).finally(() => prompts?.finish());
     if (s.disposed || s.ended) {
       await invoke("ssh_close", { id });
@@ -608,7 +609,7 @@ async function openSsh(s: Session, request: SshTerminalRequest) {
     }
     s.ptyId = id;
     flushEarlyInput(s);
-    s.status = "SSH 已连接";
+    s.status = request.agentForwarding ? "SSH 已连接 · 已转发本机 ssh-agent" : "SSH 已连接";
     if (!s.closing) await invoke("ssh_resize", { id, cols: s.terminal.cols, rows: s.terminal.rows });
     updateStatus();
   } catch (error) {

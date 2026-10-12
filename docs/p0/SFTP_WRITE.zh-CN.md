@@ -11,6 +11,8 @@
 
 不能据此宣称以下任何一项：WindTerm 文件传输已对齐、SFTP 已完成、F02–F07 已通过、产品可用。只读浏览部分见 [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md)。
 
+同一授权上的旧版 SCP 单文件上传 / 下载（F08/F09，`ssh_scp_upload`、`ssh_scp_download`，面板中的“用旧版 SCP 协议传输单个文件”选项）见 [SCP](SCP.zh-CN.md)：上传同样要求授权已切换为可写，下载沿用本页的下载规则，但 SCP 上传没有 `.part` 临时文件，会原地替换同名文件。
+
 ## 设计
 
 ### 分层与文件
