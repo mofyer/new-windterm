@@ -57,7 +57,7 @@
 | SCP | `scp -t/-f` 传单个文件 | 真实 OpenSSH 夹具 | 没有目录、递归或界面 |
 | Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试；真实 telnetd 308（6 项，本机） | 没有 login 认证、LINEMODE 或网络设备 |
 | 输入路径 | 有序输入队列（16 MiB）；按 UTF-8 边界分块输出，绕过 xterm.js #6003；粘贴与拖放过滤控制字符；无按键输入的文本会转发；拦截 F 键默认动作 | 浏览器测试（CDP） | 没有原生输入法、VoiceOver 或 WebView 实测 |
-| XMODEM/YMODEM | 不依赖 I/O 的发送与接收 | 23 项单元测试 | 没有 lrzsz 互操作，没有接入终端；ZMODEM 只有决策记录 |
+| XMODEM/YMODEM | 不依赖 I/O 的发送与接收；评估了 ZMODEM 的 `zmodem2`，结论是不采用 | 单元测试；与真实 lrzsz 0.13.1 互操作 11/11 | 没有接入终端、SSH 或串口；ZMODEM 需要自行实现 |
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
 | VT 兼容矩阵与适配 | xterm.js 6.0.0 的 63 项探针；生产代码加了设备身份、DECRQSS、DECOM 下的 CPR、默认关闭的 OSC 52 写入。加适配后为支持 39、部分支持 15、不支持 12 → 9 | [矩阵](p0/VT_MATRIX.zh-CN.md) | 没有运行 vttest，没有与 WindTerm、xterm 或 DEC 对比 |
@@ -108,7 +108,6 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 2. **把探针接入界面**：SCP、agent 转发和 tmux 还只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
 3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
 4. **互操作**：
-   - lrzsz：XMODEM/YMODEM，并评估 ZMODEM 的 `zmodem2`。
    - Linux CI 上卡住连接的取消测试。
 5. **VT 差距**：设备身份、DECSCL 与 OSC 52 已用解析器钩子补上；其余按[终端内核决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。
 6. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 需要先评审 CSP 中的 `wasm-unsafe-eval`。
