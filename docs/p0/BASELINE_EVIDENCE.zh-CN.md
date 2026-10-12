@@ -105,7 +105,7 @@ print('PASS: 130 unique IDs; 117 preserved IDs; 13 additions (11 entry / 2 stati
 PY
 ```
 
-第二段核对 2026-10-11 新增的证据索引，范围如下：
+第二段核对 2026-10-11 新增、2026-10-12 刷新的证据索引，范围如下：
 
 - 每个 ID 在 baseline.json、两份 Markdown 台账和[冻结提议](BASELINE_FREEZE_PROPOSAL.zh-CN.md)(d) 节中，静态复核结论、P0 分组、证据链接、待决链接与说明一致；
 - 所有证据链接指向的文件和标题锚点存在；

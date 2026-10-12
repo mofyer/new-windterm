@@ -78,18 +78,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/NET_TERMINAL.zh-CN.md#证据",
-          "result": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作"
+          "result": "Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行"
         },
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/TRANSPORTS.zh-CN.md#telnetc02",
-          "result": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作"
+          "result": "Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12",
+          "result": "Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "Telnet 编解码与终端标签，仅测试内 loopback 服务器；无真实 telnetd 互操作",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -260,13 +265,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
-          "result": "不经 shell 的 ProxyCommand 探针（依赖 /usr/bin/nc）；无界面与配置"
+          "result": "不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地",
+          "result": "不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "不经 shell 的 ProxyCommand 探针（依赖 /usr/bin/nc）；无界面与配置",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -294,13 +304,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
-          "result": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；无界面"
+          "result": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地",
+          "result": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；无界面",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "两跳跳板探针，逐跳固定主机密钥与独立认证（russh 夹具）；连接对话框一跳跳板路线的两步信任，以 russh 夹具作跳板到达真实 OpenSSH（只读 SFTP），IPC stub 界面；OpenSSH 作跳板未测，无多跳与配置保存",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -600,13 +615,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
-          "result": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；无界面"
+          "result": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机",
+          "result": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；无界面",
+      "p0_evidence_note": "本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -634,13 +654,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10",
-          "result": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；无界面"
+          "result": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机",
+          "result": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；无界面",
+      "p0_evidence_note": "远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -668,13 +693,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
-          "result": "SOCKS5 动态转发 CONNECT（russh 夹具）；无认证、无界面"
+          "result": "SOCKS5 动态转发 CONNECT（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；SOCKS 无认证，无配置保存，无 OpenSSH 互操作"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机",
+          "result": "SOCKS5 动态转发 CONNECT（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；SOCKS 无认证，无配置保存，无 OpenSSH 互操作"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "SOCKS5 动态转发 CONNECT（russh 夹具）；无认证、无界面",
+      "p0_evidence_note": "SOCKS5 动态转发 CONNECT（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；SOCKS 无认证，无配置保存，无 OpenSSH 互操作",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -702,13 +732,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
-          "result": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；无界面"
+          "result": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地",
+          "result": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；无界面",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "HTTP CONNECT 含 Basic 认证与 407（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -736,13 +771,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20",
-          "result": "SOCKS5 代理含用户名/密码（本机测试代理）；无界面"
+          "result": "SOCKS5 代理含用户名/密码（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地",
+          "result": "SOCKS5 代理含用户名/密码（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "SOCKS5 代理含用户名/密码（本机测试代理）；无界面",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "SOCKS5 代理含用户名/密码（本机测试代理）；已接入连接对话框，经测试代理到达真实 OpenSSH（只读 SFTP），IPC stub 界面；未测真实代理软件，不保存配置",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -770,13 +810,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮",
-          "result": "仅协议层跳板（与 C08 共用探针）；无已保存会话复用"
+          "result": "协议层跳板与连接对话框一跳跳板路线（与 C08 共用；russh 夹具作跳板、真实 OpenSSH 作目标）；无已保存跳板会话复用"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地",
+          "result": "协议层跳板与连接对话框一跳跳板路线（与 C08 共用；russh 夹具作跳板、真实 OpenSSH 作目标）；无已保存跳板会话复用"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "仅协议层跳板（与 C08 共用探针）；无已保存会话复用",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "协议层跳板与连接对话框一跳跳板路线（与 C08 共用；russh 夹具作跳板、真实 OpenSSH 作目标）；无已保存跳板会话复用",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -882,18 +927,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#实现结果更新",
-          "result": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测"
+          "result": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测"
         },
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过",
-          "result": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测"
+          "result": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位",
+          "result": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "cmd.exe ConPTY 生命周期（Windows CI）；WebView2、输入法与真实用户环境未测",
+      "p0_evidence_note": "cmd.exe ConPTY 生命周期（Windows Server 2022 与 2025 CI）；Server 2022 每会话多 1 个句柄，来自系统 ConPTY；WebView2、输入法与真实用户环境未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1012,13 +1062,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
-          "result": "xterm.js 6.0.0 原样行为探针：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口"
+          "result": "xterm.js 6.0.0 原样行为探针加生产 VT 适配器（vt100 身份、DECOM 下 CPR）：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "xterm.js 6.0.0 原样行为探针：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口",
+      "p0_evidence_note": "xterm.js 6.0.0 原样行为探针加生产 VT 适配器（vt100 身份、DECOM 下 CPR）：部分；DECDWL/DECDHL、DECSCNM/DECCOLM 等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1056,13 +1106,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
-          "result": "原样行为探针：部分；SS2/SS3、S8C1T、DECSCL 等缺口"
+          "result": "原样行为探针加生产适配器（vt220 身份、DECSCL 等级报告）：部分；SS2/SS3、S8C1T、DECSCL 不切换功能等缺口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：部分；SS2/SS3、S8C1T、DECSCL 等缺口",
+      "p0_evidence_note": "原样行为探针加生产适配器（vt220 身份、DECSCL 等级报告）：部分；SS2/SS3、S8C1T、DECSCL 不切换功能等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1100,13 +1150,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#图形",
-          "result": "原样行为探针：SIXEL 被吞掉（不支持）；ReGIS 未测"
+          "result": "原样行为探针：SIXEL 被吞掉；隔离 SIXEL 原型（@xterm/addon-image 0.9.0）可绘制，但生产 CSP 阻止其 WebAssembly 解码器，未接生产终端；ReGIS 未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/TERMINAL_CORE_ADR.zh-CN.md#原型",
+          "result": "原样行为探针：SIXEL 被吞掉；隔离 SIXEL 原型（@xterm/addon-image 0.9.0）可绘制，但生产 CSP 阻止其 WebAssembly 解码器，未接生产终端；ReGIS 未测"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：SIXEL 被吞掉（不支持）；ReGIS 未测",
+      "p0_evidence_note": "原样行为探针：SIXEL 被吞掉；隔离 SIXEL 原型（@xterm/addon-image 0.9.0）可绘制，但生产 CSP 阻止其 WebAssembly 解码器，未接生产终端；ReGIS 未测",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1144,13 +1199,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
-          "result": "原样行为探针：DECIC/DECDC 可用；左右边距与矩形操作缺口"
+          "result": "原样行为探针加生产适配器（vt420 身份）：DECIC/DECDC 可用；左右边距与矩形操作缺口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：DECIC/DECDC 可用；左右边距与矩形操作缺口",
+      "p0_evidence_note": "原样行为探针加生产适配器（vt420 身份）：DECIC/DECDC 可用；左右边距与矩形操作缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1188,13 +1243,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
-          "result": "原样行为探针：部分；DECST8C、DECSCL 缺口"
+          "result": "原样行为探针加生产适配器（vt520 身份、DECSCUSR 报告）：部分；DECST8C 缺口，DECSCL 只改报告"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：部分；DECST8C、DECSCL 缺口",
+      "p0_evidence_note": "原样行为探针加生产适配器（vt520 身份、DECSCUSR 报告）：部分；DECST8C 缺口，DECSCL 只改报告",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1232,13 +1287,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#按终端类型的结论",
-          "result": "原样行为探针：大部分可用；OSC 52、1005/1015 等缺口"
+          "result": "原样行为探针加生产适配器：大部分可用，XTVERSION 有回复，OSC 52 写入需会话授权、读取拒绝；按键编码探针（浏览器）；1005/1015、XTGETTCAP 等缺口"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#osc-52-剪贴板",
+          "result": "原样行为探针加生产适配器：大部分可用，XTVERSION 有回复，OSC 52 写入需会话授权、读取拒绝；按键编码探针（浏览器）；1005/1015、XTGETTCAP 等缺口"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/INPUT_PATHS.zh-CN.md#按键input-keysspects12-项",
+          "result": "原样行为探针加生产适配器：大部分可用，XTVERSION 有回复，OSC 52 写入需会话授权、读取拒绝；按键编码探针（浏览器）；1005/1015、XTGETTCAP 等缺口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：大部分可用；OSC 52、1005/1015 等缺口",
+      "p0_evidence_note": "原样行为探针加生产适配器：大部分可用，XTVERSION 有回复，OSC 52 写入需会话授权、读取拒绝；按键编码探针（浏览器）；1005/1015、XTGETTCAP 等缺口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1310,13 +1375,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查",
-          "result": "生产终端工厂的 Unicode 11 宽度回归（浏览器）；不是 Unicode 13"
+          "result": "生产终端工厂的 Unicode 11 宽度回归，及宽字符、CDP 模拟输入法组合与跨块 UTF-8 输出探针（浏览器）；不是 Unicode 13，原生输入法未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/INPUT_PATHS.zh-CN.md#探针覆盖与结论",
+          "result": "生产终端工厂的 Unicode 11 宽度回归，及宽字符、CDP 模拟输入法组合与跨块 UTF-8 输出探针（浏览器）；不是 Unicode 13，原生输入法未测"
         }
       ],
       "static_review_conclusion": "silent",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "生产终端工厂的 Unicode 11 宽度回归（浏览器）；不是 Unicode 13",
+      "p0_evidence_note": "生产终端工厂的 Unicode 11 宽度回归，及宽字符、CDP 模拟输入法组合与跨块 UTF-8 输出探针（浏览器）；不是 Unicode 13，原生输入法未测",
       "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#c1-t14-unicode-13-与宽字符",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
@@ -1345,18 +1415,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/WEB_QA.zh-CN.md#unicode-列宽回归与-ipc-契约审查",
-          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测"
+          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；ZWJ、旗帜、肤色、VS16 的列宽差距已记录（浏览器）；字形回退未测"
         },
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作",
-          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测"
+          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；ZWJ、旗帜、肤色、VS16 的列宽差距已记录（浏览器）；字形回退未测"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/INPUT_PATHS.zh-CN.md#宽字符input-widespects27-项",
+          "result": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；ZWJ、旗帜、肤色、VS16 的列宽差距已记录（浏览器）；字形回退未测"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；字形回退与 ZWJ 未测",
+      "p0_evidence_note": "emoji 列宽与跨块 UTF-8（浏览器、真实 OpenSSH 输出）；ZWJ、旗帜、肤色、VS16 的列宽差距已记录（浏览器）；字形回退未测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1384,13 +1459,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#sgr-与颜色",
-          "result": "原样行为探针：24 位色可用"
+          "result": "原样行为探针：24 位色可用；DECRQSS 颜色报告靠生产适配器"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "原样行为探针：24 位色可用",
+      "p0_evidence_note": "原样行为探针：24 位色可用；DECRQSS 颜色报告靠生产适配器",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1518,13 +1593,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#适配钩子可行性公开-api",
-          "result": "身份回复可经公开 parser 钩子补齐（H02）；自定义终端类型未实现"
+          "result": "会话级 terminalType 决定身份与 DECSCL 等级回复（生产适配器）；无界面入口，TERM 不变，自定义终端类型未实现"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/VT_MATRIX.zh-CN.md#终端类型与身份回复",
+          "result": "会话级 terminalType 决定身份与 DECSCL 等级回复（生产适配器）；无界面入口，TERM 不变，自定义终端类型未实现"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "身份回复可经公开 parser 钩子补齐（H02）；自定义终端类型未实现",
+      "p0_evidence_note": "会话级 terminalType 决定身份与 DECSCL 等级回复（生产适配器）；无界面入口，TERM 不变，自定义终端类型未实现",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1552,13 +1632,13 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/VT_MATRIX.zh-CN.md#阻断-windterm-对齐的缺口",
-          "result": "63 项 vttest 相关序列样本；vttest 未运行"
+          "result": "63 项 vttest 相关序列样本（含生产适配器）；vttest 未运行"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "browser",
-      "p0_evidence_note": "63 项 vttest 相关序列样本；vttest 未运行",
+      "p0_evidence_note": "63 项 vttest 相关序列样本（含生产适配器）；vttest 未运行",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1714,11 +1794,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D I R B P；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "下载到本机“下载”文件夹，逐字节一致、不覆盖、取消后删除半成品（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 64 MiB，模拟传输队列仍未接入"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
-      "p0_evidence_note": "原型下载与传输队列是模拟状态机，明确不落盘（WEB_QA），不计为运行证据",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "下载到本机“下载”文件夹，逐字节一致、不覆盖、取消后删除半成品（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 64 MiB，模拟传输队列仍未接入",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1742,11 +1828,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "上传经 .part 校验大小后改名、显式覆盖与取消（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 16 MiB，覆盖非原子，模拟传输队列仍未接入"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
-      "p0_evidence_note": "原型传输队列是模拟状态机，没有真实上传（WEB_QA），不计为运行证据",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "上传经 .part 校验大小后改名、显式覆盖与取消（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测，上限 16 MiB，覆盖非原子，模拟传输队列仍未接入",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1770,10 +1862,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D I L；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "删除文件、符号链接本身与空目录，非空目录与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无递归删除，无原生 WKWebView 实测"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "删除文件、符号链接本身与空目录，非空目录与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无递归删除，无原生 WKWebView 实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1797,10 +1896,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "重命名到已存在名称被拒、到新名称成功（真实 OpenSSH sftp-server、IPC stub 面板）；不覆盖只在 OpenSSH 上有服务器端保证，无原生 WKWebView 实测"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "重命名到已存在名称被拒、到新名称成功（真实 OpenSSH sftp-server、IPC stub 面板）；不覆盖只在 OpenSSH 上有服务器端保证，无原生 WKWebView 实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1824,10 +1930,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D R I；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "新建空文件即 0 字节不覆盖上传，同名被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "新建空文件即 0 字节不覆盖上传，同名被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -1851,10 +1964,17 @@
           "type": "upstream_static_review",
           "source": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理",
           "result": "支持；证据类型 D I R；静态证据不等于行为已验证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12",
+          "result": "中文带空格目录创建，重复创建与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "中文带空格目录创建，重复创建与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2629,6 +2749,7 @@
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "static_only",
+      "p0_evidence_note": "INPUT_PATHS 的粘贴清洗、换行规范化与有序队列只涉及粘贴字节路径，没有粘贴对话框、预览或确认，不计为运行证据",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -3636,18 +3757,23 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/PERFORMANCE_BASELINE.zh-CN.md#3-桌面应用release-包",
-          "result": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证"
+          "result": "arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证"
         },
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/RESULTS.zh-CN.md#当前轮原生交互-ssh-冒烟",
-          "result": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证"
+          "result": "arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/RELEASE.zh-CN.md#4-本地验证",
+          "result": "arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "arm64 构建、启动与原生冒烟；ad-hoc 签名，未公证",
+      "p0_evidence_note": "arm64 构建、启动与原生冒烟；release .app 已排除测试二进制，声明最低 macOS 13.3（未在旧系统运行）；ad-hoc 签名，未公证",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -3675,13 +3801,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/CROSS_PLATFORM_VALIDATION.zh-CN.md#windows-conpty-生命周期工作分支第六次尝试通过",
-          "result": "Windows CI 构建与 cmd.exe ConPTY；无原生 GUI"
+          "result": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位",
+          "result": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI"
         }
       ],
       "static_review_conclusion": "partial",
       "p0_evidence_group": "prototype_or_probe",
       "p0_evidence_level": "real_platform",
-      "p0_evidence_note": "Windows CI 构建与 cmd.exe ConPTY；无原生 GUI",
+      "p0_evidence_note": "Windows Server 2022 与 2025 CI 构建与 cmd.exe ConPTY；无原生 GUI",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -4305,7 +4436,7 @@
     ]
   },
   "evidence_refresh": {
-    "checked_on": "2026-10-11",
+    "checked_on": "2026-10-12",
     "purpose": "Evidence index only: links each ID to the upstream static review and to current P0 prototype/probe records; status fields are unchanged.",
     "static_review": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md",
     "static_review_counts": {
@@ -4316,8 +4447,8 @@
       "silent": 2
     },
     "p0_evidence_counts": {
-      "prototype_or_probe": 57,
-      "static_only": 72,
+      "prototype_or_probe": 63,
+      "static_only": 66,
       "neither": 1
     },
     "p0_evidence_group_meaning": {
@@ -4326,9 +4457,9 @@
       "neither": "No upstream static evidence beyond the README claim and no P0 prototype or probe."
     },
     "p0_evidence_level_counts": {
-      "real_peer": 6,
+      "real_peer": 18,
       "real_platform": 7,
-      "loopback_fixture": 17,
+      "loopback_fixture": 11,
       "browser": 27
     },
     "p0_evidence_level_meaning": {
@@ -4338,8 +4469,6 @@
       "browser": "Headless Chrome probe, isolated PoC or IPC-stub UI prototype."
     },
     "ui_prototype_not_counted": [
-      "F02",
-      "F03",
       "F13",
       "F21",
       "G04",
