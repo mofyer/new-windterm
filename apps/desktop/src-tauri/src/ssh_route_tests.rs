@@ -258,7 +258,7 @@ fn a_grant_keeps_the_route_and_proxy_login_of_its_challenge() {
             route,
         )
         .unwrap();
-    let reused = service.use_grant("main", &token, &scope).unwrap();
+    let reused = service.use_grant("main", &token, &scope, false).unwrap();
     assert_eq!(reused.route.summary(), summary);
     let Route::Http(server) = reused.route else {
         panic!("the grant lost its route");

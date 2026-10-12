@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-pty",
-  "description": "Only the bundled main window may control its own PTY, SSH, Telnet/raw TCP and read-only SFTP sessions.",
+  "description": "Only the bundled main window may control its own PTY, SSH, Telnet/raw TCP and SFTP sessions (read-only unless a grant is switched to writable).",
   "windows": [
     "main"
   ],
@@ -30,6 +30,10 @@
     "allow-ssh-sftp-metadata",
     "allow-ssh-sftp-read",
     "allow-ssh-sftp-close",
+    "allow-ssh-sftp-set-writable",
+    "allow-ssh-sftp-change",
+    "allow-ssh-sftp-upload",
+    "allow-ssh-sftp-download",
     "allow-ssh-trust-save",
     "allow-ssh-trust-replace",
     "allow-net-open",

@@ -23,21 +23,21 @@
 | `ssh_sftp_list` / `ssh_sftp_metadata` / `ssh_sftp_read` | 授权、scope、operation ID、路径 | 每次重新连接、固定校验同一主机密钥并重新读取所选私钥文件，操作后断开 |
 | `ssh_sftp_close` | 授权 | 吊销授权；重复调用无副作用 |
 
-浏览授权只存在于 Rust 内存，绑定窗口与页面 scope，空闲 5 分钟或签发 30 分钟后失效，全应用最多 4 个；页面刷新、窗口关闭和应用退出时清除，不写入 known_hosts、配置或日志。连接阶段失败（传输、握手、主机密钥变化、私钥读取、认证、rekey）会立即吊销授权，并在错误末尾附加 `reconnect and verify the host again`，前端据此回到重新核对指纹；文件级错误、超时和用户取消保留授权。没有写入、删除、重命名或权限修改接口，也不保持长连接。
+浏览授权只存在于 Rust 内存，绑定窗口与页面 scope，空闲 5 分钟或签发 30 分钟后失效，全应用最多 4 个；页面刷新、窗口关闭和应用退出时清除，不写入 known_hosts、配置或日志。连接阶段失败（传输、握手、主机密钥变化、私钥读取、认证、rekey）会立即吊销授权，并在错误末尾附加 `reconnect and verify the host again`，前端据此回到重新核对指纹；文件级错误、超时和用户取消保留授权。不保持长连接。授权默认只读；2026-10-12 起，显式开启写入后可以新建、上传、重命名、删除、修改权限，下载在只读授权下也可用。这些写操作原型的命令、语义与证据见 [SFTP_WRITE](SFTP_WRITE.zh-CN.md)。
 
 ### SCP（F08/F09）
 
 SCP 与 SFTP 是两套协议，单独实现和验收。[`ssh_scp.rs`](../../apps/desktop/src-tauri/src/ssh_scp.rs) 在 exec 通道上运行传统的 `scp -t`（上传）与 `scp -f`（下载），一次处理一个普通文件：远端路径按 sh 单引号转义后交给服务端；文件名不得含 `/`、NUL、换行；下载有大小上限，超限时向服务端发送错误并中止；服务端的 1/2 响应码连同消息原样报告。目录、递归与 `-p` 时间戳尚未实现。
 
-夹具的命令白名单只额外允许 `scp -f|-t -- '<路径>'` 这一种形式，且路径解析后必须位于该次夹具的 `remote/` 目录内，越出目录、未加引号、附加参数或拼接命令都被拒绝。`rust-client.test.mjs` 的第 4 个用例在独立实例上运行 ignored 测试 `real_fixture_scp_round_trip`：上传 1,048,583 字节、文件名含中文、空格与单引号的文件，磁盘上的字节逐一一致；下载回来的名称与内容一致；服务端 umask 使权限从请求的 0640 变为 0600，测试只要求权限不超出请求值；不存在的文件返回服务端错误；超出大小上限被拒；非法文件名在本地拒绝；目录之外的路径被夹具拒绝。
+夹具的命令白名单只额外允许 `scp -f|-t -- '<路径>'` 这一种形式，且路径解析后必须位于该次夹具的 `remote/` 目录内，越出目录、未加引号、附加参数或拼接命令都被拒绝。`rust-client.test.mjs` 的第 5 个用例（写操作原型加入前为第 4 个）在独立实例上运行 ignored 测试 `real_fixture_scp_round_trip`：上传 1,048,583 字节、文件名含中文、空格与单引号的文件，磁盘上的字节逐一一致；下载回来的名称与内容一致；服务端 umask 使权限从请求的 0640 变为 0600，测试只要求权限不超出请求值；不存在的文件返回服务端错误；超出大小上限被拒；非法文件名在本地拒绝；目录之外的路径被夹具拒绝。
 
 ### 真实 OpenSSH 验收
 
 `node --test tests/fixtures/ssh-sftp/rust-client.test.mjs` 的第三个用例在独立夹具实例的远端目录写入小文本、符号链接、子目录和含 4,097 个文件的目录，然后显式运行 ignored 测试 `real_fixture_sftp_read_only_browse`。它通过 Rust `Ssh` 服务（不经过 WebView）对系统 OpenSSH `sftp-server` 验证：一次性 challenge 被消费；登录目录解析与列表；符号链接 `stat` 跟随到文件；小文件逐字节一致；夹具自检留下的 1 MiB+ 文件被 64 KiB 上限拒绝；目录读取与不存在路径报错且授权保留；子目录列表；4,097 项目录截断为 4,096 项；关闭授权后再操作返回过期。结束时 Rust 侧无残留操作、授权或 challenge，夹具删除全部临时文件。
 
-第五个用例（2026-10-12）在另一个独立实例上写入同样的远端目录，运行 ignored 测试 `ssh::route::tests::real_fixture_sftp_through_routes`：只读 SFTP 依次经本机测试 HTTP CONNECT 代理、SOCKS5 代理、russh 回环夹具作跳板主机（本夹具 `DisableForwarding yes`，不能当跳板）和 `/usr/bin/nc` ProxyCommand 到达系统 OpenSSH，完成探测、打开、`stat` 与读取；打开之后的授权操作每次都重新经过同一路线。说明见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)。
+该用例本身没有写入、删除、重命名、权限修改或持久化凭据，也没有把认证绕过为独立 SFTP 登录。写操作由第 4 个用例 `real_fixture_sftp_write_operations` 单独验证；它的下载目录在夹具临时根目录内，不触碰真实的“下载”文件夹，详见 [SFTP_WRITE](SFTP_WRITE.zh-CN.md#真实-openssh-夹具)。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
 
-它没有写入、删除、重命名、权限修改或持久化凭据，也没有把认证绕过为独立 SFTP 登录。`from_channel` 与协议方法已通过本机 Rust `check --all-targets --all-features`，单测覆盖路径边界与元数据投影；尚未以 OpenSSH 夹具作为该 Rust wrapper 的网络验收。因此不能把本切片描述为 WindTerm SFTP 已完成。当前 `russh-sftp` 的 `read_dir` 会先接收对端目录结果，再由 wrapper 限制返回最多 4,096 项；这限制了下游结果，不等于对恶意超大目录的内存峰值提供完整预算，正式 IPC 前需改为可中止/分页的传输层。
+第六个用例（2026-10-12）在另一个独立实例上写入同样的远端目录，运行 ignored 测试 `ssh::route::tests::real_fixture_sftp_through_routes`：只读 SFTP 依次经本机测试 HTTP CONNECT 代理、SOCKS5 代理、russh 回环夹具作跳板主机（本夹具 `DisableForwarding yes`，不能当跳板）和 `/usr/bin/nc` ProxyCommand 到达系统 OpenSSH，完成探测、打开、`stat` 与读取；打开之后的授权操作每次都重新经过同一路线。说明见 [SSH 连接路线](SSH_ROUTES.zh-CN.md)。
 
 依赖选择：当前工程把 `serde` 精确 pin 升至 `1.0.229`，以满足 `russh-sftp 3.0.1` 的最小版本约束；`Cargo.lock` 已同步。macOS arm64 本地通过不等于 Windows/Linux SFTP 运行通过；三端仍需真实 subsystem、取消、错误和大文件预算验收。
 

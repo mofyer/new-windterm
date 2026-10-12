@@ -11,6 +11,8 @@ pub mod proxy;
 pub mod route;
 #[path = "ssh_scp.rs"]
 pub mod scp;
+#[path = "ssh_sftp_write.rs"]
+pub mod sftp_write;
 #[path = "ssh_terminal.rs"]
 pub mod terminal;
 use crate::known_hosts::{KnownHosts, Saved};
@@ -145,9 +147,10 @@ struct Active {
     cancel: watch::Sender<bool>,
 }
 
-/// Short-lived, in-memory permission to repeat read-only SFTP operations after
-/// one explicit host-key confirmation. Every operation still reconnects and
-/// pins the confirmed key; nothing is persisted or shared across windows.
+/// Short-lived, in-memory permission to repeat SFTP operations after one
+/// explicit host-key confirmation. Every operation still reconnects and pins
+/// the confirmed key; nothing is persisted or shared across windows. A grant
+/// starts read-only; see [`sftp_write`] for the explicit write switch.
 struct Grant {
     owner: String,
     scope: String,
@@ -159,6 +162,7 @@ struct Grant {
     route: Route,
     idle_until: Instant,
     expires: Instant,
+    writable: bool,
 }
 
 impl Grant {
@@ -188,12 +192,16 @@ enum SftpRequest {
     List(String),
     Metadata(String),
     Read(String),
+    Change(sftp_write::Change),
+    Fetch(sftp_write::Fetch),
 }
 
 enum SftpResult {
     List(RemoteListing),
     Metadata(RemoteEntry),
     Read(Vec<u8>),
+    Changed(Option<RemoteEntry>),
+    Fetched(crate::sftp::local::Downloaded),
 }
 
 /// Failures carrying evidence against the confirmed trust (host key changed,
@@ -789,7 +797,7 @@ impl Ssh {
         prompts: Option<PromptSink>,
     ) -> Result<SftpResult, String> {
         let operation = self.start(owner, id, scope)?;
-        let target = self.use_grant(owner, grant, scope)?;
+        let target = self.use_grant(owner, grant, scope, request.writes())?;
         check_prompts(&target.credential, prompts.as_ref())?;
         self.run_sftp(&operation, target, request, prompts)
             .await
@@ -810,7 +818,7 @@ impl Ssh {
         prompts: Option<PromptSink>,
     ) -> Result<SftpResult, SftpFailure> {
         let mut cancel = operation.cancel.clone();
-        let clock = Clock::new(DEADLINE);
+        let clock = Clock::new(request.deadline());
         let prompter = self.prompter(operation, prompts, &clock);
         let work = execute_sftp(target, cancel.clone(), request, prompter.as_ref());
         tokio::select! {
@@ -864,12 +872,20 @@ impl Ssh {
                 route,
                 idle_until: now + SFTP_IDLE,
                 expires: now + SFTP_LIFETIME,
+                writable: false,
             },
         );
         Ok(token)
     }
 
-    fn use_grant(&self, owner: &str, token: &str, scope: &str) -> Result<Target, String> {
+    /// `writes` requests on a grant still read-only fail without refreshing it.
+    fn use_grant(
+        &self,
+        owner: &str,
+        token: &str,
+        scope: &str,
+        writes: bool,
+    ) -> Result<Target, String> {
         let mut registry = self.registry.lock().map_err(|_| "SSH state unavailable")?;
         let now = Instant::now();
         registry.grants.retain(|_, grant| grant.alive(now));
@@ -880,6 +896,9 @@ impl Ssh {
         if grant.scope != scope {
             registry.grants.remove(token);
             return Err(SFTP_EXPIRED.into());
+        }
+        if writes && !grant.writable {
+            return Err(sftp_write::READ_ONLY.into());
         }
         grant.idle_until = (now + SFTP_IDLE).min(grant.expires);
         Ok(Target {
@@ -1318,6 +1337,8 @@ async fn execute_sftp(
         SftpRequest::List(path) => sftp.list(&path).await.map(SftpResult::List),
         SftpRequest::Metadata(path) => sftp.metadata(&path).await.map(SftpResult::Metadata),
         SftpRequest::Read(path) => sftp.read(&path).await.map(SftpResult::Read),
+        SftpRequest::Change(change) => sftp_write::apply(&sftp, change).await,
+        SftpRequest::Fetch(fetch) => sftp_write::fetch(&sftp, fetch).await,
     };
     let _ = sftp.close().await;
     if rekey_rejected.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1818,18 +1839,21 @@ mod tests {
         let token = grant(&service, "main", request());
         let scope = service.context("main").unwrap();
         assert_eq!(
-            service.use_grant("other", &token, &scope).err().unwrap(),
+            service
+                .use_grant("other", &token, &scope, false)
+                .err()
+                .unwrap(),
             "SFTP session not owned by this window"
         );
         assert!(service.sftp_close("other", &token).is_err());
         let before = service.registry.lock().unwrap().grants[&token].idle_until;
         std::thread::sleep(Duration::from_millis(5));
-        let target = service.use_grant("main", &token, &scope).unwrap();
+        let target = service.use_grant("main", &token, &scope, false).unwrap();
         assert_eq!((target.request.port, target.key), (2222, vec![1, 2, 3]));
         assert!(service.registry.lock().unwrap().grants[&token].idle_until > before);
         assert_eq!(
             service
-                .use_grant("main", &token, "stale-scope")
+                .use_grant("main", &token, "stale-scope", false)
                 .err()
                 .unwrap(),
             SFTP_EXPIRED
@@ -1853,7 +1877,10 @@ mod tests {
             }
             drop(registry);
             assert_eq!(
-                service.use_grant("main", &token, &scope).err().unwrap(),
+                service
+                    .use_grant("main", &token, &scope, false)
+                    .err()
+                    .unwrap(),
                 SFTP_EXPIRED
             );
         }
@@ -1880,7 +1907,9 @@ mod tests {
             .is_err());
         service.sftp_close("main", &tokens[0]).unwrap();
         service.sftp_close("main", &tokens[0]).unwrap();
-        assert!(service.use_grant("main", &tokens[0], &scope).is_err());
+        assert!(service
+            .use_grant("main", &tokens[0], &scope, false)
+            .is_err());
         service.close_owner("main");
         assert!(service.registry.lock().unwrap().grants.is_empty());
         assert!(service

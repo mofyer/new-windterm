@@ -45,12 +45,13 @@ const titles = {
   client: 'explicit trust, UTF-8, wrong client key',
   mismatch: 'reconnect host-key mismatch',
   sftp: 'read-only SFTP grant: list, metadata, bounded read, truncation, close',
+  'sftp-write': 'SFTP write prototype: download, mkdir, upload, rename, chmod, delete, cancel',
   scp: 'legacy SCP upload and download of one file through scp -t/-f',
   routes: 'read-only SFTP through HTTP CONNECT, SOCKS5, ProxyCommand and a jump host',
 };
 // Separate server instances keep intentional pre-auth rejections from accumulating
 // OpenSSH PerSourcePenalties. Server policy remains unchanged; no client retries.
-for (const mode of ['client', 'mismatch', 'sftp', 'scp', 'routes']) {
+for (const mode of ['client', 'mismatch', 'sftp', 'sftp-write', 'scp', 'routes']) {
 test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
   await access(binary);
   const fixture = spawn(process.execPath, [fileURLToPath(new URL('./fixture.mjs', import.meta.url)), '--serve'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -110,6 +111,18 @@ test(`Rust client: ${titles[mode]}`, { timeout: 45_000 }, async () => {
     });
     assert.equal(routed.status, 0, routed.stdout + routed.stderr);
     assert.match(routed.stdout, /1 passed/);
+    } else if (mode === 'sftp-write') {
+    // Writes stay inside the fixture's remote directory, and downloads go to a
+    // folder inside the fixture root (removed with it), never ~/Downloads.
+    const downloads = join(dirname(metadataPath), 'downloads');
+    await mkdir(downloads);
+    const writes = runIgnored('ssh::sftp_write::tests::real_fixture_sftp_write_operations', metadata, {
+      P0_SSH_FIXTURE_KEY: metadata.privateKeyPath,
+      P0_SSH_FIXTURE_REMOTE: await realpath(metadata.remoteDirectory),
+      P0_SSH_FIXTURE_DOWNLOADS: await realpath(downloads),
+    });
+    assert.equal(writes.status, 0, writes.stdout + writes.stderr);
+    assert.match(writes.stdout, /1 passed/);
     } else {
     // The Rust service probes, consumes the challenge once, then reuses only the
     // in-memory grant; every operation reconnects and pins the confirmed key.
