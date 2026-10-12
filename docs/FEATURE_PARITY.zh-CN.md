@@ -34,7 +34,7 @@
 | C12 | 公钥认证及自动登录 | P2 | 带口令/无口令密钥、错误密钥及安全存储 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [RESULTS](p0/RESULTS.zh-CN.md#ssh-认证方式)、[OPENSSH_INTERACTIVE](p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) |
 | C13 | keyboard-interactive | P2 | 多轮提示、隐藏输入和取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_KBDINT](p0/SSH_KBDINT.zh-CN.md#证据macos-arm64本地) |
 | C14 | gssapi-with-mic | P0→P2 | 2.7 UI选项可见；README与延期路线图冲突未解，需受控KDC、票据与认证结果核对，不能用默认勾选代替成功认证 | 待实测 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：仅静态，另有方案记录 [X11_GSSAPI_ADR](p0/X11_GSSAPI_ADR.zh-CN.md#gssapigssapi-with-micc14)（无运行证据）；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a4-c14gssapi-已随发布包链接) |
-| C15 | X11 forwarding | P2 | 本地 X 服务依赖、远端窗口与连接清理 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：仅静态，另有方案记录 [X11_GSSAPI_ADR](p0/X11_GSSAPI_ADR.zh-CN.md#x11-转发c15)（无运行证据） |
+| C15 | X11 forwarding | P2 | 本地 X 服务依赖、远端窗口与连接清理 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [X11_GSSAPI_ADR](p0/X11_GSSAPI_ADR.zh-CN.md#验证记录)，另有方案记录 [X11_GSSAPI_ADR](p0/X11_GSSAPI_ADR.zh-CN.md#x11-转发c15) |
 | C16 | 本地/直接端口转发 | P2 | 监听地址、端到端通信、端口冲突及停止 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) |
 | C17 | 远端/反向端口转发 | P2 | 远端监听、服务端限制及关闭 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) |
 | C18 | 动态端口转发 | P2 | SOCKS 流量、目标解析、错误和停止 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) |
@@ -88,8 +88,8 @@
 | F07 | SFTP 新建目录 | P3 | 权限、名称冲突及刷新 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SFTP_WRITE](p0/SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) |
 | F08 | SCP 下载 | P3 | 协议兼容、路径和完整性、取消 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
 | F09 | SCP 上传 | P3 | 协议兼容、路径和完整性、覆盖 | 未实现 | 静态：[矛盾](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [SSH_SFTP_FIXTURE](p0/SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09)；待决：[冻结提议](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a2-f08f09scp-是否属于-27-实际功能) |
-| F10 | XModem | P3 | 收发、校验、失败重试及取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证) |
-| F11 | YModem | P3 | 收发、批量和文件元信息、取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证) |
+| F10 | XModem | P3 | 收发、校验、失败重试及取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证)、[MODEM](p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12) |
+| F11 | YModem | P3 | 收发、批量和文件元信息、取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：原型/探针 [MODEM](p0/MODEM.zh-CN.md#已验证)、[MODEM](p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12) |
 | F12 | ZModem | P3 | 收发协商、终端切换、完整性及取消 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：仅静态，另有方案记录 [MODEM](p0/MODEM.zh-CN.md#adrzmodemf12)（无运行证据） |
 | F13 | 本地文件浏览 | P3 | 目录、属性、中文路径和权限 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：仅静态 |
 | F14 | 本地文件移动 | P3 | 目标、冲突确认及失败不误报 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理)；P0：仅静态 |

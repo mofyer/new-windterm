@@ -55,14 +55,16 @@
   - 用记录输入的替身 `xauth` 和 Python 编写的远端 X 客户端：真实 `sshd` 接受了我们的 `x11-req`（`DISPLAY=localhost:10.0`）；经 `sshd` 打开的 `x11` 通道在两种字节序下都被替换为真实 cookie 并回显；错误 cookie 被关闭，没有连接本机 X。
   - 这只说明报文能与真实 `sshd` 互通，不是 Xvfb/`xdpyinfo` 验证。
 
-**已加入、尚未运行**：
+**Linux CI 已通过**：
 
 - Linux CI 步骤 `Run X11 forwarding against OpenSSH and Xvfb (Linux only)`，运行 [`x11-client.test.mjs`](../../tests/fixtures/ssh-terminal/x11-client.test.mjs)，流程如下：
   1. 用 apt 安装 `openssh-server`、`xvfb`、`xauth`、`x11-utils`；
   2. 用生成的 cookie 启动私有 Xvfb，并先确认没有 cookie 时 `xdpyinfo` 被拒；
   3. 以 `--x11` 启动 OpenSSH 终端夹具：`X11Forwarding yes`，其它转发关闭，远端 `XAUTHORITY` 指向夹具私有文件，不碰真实 `~/.Xauthority`；
   4. 运行 ignored 测试 `ssh::x11::tests::real_openssh_x11_forwarding`：经我们的 Rust 客户端在远端执行 `xdpyinfo`，断言远端 `DISPLAY` 是 `localhost:N.0`、屏幕尺寸为 Xvfb 设定的 `1234x567`，且远端 xauth 中的 cookie 不是真实 cookie。
-- 设置 `P0_X11_REQUIRED=1` 时缺少前提条件算失败而不是跳过。本机是 macOS，且不得安装 XQuartz，这一步还没有在 CI 上跑过，结果待记录。
+- 设置 `P0_X11_REQUIRED=1` 时，缺少前提条件算失败，而不是跳过。
+- 结果：[run 38207141339](https://github.com/mofyer/new-windterm/actions/runs/38207141339) 通过，远端 `xdpyinfo` 输出 `P0_X11_OK localhost:10.0  dimensions: 1234x567 pixels`。
+- 此前两次运行（38202512575、38206136775）中，`xdpyinfo` 已经读到 Xvfb，只因测试中两处字符串比对的写法问题被判失败：PTY 行尾的 CR，以及 xdpyinfo 在显示名后补的双空格。这两处已修正。
 
 **未验证**：
 

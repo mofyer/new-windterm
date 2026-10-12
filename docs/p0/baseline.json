@@ -580,21 +580,27 @@
           "result": "支持；证据类型 D R B I；静态证据不等于行为已验证"
         },
         {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/X11_GSSAPI_ADR.zh-CN.md#验证记录",
+          "result": "Rust 探针：假 cookie 替换、通道上限、随终端拆除（loopback 夹具与假 X 服务器）；Linux CI 经系统 OpenSSH（X11Forwarding）在远端运行 xdpyinfo，读到带 cookie 保护的 Xvfb；无界面，未验证 XQuartz、Windows 与真实图形程序"
+        },
+        {
           "type": "p0_decision_record",
           "source": "docs/p0/X11_GSSAPI_ADR.zh-CN.md#x11-转发c15",
           "result": "仅决策记录；无实现，需要 XQuartz 或 Xvfb"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
-      "p0_evidence_note": "仅决策记录；无实现，需要 XQuartz 或 Xvfb",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_note": "Rust 探针：假 cookie 替换、通道上限、随终端拆除（loopback 夹具与假 X 服务器）；Linux CI 经系统 OpenSSH（X11Forwarding）在远端运行 xdpyinfo，读到带 cookie 保护的 Xvfb；无界面，未验证 XQuartz、Windows 与真实图形程序",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：本地 X 服务依赖、远端窗口与连接清理",
       "not_tested_reason": "尚未建立该协议/认证测试夹具；静态配置不能证明连接成功。",
       "upstream_behavior": "not_tested",
-      "scope_origin": "initial_117"
+      "scope_origin": "initial_117",
+      "p0_evidence_level": "real_peer"
     },
     {
       "id": "C16",
@@ -2072,13 +2078,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/MODEM.zh-CN.md#已验证",
-          "result": "sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路"
+          "result": "sans-IO 状态机；本机对 lrzsz 0.13.1 互操作（XMODEM 校验和、CRC、1K 收发，取消与对端退出）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（对端中途被杀一项失败，待查）；未接任何链路"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12",
+          "result": "sans-IO 状态机；本机对 lrzsz 0.13.1 互操作（XMODEM 校验和、CRC、1K 收发，取消与对端退出）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（对端中途被杀一项失败，待查）；未接任何链路"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "sans-IO 状态机；本机对 lrzsz 0.13.1 互操作（XMODEM 校验和、CRC、1K 收发，取消与对端退出）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（对端中途被杀一项失败，待查）；未接任何链路",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -2106,13 +2117,18 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/MODEM.zh-CN.md#已验证",
-          "result": "sans-IO 状态机自发自收（批量）；无 lrzsz 互操作，未接任何链路"
+          "result": "sans-IO 状态机（批量）；本机对 lrzsz 0.13.1 做 YMODEM 批量互操作（空文件、非 ASCII 名、非 128 整数倍大小）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（同 F10）；未接任何链路"
+        },
+        {
+          "type": "p0_prototype_probe",
+          "source": "docs/p0/MODEM.zh-CN.md#lrzsz-互操作2026-10-12",
+          "result": "sans-IO 状态机（批量）；本机对 lrzsz 0.13.1 做 YMODEM 批量互操作（空文件、非 ASCII 名、非 128 整数倍大小）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（同 F10）；未接任何链路"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_level": "loopback_fixture",
-      "p0_evidence_note": "sans-IO 状态机自发自收（批量）；无 lrzsz 互操作，未接任何链路",
+      "p0_evidence_level": "real_peer",
+      "p0_evidence_note": "sans-IO 状态机（批量）；本机对 lrzsz 0.13.1 做 YMODEM 批量互操作（空文件、非 ASCII 名、非 128 整数倍大小）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（同 F10）；未接任何链路",
       "upstream_ui": "not_tested",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -4447,8 +4463,8 @@
       "silent": 2
     },
     "p0_evidence_counts": {
-      "prototype_or_probe": 63,
-      "static_only": 66,
+      "prototype_or_probe": 64,
+      "static_only": 65,
       "neither": 1
     },
     "p0_evidence_group_meaning": {
@@ -4457,9 +4473,9 @@
       "neither": "No upstream static evidence beyond the README claim and no P0 prototype or probe."
     },
     "p0_evidence_level_counts": {
-      "real_peer": 18,
+      "real_peer": 21,
       "real_platform": 7,
-      "loopback_fixture": 11,
+      "loopback_fixture": 9,
       "browser": 27
     },
     "p0_evidence_level_meaning": {

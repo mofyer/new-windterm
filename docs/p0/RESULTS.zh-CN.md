@@ -530,7 +530,7 @@ ZMODEM 建议先评估 `zmodem2` crate（MIT/Apache-2.0），否则按公开规�
 | 变异检查 | 拿掉 cookie 替换、cookie 比对、通道上限或槽位释放中的任一项，都会有测试失败 |
 | 合并后 Rust 单元 | 151 passed |
 | 本机一次性互操作 | OpenSSH 10.3p1 sshd 接受了 `x11-req`，cookie 替换和错误 cookie 拒绝都正确；只到消息层 |
-| Linux CI 步骤 | 安装 Xvfb、xauth、x11-utils，经真实 OpenSSH 在远端运行 `xdpyinfo`。在 [run 38202512575](https://github.com/mofyer/new-windterm/actions/runs/38202512575) 中，`xdpyinfo` 已经经我们的转发读到带 cookie 保护的 Xvfb 的 `1234x567`，但由于测试中两处字符串比对的写法问题（PTY 行尾的 CR、xdpyinfo 输出中的双空格）被判失败；两处已修正，等待复跑 |
+| Linux CI 步骤 | 安装 Xvfb、xauth、x11-utils，经真实 OpenSSH 在远端运行 `xdpyinfo`，[run 38207141339](https://github.com/mofyer/new-windterm/actions/runs/38207141339) 通过：远端 `xdpyinfo` 经我们的转发读到带 cookie 保护的 Xvfb 的 `1234x567`。此前两次失败只因测试中的字符串比对（PTY 行尾的 CR、双空格） |
 
 两项评审的 MEDIUM 都已修复。
 

@@ -34,8 +34,8 @@
 | --- | --- |
 | 追踪 ID | 130（原 117 + 第二轮 13） |
 | 静态复核结论 | 支持 101、部分 23、矛盾 4（其中 Q06 为弱矛盾）、沉默 2 |
-| P0 证据分组 | 原型/探针 63、仅静态 66、皆无 1（S08）；2026-10-11 时为 57、72、1 |
-| “原型/探针”的证据层级 | 真实对端 18、真实平台 7、loopback 夹具 11、浏览器 27；2026-10-11 时为 6、7、17、27 |
+| P0 证据分组 | 原型/探针 64、仅静态 65、皆无 1（S08）；2026-10-11 时为 57、72、1 |
+| “原型/探针”的证据层级 | 真实对端 21、真实平台 7、loopback 夹具 9、浏览器 27；2026-10-11 时为 6、7、17、27 |
 | 需要定措辞的冲突 | 4 项矛盾（G13、F08/F09、Q06）与 2 项路线图不一致（C14、G02），另有 4 项同步措辞（S11、G17、G33、F21） |
 | 静态候选 | 36 项：建议纳入 31（其中 1 项限定范围）、不纳入 1、暂缓 4；全部按建议采纳后共 161 个 ID |
 | 冻结前需要用户决定的事项 | 12 项，见 [(e)](#e-冻结前需要用户决定的事项) |
@@ -252,15 +252,15 @@
 
 | 系列 | 总数 | 原型/探针 | 仅静态 | 皆无 |
 | --- | ---: | ---: | ---: | ---: |
-| C | 21 | 17 | 4 | 0 |
+| C | 21 | 18 | 3 | 0 |
 | T | 29 | 20 | 9 | 0 |
 | F | 21 | 11 | 10 | 0 |
 | G | 40 | 7 | 33 | 0 |
 | S | 13 | 2 | 10 | 1 |
 | Q | 6 | 6 | 0 | 0 |
-| 合计 | 130 | 63 | 66 | 1 |
+| 合计 | 130 | 64 | 65 | 1 |
 
-“原型/探针”组按证据层级再分：真实对端 18 项（真实 OpenSSH、tmux、telnetd），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 11 项（russh 或测试内服务器、自发自收），浏览器 27 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、C15、F12 另有方案或决策记录，但没有运行证据。
+“原型/探针”组按证据层级再分：真实对端 21 项（真实 OpenSSH、tmux、telnetd、lrzsz，以及 Linux CI 上的 OpenSSH 加 Xvfb），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 9 项（russh 或测试内服务器、自发自收），浏览器 27 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、F12 另有方案或决策记录，但没有运行证据。
 
 [UI_MAP](UI_MAP.zh-CN.md#已实现的原型行为) 还把部分界面原型映射到 S02、S08、G04、G09、G10、G19、G26、G27、F13、F21。这些入口使用演示数据或模拟状态机，或者语义与该行不同，因此不计为运行证据。各行的“覆盖范围与缺口”写明了理由；baseline.json 的 `evidence_refresh.ui_prototype_not_counted` 列出同一组 ID。F02、F03 原先也在这一组；2026-10-12 起它们有 SFTP 写操作原型的运行证据，因此移出，但原型中的模拟传输队列仍然不计为运行证据。
 
@@ -279,8 +279,10 @@
 | [WINDOWS_CONPTY_ADR](WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位) | T03、Q02 | 无变化（真实平台）；补充 Server 2022 与 2025 CI 和句柄泄漏定位 |
 | [RELEASE](RELEASE.zh-CN.md#4-本地验证) | Q01 | 无变化（真实平台）；补充 release `.app` 排除测试二进制与声明的最低 macOS 13.3 |
 | [TERMINAL_CORE_ADR](TERMINAL_CORE_ADR.zh-CN.md#原型) | T09 | 无变化（浏览器）；补充隔离 SIXEL 原型。ADR 本身是提议，不计为运行证据 |
+| [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#验证记录) | C15 | 仅静态 → 原型/探针，层级为真实对端：Linux CI 上经系统 OpenSSH 在远端运行 `xdpyinfo`，读到带 cookie 保护的 Xvfb（[run 38207141339](https://github.com/mofyer/new-windterm/actions/runs/38207141339)） |
+| [MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | F10、F11 | loopback 夹具 → 真实对端：本机 lrzsz 0.13.1；Linux CI 上 Ubuntu lrzsz 0.12.21rc 10/11。F12 不变（仅静态）：`zmodem2` 评估的是第三方实现，不计为本项目原型 |
 
-合计：6 个 ID 从“仅静态”移入“原型/探针”（F02–F07）；6 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（C02、C07、C08、C19、C20、C21）；其余 18 个 ID 只更新链接或说明。
+合计：6 个 ID 从“仅静态”移入“原型/探针”（F02–F07）；6 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（C02、C07、C08、C19、C20、C21）；其余 18 个 ID 只更新链接或说明。随后又有 1 个 ID 从“仅静态”移入“原型/探针”（C15），2 个 ID 在“原型/探针”内从 loopback 夹具升为真实对端（F10、F11）。
 
 ### C 协议、认证、代理与转发
 
@@ -300,7 +302,7 @@
 | C12 | 公钥认证及自动登录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [RESULTS](RESULTS.zh-CN.md#ssh-认证方式)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作) | Ed25519/ECDSA 私钥及口令（russh 集成、真实 OpenSSH 夹具）；无 RSA、无安全保存与自动登录 |
 | C13 | keyboard-interactive | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_KBDINT](SSH_KBDINT.zh-CN.md#证据macos-arm64本地) | 多轮提示与实时对话框（russh 夹具、IPC stub）；无真实 PAM/OpenSSH |
 | C14 | gssapi-with-mic | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#gssapigssapi-with-micc14) | 仅决策记录；无实现与 KDC 实验（不计为运行证据） |
-| C15 | X11 forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#x11-转发c15) | 仅决策记录；无实现，需要 XQuartz 或 Xvfb（不计为运行证据） |
+| C15 | X11 forwarding | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#验证记录)、[X11_GSSAPI_ADR](X11_GSSAPI_ADR.zh-CN.md#x11-转发c15) | Rust 探针：假 cookie 替换、通道上限、随终端拆除（loopback 夹具与假 X 服务器）；Linux CI 经系统 OpenSSH（X11Forwarding）在远端运行 xdpyinfo，读到带 cookie 保护的 Xvfb；无界面，未验证 XQuartz、Windows 与真实图形程序 |
 | C16 | 本地/直接端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | 本地转发 4 路并发、端口冲突、仅回环、停止（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作 |
 | C17 | 远端/反向端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#远端转发与-agent-转发c17c10)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | 远端转发往返、未登记通道拒绝、取消监听（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；无配置保存，无 OpenSSH 互操作 |
 | C18 | 动态端口转发 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测cargo-test---lib-forward连续-3-轮)、[SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#实测2026-10-12macos-arm64本机) | SOCKS5 动态转发 CONNECT（russh 夹具）；已打开 SSH 终端的端口转发面板（russh 夹具、IPC stub）；SOCKS 无认证，无配置保存，无 OpenSSH 互操作 |
@@ -355,8 +357,8 @@
 | F07 | SFTP 新建目录 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SFTP_WRITE](SFTP_WRITE.zh-CN.md#证据macos-arm64-本地2026-10-12) | 中文带空格目录创建，重复创建与无权限被拒（真实 OpenSSH sftp-server、IPC stub 面板）；无原生 WKWebView 实测 |
 | F08 | SCP 下载 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -f 单文件下载（真实 OpenSSH）；无目录、递归与界面 |
 | F09 | SCP 上传 | [矛盾](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [SSH_SFTP_FIXTURE](SSH_SFTP_FIXTURE.zh-CN.md#scpf08f09) | scp -t 单文件上传（真实 OpenSSH）；无目录、递归与界面 |
-| F10 | XModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | loopback 夹具 | [MODEM](MODEM.zh-CN.md#已验证) | sans-IO 状态机自发自收 23 项；无 lrzsz 互操作，未接任何链路 |
-| F11 | YModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | loopback 夹具 | [MODEM](MODEM.zh-CN.md#已验证) | sans-IO 状态机自发自收（批量）；无 lrzsz 互操作，未接任何链路 |
+| F10 | XModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [MODEM](MODEM.zh-CN.md#已验证)、[MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | sans-IO 状态机；本机对 lrzsz 0.13.1 互操作（XMODEM 校验和、CRC、1K 收发，取消与对端退出）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（对端中途被杀一项失败，待查）；未接任何链路 |
+| F11 | YModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 原型/探针 | 真实对端 | [MODEM](MODEM.zh-CN.md#已验证)、[MODEM](MODEM.zh-CN.md#lrzsz-互操作2026-10-12) | sans-IO 状态机（批量）；本机对 lrzsz 0.13.1 做 YMODEM 批量互操作（空文件、非 ASCII 名、非 128 整数倍大小）；Linux CI 对 Ubuntu lrzsz 0.12.21rc 10/11（同 F10）；未接任何链路 |
 | F12 | ZModem | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | [MODEM](MODEM.zh-CN.md#adrzmodemf12) | 仅 ADR；无代码（不计为运行证据） |
 | F13 | 本地文件浏览 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 原型文件面板是固定演示数据，不读本机目录（WEB_QA），不计为运行证据 |
 | F14 | 本地文件移动 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#文件传输与本地文件管理) | 仅静态 | — | — | 无 P0 原型或探针 |
@@ -468,9 +470,8 @@
 | 资源 | 涉及 ID |
 | --- | --- |
 | USB 串口设备 | C04 |
-| XQuartz 安装许可或 Linux Xvfb 方案 | C15 |
+| XQuartz 安装许可（Linux 上的 Xvfb 方案已在 CI 运行） | C15 在 macOS 上的验证 |
 | 测试 Kerberos 领域 | C14 |
-| 测试机上的 lrzsz | F10–F12 互操作 |
 | 网络设备或其它 telnetd 实现（本机 Apple telnetd 308 已测，见 [NET_TERMINAL](NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12)） | C02 |
 | 原生 IME 与 VoiceOver 实机 | T14、T15 等 |
 
