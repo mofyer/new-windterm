@@ -167,6 +167,8 @@ Linux 证据仅覆盖本次 Ubuntu runner 的生产 PTY 层，不表示所有发
 
 Ubuntu 通过 Tauri 官方清单安装 `libwebkit2gtk-4.1-dev`、编译工具、`libxdo-dev`、`libssl-dev`、`libayatana-appindicator3-dev`、`librsvg2-dev` 等。探针直接调用生产 PTY 层，不启动 GTK 窗口；不需要伪造 GUI 成功，也不通过 xvfb 掩盖显示环境问题。
 
+同一工作流另有独立的 `native-webview` job（`ubuntu-24.04`、`windows-2022`），用 tauri-driver 在真实 WebKitGTK（Xvfb 中的 GTK 窗口）和 WebView2 中启动应用并执行冒烟场景，不改变上述 `desktop` job 的约定；范围、工具版本与证据见 [NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md)。截至该 job 提交时尚未运行。
+
 工作流权限仅 `contents: read`，checkout 不持久保存凭据；不使用发布密钥、不上传安装包、不签名、不发布 Release。Actions 使用官方仓库已核验的完整 commit SHA。各平台日志作为单独 artifact 保存 14 天，job summary 分别记录各检查的实际 outcome，失败或跳过不能计作通过。没有启用 larger/付费 runner。
 
 ## 本地复现

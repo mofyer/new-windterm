@@ -185,3 +185,121 @@ jobs:
           path: ${{ runner.temp }}/p0-logs/
           if-no-files-found: warn
           retention-days: 14
+
+  # Real Tauri native WebView (WebKitGTK / WebView2) driven through
+  # tauri-driver; macOS WKWebView has no WebDriver support in tauri-driver.
+  # See docs/p0/NATIVE_WEBVIEW_SMOKE.zh-CN.md.
+  native-webview:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64 — native WebKitGTK smoke (tauri-driver)
+            runner: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+          - name: Windows x64 — native WebView2 smoke (tauri-driver)
+            runner: windows-2022
+            host: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: "1.99.0"
+      CARGO_BUILD_JOBS: "2"
+      CARGO_TERM_COLOR: never
+      TAURI_DRIVER_VERSION: "2.0.6"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.0.0"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Linux Tauri prerequisites, Xvfb and the matching WebKitWebDriver
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth
+          # Pin the driver to exactly the WebKitGTK build the app links against.
+          webkit_version=$(dpkg-query -W -f='${Version}' libwebkit2gtk-4.1-0)
+          sudo apt-get install --no-install-recommends -y "webkit2gtk-driver=$webkit_version"
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Unit-test the WebDriver client and runner helpers
+        run: node --test tests/native/webdriver.test.mjs tests/native/support.test.mjs
+
+      - name: Build production frontend assets
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Link desktop executable with the bundled frontend (same command as the desktop job)
+        run: cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin new-windterm-desktop
+
+      - name: Build the loopback russh SSH fixture
+        run: cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin ssh_terminal_fixture
+
+      - name: Install pinned tauri-driver
+        run: cargo install tauri-driver --locked --version "=$TAURI_DRIVER_VERSION" --root "$RUNNER_TEMP/native-tools"
+
+      - name: Install msedgedriver matching the WebView2 Runtime (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p "$RUNNER_TEMP/p0-native"
+          driver=$(node tests/native/msedgedriver.mjs --dest "$RUNNER_TEMP/msedgedriver" --record "$RUNNER_TEMP/p0-native/msedgedriver.json")
+          echo "P0_NATIVE_EDGEDRIVER=$driver" >> "$GITHUB_ENV"
+
+      - name: Record WebView runtime and driver versions
+        run: |
+          out="$RUNNER_TEMP/p0-native"
+          mkdir -p "$out"
+          {
+            echo "tauri-driver: $(cargo install --list --root "$RUNNER_TEMP/native-tools" | grep '^tauri-driver ')"
+            if [ "$RUNNER_OS" = Linux ]; then
+              dpkg-query -W libwebkit2gtk-4.1-0 webkit2gtk-driver
+              echo "WebKitWebDriver: $(WebKitWebDriver --version)"
+              ldd apps/desktop/src-tauri/target/debug/new-windterm-desktop | grep -E 'libwebkit2gtk|libjavascriptcoregtk'
+            else
+              cat "$out/msedgedriver.json"
+            fi
+          } 2>&1 | tee "$out/versions.log"
+
+      - name: Run native WebView smoke (Linux, Xvfb)
+        if: runner.os == 'Linux'
+        env:
+          P0_NATIVE_TAURI_DRIVER: ${{ runner.temp }}/native-tools/bin/tauri-driver
+          P0_NATIVE_SSH_FIXTURE: apps/desktop/src-tauri/target/debug/ssh_terminal_fixture
+        run: P0_NATIVE_OUT="$RUNNER_TEMP/p0-native" xvfb-run -a --server-args="-screen 0 1600x1000x24" node tests/native/run.mjs
+
+      - name: Run native WebView smoke (Windows)
+        if: runner.os == 'Windows'
+        env:
+          P0_NATIVE_TAURI_DRIVER: ${{ runner.temp }}/native-tools/bin/tauri-driver
+          P0_NATIVE_SSH_FIXTURE: apps/desktop/src-tauri/target/debug/ssh_terminal_fixture
+        run: P0_NATIVE_OUT="$RUNNER_TEMP/p0-native" node tests/native/run.mjs
+
+      - name: Upload native WebView evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: p0-native-webview-${{ matrix.host }}-${{ matrix.runner }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p0-native/
+          if-no-files-found: warn
+          retention-days: 14
