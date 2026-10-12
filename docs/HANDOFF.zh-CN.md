@@ -99,7 +99,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
-- **辅助功能**：输入法与 VoiceOver 需要在真机上测试。
+- **辅助功能与上游实机盘点**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)执行。当前的 VS Code 会话不能操作原生窗口；在 Claude 桌面应用中打开 Computer use 后，可以改由代理执行。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
