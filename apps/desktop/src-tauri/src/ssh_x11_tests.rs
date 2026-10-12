@@ -629,7 +629,9 @@ async fn real_openssh_x11_forwarding() {
     // The server's xauth was given the fake cookie, never the real one.
     let remote = terminal.line("P0_X11_REMOTE_COOKIE ").await;
     // PTY lines end in CR.
-    let remote = remote.trim_start_matches("P0_X11_REMOTE_COOKIE ").trim_end();
+    let remote = remote
+        .trim_start_matches("P0_X11_REMOTE_COOKIE ")
+        .trim_end();
     assert_eq!(remote.len(), 2 * COOKIE_LEN, "{remote}");
     let real = env("P0_X11_REAL_COOKIE").to_lowercase();
     assert_ne!(remote.to_lowercase(), real);
