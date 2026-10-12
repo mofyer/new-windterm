@@ -111,13 +111,13 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 ### 其它模块
 
 - `net_terminal.rs`：Telnet / Raw TCP 终端标签（`net_open/write/resize/ack/close`），复用同一 `PtyEvent` 字节流和 ACK；Telnet 协商在 `telnet.rs`。
-- SSH 子模块（经 `#[path]` 挂在 `ssh` 下）：`ssh_forward.rs`（本地/动态/远端转发与跳板）、`ssh_proxy.rs`（HTTP CONNECT、SOCKS5、ProxyCommand）、`ssh_route.rs`（连接对话框选择的路线：直连、HTTP/SOCKS5 代理、ProxyCommand、单跳跳板；路线绑定进 challenge 与 SFTP 授权，见 `docs/p0/SSH_ROUTES.zh-CN.md`）、`ssh_scp.rs`。`KeyCheck` 的 `Routes` 拒绝服务端主动打开的通道，只放行登记过的 `forwarded-tcpip`（最多 64 个）与显式开启的 agent。转发、SCP 与 tmux 还没有界面。
+- SSH 子模块（经 `#[path]` 挂在 `ssh` 下）：`ssh_forward.rs`（本地/动态/远端转发与跳板）、`ssh_proxy.rs`（HTTP CONNECT、SOCKS5、ProxyCommand）、`ssh_route.rs`（连接对话框选择的路线：直连、HTTP/SOCKS5 代理、ProxyCommand、单跳跳板；路线绑定进 challenge 与 SFTP 授权，见 `docs/p0/SSH_ROUTES.zh-CN.md`）、`ssh_scp.rs`。`KeyCheck` 的 `Routes` 拒绝服务端主动打开的通道，只放行登记过的 `forwarded-tcpip`（最多 64 个）与显式开启的 agent。端口转发已有界面（`ssh_tunnels.rs` 与前端 `port-forward.ts`，经 `ssh_forward_add/remove/list` 在已打开的 SSH 终端上增删），SCP 与 tmux 还没有界面。
 - `modem.rs`：不依赖 I/O 的 XMODEM/YMODEM，未接入任何传输。`tmux_control.rs`：tmux 控制模式解析。
 
 ### 前端
 
 - `main.ts` 用一个大的 `innerHTML` 模板构建整个工作台，并维护 `Session` Map（`mode`: `demo` | `pty` | `ssh`）。`isTauri()` 决定是走真实 IPC 还是浏览器演示。「新建连接」表单和传输队列是模拟数据；文件面板默认显示 `#file-demo` 模拟内容，只读 SFTP 连接后切换到 `sftp-panel.ts` 渲染的 `#sftp-view`。
-- `ssh-verification.ts`：SSH 指纹确认与连接对话框流程；`terminal.ts`：xterm 工厂（启用 Unicode 11 宽度）；`terminal-compat/vt52-stream.ts`：隔离的 VT52 实验，未接入生产终端。
+- `ssh-verification.ts`：SSH 指纹确认与连接对话框流程；`terminal.ts`：xterm 工厂（启用 Unicode 11 宽度，并挂上 `terminal-compat/vt-adapters.ts` 的 VT 回复适配：设备身份、DECSCL、DECRQSS、DECOM 下的 CPR、默认关闭的 OSC 52 写入）；`terminal-compat/vt52-stream.ts`：隔离的 VT52 实验，未接入生产终端。
 - 终端输出、文件名、窗口标题都是不可信数据，不能拼进 `innerHTML`。
 - E2E 通过 `page.addInitScript` 注入 `window.__TAURI_INTERNALS__`（以及 `isTauri`）来 stub IPC；新增前端 IPC 调用时，相关 spec 中的 stub 也要同步更新。
 

@@ -50,7 +50,7 @@
 | SSH 认证 | 私钥（可带口令）、密码、agent、keyboard-interactive；bcrypt 轮数上限 | loopback 与真实 OpenSSH | 只支持 Ed25519/ECDSA，没有 RSA |
 | keyboard-interactive 实时提示 | 连接时逐轮弹窗作答；`ssh_auth_respond` 绑定窗口、操作和轮次；适用于终端标签页和 SFTP 面板 | loopback 夹具；浏览器测试 | 没有真实 PAM/OpenSSH 验证，没有原生手工测试 |
 | 交互 SSH | Rust `ssh_open` 连接真实 OpenSSH shell | `tests/fixtures/ssh-terminal/rust-client.test.mjs` | 没有长期会话和断线恢复 |
-| 转发 | 本地转发、SOCKS5 动态转发、跳板、远端转发、agent 转发；服务端主动打开的通道默认拒绝，`forwarded-tcpip` 最多 64 个 | loopback 夹具 | 没有界面 |
+| 转发 | 本地转发、SOCKS5 动态转发、跳板、远端转发、agent 转发；服务端主动打开的通道默认拒绝，`forwarded-tcpip` 最多 64 个；已打开的 SSH 终端可以在「端口转发」面板中增删本地、动态和远端转发 | loopback 夹具；浏览器测试 | 没有与 OpenSSH 的转发互操作；agent 转发没有界面；设置不保存 |
 | 代理与跳板路线 | 连接对话框可选直连、HTTP CONNECT、SOCKS5、ProxyCommand（不经过 shell）、单跳跳板（两步信任）；路线绑定进 challenge 和 SFTP 授权 | loopback 代理；真实 OpenSSH 夹具 | 没有用真实代理软件或 OpenSSH 跳板验证；不支持多跳 |
 | SFTP 写操作原型 | 新建目录、重命名、删除、chmod、上传、下载落盘；需先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有原生窗口实测；写入开关缺少原生确认 |
 | 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
@@ -59,7 +59,7 @@
 | XMODEM/YMODEM | 不依赖 I/O 的发送与接收 | 23 项单元测试 | 没有 lrzsz 互操作，没有接入终端；ZMODEM 只有决策记录 |
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
-| VT 兼容矩阵 | xterm.js 6.0.0 的 63 项探针：支持 35、部分支持 16、不支持 12 | [矩阵](p0/VT_MATRIX.zh-CN.md) | 没有运行 vttest，没有与 WindTerm、xterm 或 DEC 对比 |
+| VT 兼容矩阵与适配 | xterm.js 6.0.0 的 63 项探针；生产代码加了设备身份、DECRQSS、DECOM 下的 CPR、默认关闭的 OSC 52 写入。加适配后为支持 39、部分支持 15、不支持 12 → 9 | [矩阵](p0/VT_MATRIX.zh-CN.md) | 没有运行 vttest，没有与 WindTerm、xterm 或 DEC 对比 |
 | Windows ConPTY | `cmd.exe` 生命周期：Job Object 回收进程树，关闭、ACK、Ctrl+C 等 | Windows CI（Server 2022 与 2025） | 只验证了 `cmd.exe`；Server 2022 系统自带的 ConPTY 每个会话泄漏 1 个句柄，Server 2025 上没有，本项目代码不额外泄漏 |
 | 工作量估算 | 全项目分解与人周估算 | [估算](p0/EFFORT_ESTIMATE.zh-CN.md) | 只是估算，不是承诺 |
 | 性能基线 | 本机 PTY、xterm、启动与内存基线 | [记录](p0/PERFORMANCE_BASELINE.zh-CN.md) | 测量环境嘈杂；没有 WKWebView 数字，没有与 WindTerm 对比 |
@@ -104,13 +104,13 @@ X11 转发与 GSSAPI 只有[决策记录](p0/X11_GSSAPI_ADR.zh-CN.md)，没有�
 ## 推荐下一步顺序
 
 1. **合并到 `main`**：取得一次全绿的集成 CI 后，向用户申请把 `p0/integration` 合并到 `main`。Windows 句柄泄漏已定位，见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)。
-2. **把探针接入界面**：SCP、转发、代理和 tmux 都只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
+2. **把探针接入界面**：SCP、agent 转发和 tmux 还只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
 3. **原生验收**：在 Tauri 原生窗口中实测 SFTP 面板和 Telnet 标签页，记录截图和清理证据。
 4. **互操作**：
    - lrzsz：XMODEM/YMODEM，并评估 ZMODEM 的 `zmodem2`。
    - 真实 telnetd。
    - Linux CI 上卡住连接的取消测试。
-5. **VT 差距**：先用解析器钩子补设备身份（DA/DECSCL）和 OSC 52；双宽行、左右边距、矩形操作和 SIXEL 需要评估改动 xterm.js 渲染器或内核的代价。
+5. **VT 差距**：设备身份、DECSCL 与 OSC 52 已用解析器钩子补上；其余按[终端内核决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。
 6. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 需要先评审 CSP 中的 `wasm-unsafe-eval`。
 7. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
 
