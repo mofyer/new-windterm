@@ -78,6 +78,8 @@ P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的
 
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --locked --features dev-tools --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
+Windows 专属代码在 macOS 上只能做类型检查：`tools/wincheck/wincheck.sh`（对 `x86_64-pc-windows-msvc` 执行 clippy，用桩头文件跳过链接）；Windows 测试只在 CI 上运行。多代理协作方式与续做中断任务的方法见 [docs/p0/AGENT_WORKFLOW.zh-CN.md](docs/p0/AGENT_WORKFLOW.zh-CN.md)。
+
 提交前：`git diff --check`。
 
 ## 架构
