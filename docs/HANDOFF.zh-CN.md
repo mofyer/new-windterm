@@ -18,19 +18,17 @@
 
 仓库根目录的 `CLAUDE.md` 汇总了命令、架构和约定，接手后先读。
 
-## 当前仓库状态（2026-10-11）
+2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
+
+## 当前仓库状态（2026-10-13）
 
 ### 分支
 
-- **远端 `main`**：仍是 `9afcafe docs: add model handoff brief [skip ci]`，本轮没有改动。
-- **本地 `main`**：比远端多一个未推送的提交 `107c012 feat: wire read-only sftp into the file panel`，它已包含在集成分支中。
-- **集成分支 `p0/integration`**：本轮全部工作都在这里，已推送。它把各个 `p0/*` 工作分支，以及子代理在 `.claude/worktrees/` 下的分支合并在一起。
-- **合并到 `main`**：必须先取得用户的明确同意。用户授权的推送范围只有 `p0/*` 工作分支和手动触发的 CI，`main` 不能动。
-- **已推送的工作分支**：
-  - `p0/sftp-panel`、`p0/openssh-shell`、`p0/ssh-auth`、`p0/ssh-kbdint`
-  - `p0/ssh-forward`、`p0/ssh-proxy`、`p0/ssh-remote-forward`
-  - `p0/scp`、`p0/telnet`、`p0/terminal-history`、`p0/windows-conpty`
-- **未跟踪目录**：`.claude/` 中是子代理的 worktree，属于过程产物。删除前先用 `git worktree list` 确认其中的提交已经合并。
+- **远端 `main`**：`e0dd423`。2026-10-12 经用户同意，从集成分支快进而来。
+- **集成分支 `p0/integration`**：所有工作都在这里，已推送；比 `main` 多冻结、E11、互操作修复和归档等若干提交。再次合并到 `main` 需要用户明确同意。
+- **推送范围**：用户授权推送 `p0/*` 工作分支，并手动触发 CI。
+- **未跟踪目录 `.claude/`**：存放子代理的 worktree。其中三个是被用量上限中断、还没完成的任务，见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
+- **多代理工作方式与续做方法**：见 [AGENT_WORKFLOW](p0/AGENT_WORKFLOW.zh-CN.md)。
 
 ### CI 与文档
 
@@ -99,21 +97,18 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
 - **GSSAPI（C14）**：需要一个测试用的 Kerberos 领域。
-- **辅助功能**：输入法与 VoiceOver 需要在真机上测试。
+- **辅助功能与上游实机盘点**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)执行。当前的 VS Code 会话不能操作原生窗口；在 Claude 桌面应用中打开 Computer use 后，可以改由代理执行。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
 
 ## 推荐下一步顺序
 
-1. **合并到 `main`**：取得一次全绿的集成 CI 后，向用户申请把 `p0/integration` 合并到 `main`。Windows 句柄泄漏已定位，见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md#句柄泄漏定位)。
-2. **把探针接入界面**：SCP、agent 转发和 tmux 还只有 Rust 侧。每个新增的 IPC 命令都要在三处登记。
-3. **原生验收**：Linux 和 Windows 的原生 WebView 冒烟已经在 CI 上跑通。macOS WKWebView 只能在真机上手工验证，例如 SFTP 面板和 Telnet 标签页。
-4. **互操作**：
-   - Linux CI 上卡住连接的取消测试。
-5. **VT 差距**：设备身份、DECSCL 与 OSC 52 已用解析器钩子补上；其余按[终端内核决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。
-6. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 需要先评审 CSP 中的 `wasm-unsafe-eval`。
-7. **功能矩阵**：静态复核发现 G13 的快捷键、F08/F09（SCP）、Q06 的“无限”与上游 README 的说法矛盾。如果决定调整验收文字，三处台账要一起修改，并重跑结构验证。
+1. **续做被中断的三个任务**：WL-1/2/3 加为新 ID（T35–T37）、GSSAPI（Linux 上的 KDC 与 sshd）、串口探针（虚拟串口对）。所在 worktree 和进度见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
+2. **上游实机盘点与本机原生验收**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)由用户执行，或在 Claude 桌面应用中打开 Computer use 后由代理执行。共用偏好设置的备份在 `.reference/plist-backup-2026-10-12/`，执行完毕后要还原。
+3. **合并 `main`**：集成 CI 全绿后，向用户申请把新提交同步到 `main`。
+4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、PowerShell 与管理员 shell、Wayland 等，见归档第 5 节。
+5. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 之前，需要评审 CSP 中的 `wasm-unsafe-eval`。
 
 ## 本地验证命令
 
@@ -130,7 +125,7 @@ node --test tests/fixtures/ssh-terminal/rust-client.test.mjs      # 真实 OpenS
 ```
 
 补充说明：
-- **Windows 代码的本机检查**：可以对 `x86_64-pc-windows-msvc` 目标运行 clippy，用桩头文件、假 `ar` 和假 `rc` 跳过 C 依赖的链接。这只做类型检查，Windows 测试只能在 CI 上运行。本机的辅助脚本在临时目录中，不会长期保留，需要时重新搭建。
+- **Windows 代码的本机检查**：运行 `tools/wincheck/wincheck.sh`，它对 `x86_64-pc-windows-msvc` 目标执行 clippy，用桩头文件、假 `ar` 和假 `rc` 跳过 C 依赖的链接。这只做类型检查，Windows 测试只能在 CI 上运行。
 - **Playwright 开发服务器**：多个子代理并行时，各自用不同的 Vite 端口，例如 1431–1437，并使用不提交的本地 Playwright 配置，避免互相关闭对方的 1420 服务。
 
 提交前执行 `git diff --check`。
