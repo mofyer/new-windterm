@@ -18,6 +18,10 @@
 
 随后新增[164 项重估准备方案](EFFORT_REESTIMATE_PLAN_2026-10-15.zh-CN.md)：164 = 原 130 + 冻结候选 31 + 后增 3；旧估算不能再叠加原 36 项候选风险，也不能按 ID 比例放大。已指出直接采用 zmodem2 的旧乐观假设失效，旧数字保留为历史；新的逐包估值尚未完成。针对用户关于 P0 拖长的反馈，另有[三个决策包收尾提议](P0_CLOSEOUT_PROPOSAL_2026-10-15.zh-CN.md)，验收后移和出口决定仍待用户确认。
 
+手动复跑 [CI 38697787649](https://github.com/mofyer/new-windterm/actions/runs/38697787649)，head `a9049a4`，结果 **success，7/7 作业成功**。实现与此前 `fb824cf` 相同，本轮只是文档后的重复验证，不是新增功能。随后 `71f1f8c`、`4c323b6` 只补重估准备和待批准收尾提议；这些文档不重复触发全套构建，main 保持 `63a1b3e`。
+
+独立复核本次日志：macOS Rust 209 passed / 33 ignored，Linux 208 / 33，Windows Server 2022/2025 各 203 / 7；两 Unix 虚拟串口各 4/4；Linux lrzsz 非阻塞步骤实际 11/11，X11/agent 对 OpenSSH 各 1/1、0 skip；GSSAPI 单测 3/3、四场景 4/4、三次 fresh-cache 复验；Linux/Windows 原生冒烟各三场景通过。Windows 独立 ConPTY 各 2/2，但 Server 2022 的已知系统泄漏仍在：bare 24 轮增长 24 handles，Session 191→215，检查是相对 bare 基线加容差，不是零泄漏验收；Server 2025 bare 增长为 0。ignored 均不计通过。
+
 ## 2026-10-15：中断任务收尾与集成 CI 通过
 
 - **WL-1/2/3**：`831b354` 将用户已批准的三个 Windows shell 能力补为 T35–T37，基线共 164 项；三段结构验证通过。新增项仍为未实现、行为未验证，冻结字段未变。
