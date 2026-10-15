@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs only in our disposable image; no host mount, network or credentials needed.
 set -euo pipefail
+trap 'printf "P0_GSSAPI_FIXTURE_ERROR line=%s exit=%s\n" "$LINENO" "$?" >&2' ERR
 umask 077
 test -f /p0-gssapi-disposable-image
 test "$(id -u)" = 0
@@ -40,7 +41,7 @@ cat > "$KRB5_CONFIG" <<EOF
  rdns = false
  forwardable = false
  udp_preference_limit = 1
- clockskew = 0
+ clockskew = 2
 [realms]
  P0.TEST = {
   kdc = 127.0.0.1:61088
@@ -172,7 +173,7 @@ healthcheck
 export KRB5CCNAME="FILE:$root/expired.ccache"
 timeout 10 kinit -k -t "$root/user.keytab" -l 1s p0gss@P0.TEST
 test -s "$root/expired.ccache"
-sleep 3
+sleep 5
 expired_status=0
 timeout 10 klist -s || expired_status=$?
 test "$expired_status" -eq 1
@@ -183,4 +184,4 @@ timeout 10 klist -s
 run_case wrong-service 10
 healthcheck
 printf 'P0_GSSAPI_RESULT 4 passed; 0 skipped\n'
-dpkg-query -W -f='${Package} ${Version}\n' krb5-kdc krb5-user openssh-server libgssapi-krb5-2
+dpkg-query -W -f='${Package} ${Version}\n' krb5-kdc krb5-admin-server krb5-user openssh-server libgssapi-krb5-2

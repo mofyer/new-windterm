@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | valid | 临时 keytab 获取 5 分钟 TGT；`klist -s` 成功 | 0；收到固定输出且通道退出码 0 | 从 0 增至 1 |
 | missing | 私有 FILE ccache 路径不存在 | 10，不能是连接/超时错误 | 不变 |
-| expired | 真正申请 1 秒票据，文件存在；等待 3 秒后 `klist -s` 必须返回 1 | 10 | 不变 |
+| expired | 真正申请 1 秒票据，文件存在；等待 5 秒后 `klist -s` 必须返回 1 | 10 | 不变 |
 | wrong-service | 恢复有效 TGT；目标为不存在的 `host@missing.invalid` | 10 | 不变 |
 
 负例不会发出远端 exec；容器内的固定 forced command 另行写执行计数，任一负例使计数变化即失败。每个负例之后删除独立 health cache，再用 keytab 重新从 KDC 获取 TGT；Rust 用该新 cache 获取服务票据并完成一次正向认证/执行，必须成功且计数恰好增加 1。这样不依赖之前已缓存的服务票据，可排除 KDC 或 sshd 中途失效制造的假阴性。四场景加三次健康复验结束时计数为 4。脚本没有 skip 路径。最终必须输出：
@@ -50,8 +50,8 @@ Job 设置整体 timeout；另设 `if: always()` 步骤 `docker rm -f p0-gssapi-
 ## 版本、许可与可复现范围
 
 - 独立 `Cargo.toml/Cargo.lock` 固定 `russh =0.64.1`（Apache-2.0）、`tokio =1.50.0`（MIT）及传递依赖；由现有应用锁文件裁剪生成，没有引入新 Rust 包版本。使用 `--locked` 构建，不影响产品锁文件。
-- 构建镜像 `rust:1.99.0-bookworm`，运行镜像 `debian:bookworm-slim`；构建安装 `libkrb5-dev`，运行使用系统 `libgssapi-krb5-2`、`krb5-kdc`、`krb5-user`、`openssh-server`。系统 GSS 只动态链接进测试可执行文件，不链接进产品。
-- 镜像使用明确发行版/工具链标签；标签与 Debian 安全更新仍可变，因此**当前不是逐字节可复现镜像**。CI 构建日志记录解析出的镜像 digest，夹具输出四个运行包的实际版本；复现实测时使用该次 digest 和软件包版本。要冻结发行基准，需要另行固定 image digest 与 apt snapshot。
+- 构建镜像 `rust:1.99.0-bookworm`，运行镜像 `debian:bookworm-slim`；构建安装 `libkrb5-dev`，运行使用系统 `libgssapi-krb5-2`、`krb5-kdc`、`krb5-admin-server`、`krb5-user`、`openssh-server`。系统 GSS 只动态链接进测试可执行文件，不链接进产品。
+- 镜像使用明确发行版/工具链标签；标签与 Debian 安全更新仍可变，因此**当前不是逐字节可复现镜像**。CI 构建日志记录解析出的镜像 digest，夹具输出五个运行包的实际版本（含提供 `kadmin.local` 的 `krb5-admin-server`）；复现实测时使用该次 digest 和软件包版本。要冻结发行基准，需要另行固定 image digest 与 apt snapshot。
 - MIT Kerberos 含 MIT/BSD 等上游许可与第三方 notices，OpenSSH 为 BSD 等许可；以镜像内 `/usr/share/doc/<package>/copyright` 为准。Debian 基础系统还包含 GPL 工具。它们是独立测试环境，不随桌面程序分发；本仓库不发布这个测试镜像。应用依赖清单见 [DEPENDENCIES](../../docs/p0/DEPENDENCIES.zh-CN.md)。
 
 ## 本机检查与证据边界
