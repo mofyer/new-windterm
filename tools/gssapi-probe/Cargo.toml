@@ -1,0 +1,11 @@
+[package]
+name = "p0-gssapi-probe"
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+# Isolated development probe: never linked into or bundled with the app.
+[dependencies]
+russh = { version = "=0.64.1", default-features = false, features = ["ring"] }
+tokio = { version = "=1.50.0", features = ["rt", "macros", "time"] }
