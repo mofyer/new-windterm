@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && passwd -d p0gss && mkdir -p /run/sshd \
     && touch /p0-gssapi-disposable-image
 RUN command -v kadmin.local && command -v kdb5_util && command -v krb5kdc \
-    && command -v kinit && command -v klist && command -v sshd
+    && command -v kinit && command -v klist && command -v kvno && command -v sshd
 COPY --from=build /probe/target/release/p0-gssapi-probe /usr/local/bin/p0-gssapi-probe
 COPY fixture.sh /usr/local/bin/p0-gssapi-fixture
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/p0-gssapi-fixture"]

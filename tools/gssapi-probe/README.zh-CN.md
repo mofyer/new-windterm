@@ -1,6 +1,6 @@
 # C14：隔离 Linux GSSAPI 探针
 
-状态（2026-10-15）：**已实现探针与容器夹具，Linux 四场景尚未实测；不是产品认证入口或 C14 对齐结论。** macOS 只做编译、单元测试与 lint，不调用本机 Kerberos 认证。没有 Tauri 命令、界面或产品库改动。
+状态（2026-10-15）：**已实现探针与容器夹具；[首次 Linux CI](https://github.com/mofyer/new-windterm/actions/runs/38690044571) 的 valid 场景失败，短名称补全修复待重跑验证；不是产品认证入口或 C14 对齐结论。** macOS 只做编译、单元测试与 lint，不调用本机 Kerberos 认证。没有 Tauri 命令、界面或产品库改动。
 
 ## 验证什么
 
@@ -34,6 +34,8 @@ P0_GSSAPI_RESULT 4 passed; 0 skipped
 不要在宿主直接执行 `fixture.sh`。它只在带构建标记的私有测试镜像内运行，创建的 `p0gss` 用户属于一次性容器；不会使用 runner 的真实用户或 `~/.k5login`。所有 KRB5 配置、数据库、stash、keytab、ccache 都在 `/fixture/run.*`，SSH key、配置、日志同样私有。未继承 SSH agent，也未启用 KRB5_TRACE。
 
 KDC 和 sshd 只监听容器 loopback 高端口，运行时 `--network none`。sshd 仅接受 `gssapi-with-mic`，关闭其它认证、用户环境/rc、PTY 和全部转发。`GSSAPIStrictAcceptorCheck no` 仅用于让容器临时 hostname 与唯一的 `host/localhost` keytab 解耦；服务端仍必须持有对应 keytab，客户端仍检查 `host@localhost` 服务名和主机密钥，不可把这个配置直接复制到产品环境。
+
+临时 `krb5.conf` 同时设置 `dns_canonicalize_hostname = false` 和 `qualify_shortname = ""`。MIT 在关闭 DNS 解析后仍可能给无点的 `localhost` 追加 resolver 搜索域，因此必须显式关闭短名称补全，见 [MIT krb5 1.20.1 的名称转换实现](https://github.com/krb5/krb5/blob/krb5-1.20.1-final/src/lib/krb5/os/sn2princ.c#L55-L126)。首次 CI 的 valid 场景返回 `0x96c73a07`（服务主体不存在）；该行为是修复依据，是否消除此 CI 失败仍需重跑确认。夹具在独立 cache 中用 `kvno -S host localhost` 预检实际请求的主体为 `host/localhost@P0.TEST`，随后删除该 cache，只输出固定成功标记，不预热 Rust 客户端的 service ticket。
 
 协调者在独立 Linux CI job 接入（不需要 Tauri/WebKitGTK）：
 

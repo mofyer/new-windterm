@@ -38,6 +38,9 @@ cat > "$KRB5_CONFIG" <<EOF
  dns_lookup_kdc = false
  dns_lookup_realm = false
  dns_canonicalize_hostname = false
+ # Disabling DNS does not disable MIT short-name qualification. Ignore the
+ # container resolver's inherited search suffix when targeting host/localhost.
+ qualify_shortname = ""
  rdns = false
  forwardable = false
  udp_preference_limit = 1
@@ -84,6 +87,14 @@ wait_port() {
 wait_port 61088 "$kdc_pid"
 timeout 10 kinit -k -t "$root/user.keytab" -l 5m p0gss@P0.TEST
 timeout 10 klist -s
+# Verify MIT host-based name construction before SSH, without pre-populating
+# the Rust client's cache with a service ticket. Keep tool output private.
+cp "$root/valid.ccache" "$root/preflight.ccache"
+LC_ALL=C KRB5CCNAME="FILE:$root/preflight.ccache" \
+  timeout 10 kvno -S host localhost > "$root/service-preflight.log" 2>&1
+grep -Eq '^host/localhost@P0[.]TEST: kvno = [0-9]+$' "$root/service-preflight.log"
+rm -f "$root/preflight.ccache"
+printf 'P0_GSSAPI_SERVICE_PREFLIGHT PASS\n'
 timeout 10 ssh-keygen -q -t ed25519 -N '' -f "$root/host"
 export P0_GSSAPI_FINGERPRINT
 P0_GSSAPI_FINGERPRINT=$(ssh-keygen -lf "$root/host.pub" -E sha256 | awk '{print $2}')
