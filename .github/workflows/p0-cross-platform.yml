@@ -6,6 +6,7 @@ on:
     paths:
       - "apps/desktop/**"
       - "tests/native/**"
+      - ".cargo/config.toml"
       - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "apps/desktop/**"
       - "tests/native/**"
+      - ".cargo/config.toml"
       - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
@@ -108,6 +110,9 @@ jobs:
       RUSTUP_TOOLCHAIN: "1.99.0"
       CARGO_BUILD_JOBS: "2"
       CARGO_TERM_COLOR: never
+      # Loopback authentication shares the production four-reader capacity.
+      # Bound independent tests; concurrency within each test stays unchanged.
+      RUST_TEST_THREADS: "2"
 
     steps:
       - name: Checkout

@@ -50,6 +50,7 @@
 
 **Rust**
 - 使用 `--locked --all-features`；fmt、clippy（`-D warnings`）和测试都要通过。
+- P1 起，根 `.cargo/config.toml` 与 CI 将 Rust 测试 harness 并发固定为 2，以免独立 loopback 测试争抢产品全局 4 个密钥读取名额；测试内部并发及容量断言不变。在仓库外运行 Cargo 时显式设置 `RUST_TEST_THREADS=2`。
 - Windows 专属代码在本机只能用 `tools/wincheck/wincheck.sh` 做类型检查。
 
 **浏览器测试**

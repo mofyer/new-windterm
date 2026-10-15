@@ -86,3 +86,30 @@ macOS 本轮作业通过，两个探针均为 12/12 周期回收成功；每种�
 | Windows Server 2025 | Rust 204 passed / 7 ignored；另 2 项 ConPTY 诊断通过；bare 增长 0，Session 维持 117 |
 
 本批结论：本地终端生命周期切片及第三轮门禁已通过；P1 整阶段未完成，既有间歇回收问题仍需定位。本批 main 合并决策必须明确保留 `P1-PTY-CLOSE-001`，不能把诊断增强说成回收故障修复。当前仅推送 `p1/integration`，main 保持 `a35582f`，等待用户明确确认。
+
+## 用户决定：先修复回收问题
+
+2026-10-15 用户明确选择「先定位并修复回收问题，再合并」。因此 main 继续冻结；调查共同的 Unix 子进程终止/等待链路，默认与 readiness 均纳入回归，不用成功重跑、放宽超时或风险接受代替修复。
+
+## Unix 回收顺序修复（待最终门禁）
+
+`7d17178`（来源 `cfbfc75`）修正共同的 Unix 清理路径：原先在 reader/readiness 副本和 writer 仍存活时等待 child，这时读取循环已停止排空。现在先关闭 flow，释放 reader/readiness、join writer，再等待 child；Windows 顺序、原 2 秒关闭期限和错误处理不变。独立 Rust 审阅批准该单文件修复。
+
+固定相同 readiness 负载、ACK 行为和期限，对原顺序与新顺序各跑三轮；每轮含基本流程及 12 个关闭周期：
+
+| 证据 | 原顺序 | 修复顺序 |
+| --- | --- | --- |
+| 确定性资源生命周期回归 | RED：`PTY I/O still held at child.wait` | GREEN |
+| 三轮真实探针 | 每轮 10.836–10.896 秒，36/36 周期通过 | 每轮 1.956–2.002 秒，36/36 周期通过 |
+| 探针内部最大关闭等待 | 822–823ms | 83–84ms |
+| 日志观察的 child wait 阶段间隔 | 中位约 602ms，最大 602.63ms | 最大 0.269ms |
+
+阶段时间来自外部 collector 接收日志时的单调时钟，不是函数或内核精密计时；主要证据为资源顺序、确定性红绿回归与探针内部 `wait_ms`。六轮均保留 2MiB 精确输出、UTF-8、Ctrl+C、自然 exit 7；默认后端另 12/12 周期通过，最大关闭等待 85ms。mock 直接检查 reader/writer Drop，readiness 释放由代码及真实阶段日志佐证。
+
+Apple XNU 的 [进程退出路径](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/kern/kern_exit.c) 在 session leader 退出时处理 TTY 排空；[PTY 关闭路径](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/kern/tty_dev.c) 说明最后 master 关闭会解除连接并清理队列，与实际 A/B 机制相符。引用的是上游主线源码，不是 runner 精确内核版本。真实旧顺序没有在这些 A/B 中超时；结论是修复了可复现的同路径资源等待机制，第二轮 CI 的具体卡点因缺少 trace 无法追溯，不能写成精确重建历史故障。
+
+证据保留于 `/tmp/p1-reap-before-{1..3}.log`、`/tmp/p1-reap-after-{1..3}.log`、`/tmp/p1-reap-order-{red,green}.log`、`/tmp/p1-reap-default-after.log`，均经独立复核。
+
+全量 Rust 首次验证另外发现 `remote_forward_routes_only_registered_ports` 返回 `Private key reader capacity reached`（lib 162 passed / 1 failed / 7 ignored）。并行的独立 loopback 测试共用产品四槽池，生产容量行为正确；采用测试 harness 并发预算 2，根 Cargo 配置与 CI 一致，不修改生产容量、测试内部并发或容量负例，不重试吞掉错误。已核实当前相关测试的 key-auth 顺序执行，forward 并发发生在已认证连接内，integration 自有测试锁。最终门禁另记，失败原始日志保留于 `/tmp/p1-reap-all-tests.log`。
+
+预算配置提交 `dfb574f`（来源 `e4048b8`）及 CI 配套经独立审阅；根/子目录 Cargo 实测默认预算均为 2，显式环境覆盖仍有效。完整集成门禁通过：Rust 211 passed / 0 failed / 33 ignored、fmt / Clippy / wincheck、前端 build、浏览器 376 passed（2.2 分钟）、真实 OpenSSH 11 passed / 0 skipped。新结果保留在本机 `.artifacts/p1/batch1/*-reap-fix.log`；后续跨平台 CI 须验证准确提交。

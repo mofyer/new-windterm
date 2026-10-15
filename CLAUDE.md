@@ -47,6 +47,8 @@ npx playwright test tests/e2e/workspace.spec.ts -g "<测试标题>"   # 单个�
 
 Rust（在仓库根目录执行；工具链由 `rust-toolchain.toml` 固定为 1.99.0，本机可能需要 `export PATH="$HOME/.cargo/bin:$PATH"`）。始终带 `--all-features`，否则 `pty-diagnostics`/`pty-readiness` 下的代码不会被编译检查，CI 也是这样跑的：
 
+仓库根 `.cargo/config.toml` 默认设置 `RUST_TEST_THREADS=2`，CI 同样固定为 2：同一测试进程的 loopback 认证共享产品的 4 个密钥读取名额，不能按 CPU 数量无界并行独立测试。测试内部的通道并发、容量饱和与取消断言保持；产品容量不变。专门做压力诊断时可显式覆盖并发值，但不能把预期外的容量失败忽略后记为门禁通过。从仓库之外调用 `cargo --manifest-path` 不会自动读取这里的配置，此时须显式传 `RUST_TEST_THREADS=2`。
+
 ```sh
 M=apps/desktop/src-tauri/Cargo.toml
 cargo fmt --manifest-path $M -- --check
