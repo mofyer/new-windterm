@@ -156,7 +156,10 @@ export async function localTerminalReopen(ctx) {
   await clickCss(session, '#local-open');
   await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'the local tab to exit' });
   await waitForSessionState(ctx, '本机 shell 已启动', 'initial local PTY startup');
-  const oldLabel = await session.getText(await session.findElement(oldTab));
+  // WebKitWebDriver getText can return an empty string for these visibly rendered
+  // tab buttons. Read their DOM text as in the runner's failure evidence instead.
+  const oldLabel = await inPage(session, css => document.querySelector(css)?.textContent?.trim() ?? '', oldTab);
+  if (!oldLabel) throw new Error('initial local tab has no DOM label');
   const oldMarker = `p1old${randomBytes(6).toString('hex')}`;
   await typeInTerminal(ctx, `echo ${oldMarker}${Keys.ENTER}`);
   const original = await waitForRow(ctx, row => row === oldMarker, 'old shell marker as a standalone output row');
@@ -171,8 +174,16 @@ export async function localTerminalReopen(ctx) {
   await clickCss(session, reopen);
   await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'a second local tab without replacing the exited tab' });
   const restarted = await waitForSessionState(ctx, '本机 shell 已启动', 'reopened local PTY startup');
-  const newLabel = await session.getText(await session.findElement(newTab));
+  const reopenedTabs = await inPage(session, (oldCss, newCss) => ({
+    oldLabel: document.querySelector(oldCss)?.textContent?.trim() ?? '',
+    newLabel: document.querySelector(newCss)?.textContent?.trim() ?? '',
+    newSelected: document.querySelector(newCss)?.getAttribute('aria-selected'),
+  }), oldTab, newTab);
+  const newLabel = reopenedTabs.newLabel;
+  if (reopenedTabs.oldLabel !== oldLabel) throw new Error('reopening changed the exited tab label');
+  if (!newLabel) throw new Error('reopened local tab has no DOM label');
   if (oldLabel === newLabel) throw new Error(`reopened tab reused the old label: ${oldLabel}`);
+  if (reopenedTabs.newSelected !== 'true') throw new Error('reopened local tab was not selected');
   const newMarker = `p1new${randomBytes(6).toString('hex')}`;
   await typeInTerminal(ctx, `echo ${newMarker}${Keys.ENTER}`);
   // An input echo contains "echo "; it cannot satisfy the exact output-row predicate.
