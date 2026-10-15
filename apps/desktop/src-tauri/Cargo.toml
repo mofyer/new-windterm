@@ -25,6 +25,8 @@ zeroize = { version = "=1.9.1", features = ["serde"] }
 
 [dev-dependencies]
 serde_json = "=1.0.152"
+# C04 virtual serial API probe only; no hardware access or product integration.
+serialport = { version = "=4.10.1", default-features = false }
 # ZMODEM (F12) evaluation probe only: tests/zmodem_lrzsz.rs drives it against
 # lrzsz. Not used by the library or the app; see docs/p0/MODEM.zh-CN.md.
 zmodem2 = { version = "=0.7.3", default-features = false, features = ["std"] }
