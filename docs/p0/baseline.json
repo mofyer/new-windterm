@@ -166,12 +166,12 @@
         {
           "type": "p0_prototype_probe",
           "source": "docs/p0/TRANSPORTS.zh-CN.md#串口c04",
-          "result": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口"
+          "result": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS/Linux 各 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口"
         }
       ],
       "static_review_conclusion": "supported",
       "p0_evidence_group": "prototype_or_probe",
-      "p0_evidence_note": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口",
+      "p0_evidence_note": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS/Linux 各 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
@@ -557,22 +557,23 @@
           "result": "支持；证据类型 D R L I B；静态证据不等于行为已验证"
         },
         {
-          "type": "p0_decision_record",
+          "type": "p0_prototype_probe",
           "source": "docs/p0/X11_GSSAPI_ADR.zh-CN.md#gssapigssapi-with-micc14",
-          "result": "仅决策记录；无实现与 KDC 实验"
+          "result": "独立 Linux Rust GSSAPI 探针对 MIT KDC/OpenSSH：有效、缺失、过期、错误服务主体 4 项通过，负例后新 cache 健康复验；未接产品认证，未测 macOS/Windows 或上游行为"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
-      "p0_evidence_note": "仅决策记录；无实现与 KDC 实验",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_note": "独立 Linux Rust GSSAPI 探针对 MIT KDC/OpenSSH：有效、缺失、过期、错误服务主体 4 项通过，负例后新 cache 健康复验；未接产品认证，未测 macOS/Windows 或上游行为",
       "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#a4-c14gssapi-已随发布包链接",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：在受控 KDC/sshd 上完成 gssapi-with-mic 认证；有效、过期、缺失票据与错误服务主体分别给出可区分的结果；服务端限制或日志证明最终认证方式，防止回退到密码/公钥掩盖失败；默认勾选不代替认证成功",
-      "not_tested_reason": "已确认 2.7 UI 提供 GSSAPI 选项；链接层证据显示发布构建启用 GSSAPI；仍缺 KDC 端到端认证，测试 Kerberos 领域待用户在冻结后提供。",
+      "not_tested_reason": "已确认上游 UI 和发布包链接；本项目独立 Linux KDC 探针已通过，但上游实际认证行为、产品接入及 macOS/Windows 认证仍未验证。",
       "upstream_behavior": "not_tested",
-      "scope_origin": "initial_117"
+      "scope_origin": "initial_117",
+      "p0_evidence_level": "real_peer"
     },
     {
       "id": "C15",
@@ -5969,7 +5970,7 @@
     ]
   },
   "evidence_refresh": {
-    "checked_on": "2026-10-12",
+    "checked_on": "2026-10-15",
     "purpose": "Evidence index only: links each ID to the upstream static review and to current P0 prototype/probe records; status fields are unchanged. The 31 baseline-freeze additions were indexed the same way on 2026-10-12.",
     "static_review": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md",
     "static_review_counts": {
@@ -5980,8 +5981,8 @@
       "silent": 2
     },
     "p0_evidence_counts": {
-      "prototype_or_probe": 68,
-      "static_only": 95,
+      "prototype_or_probe": 69,
+      "static_only": 94,
       "neither": 1
     },
     "p0_evidence_group_meaning": {
@@ -5990,7 +5991,7 @@
       "neither": "No upstream static evidence beyond the README claim and no P0 prototype or probe."
     },
     "p0_evidence_level_counts": {
-      "real_peer": 23,
+      "real_peer": 24,
       "real_platform": 7,
       "loopback_fixture": 9,
       "browser": 29
@@ -6069,7 +6070,7 @@
     "candidate_ids_assigned": 31,
     "freeze_additions_static_conclusion": "The 31 baseline-freeze additions take 'supported' from the static review candidate table: the inclusion criterion (an explicit menu, action, config or string in the release bundle) matches the 'supported' definition. This is static evidence only.",
     "post_freeze_additions_note": "T35-T37 (user-approved 2026-10-12) are indexed like the 31 freeze additions: supported by the Windows/Linux static review candidate table, static_only.",
-    "post_freeze_probe_refresh": "2026-10-15: C04 virtual serial API probe on macOS; no real UART or product integration acceptance."
+    "post_freeze_probe_refresh": "2026-10-15: C04 virtual serial API on macOS/Linux and C14 isolated Linux KDC/OpenSSH probe; no product or full parity acceptance."
   },
   "post_freeze_additions": {
     "approved_on": "2026-10-12",

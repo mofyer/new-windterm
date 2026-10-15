@@ -20,14 +20,14 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-15，续做中）
+## 当前仓库状态（2026-10-15，本批已收口）
 
 ### 分支
 
 - **远端 `main`**：`e0dd423`。2026-10-12 经用户同意，从集成分支快进而来。
-- **集成分支 `p0/integration`**：所有工作都在这里；10-15 已本地合入 T35–T37（`831b354`），本批推送与 CI 状态见 RESULTS。比 `main` 多冻结、E11、互操作修复和归档等提交。再次合并到 `main` 需要用户明确同意。
+- **集成分支 `p0/integration`**：所有工作都在这里；10-15 已合入并推送 T35–T37、虚拟串口和独立 GSSAPI 探针；被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档。比 `main` 多冻结、E11、互操作修复和归档等提交。再次合并到 `main` 需要用户明确同意。
 - **推送范围**：用户授权推送 `p0/*` 工作分支，并手动触发 CI。
-- **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，GSSAPI 与 Linux 串口实测待新 CI；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
+- **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
 - **多代理工作方式与续做方法**：见 [AGENT_WORKFLOW](p0/AGENT_WORKFLOW.zh-CN.md)。
 
 ### CI 与文档
@@ -68,7 +68,7 @@
 | 依赖与许可证 | 依赖清单 | [清单](p0/DEPENDENCIES.zh-CN.md) | — |
 | 安全评审 | 网络探针没有 CRITICAL 或 HIGH 问题；MEDIUM 已修复或已写明不采纳的理由 | RESULTS「网络探针安全评审」一节 | — |
 
-X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb 和 OpenSSH 的真实互操作放在 Linux CI 上运行。GSSAPI 已有独立 [Rust 探针与隔离 KDC/sshd 夹具](../tools/gssapi-probe/README.zh-CN.md)（`7daa310`），3 项单元测试通过并完成独立安全审查，Linux 四场景待新 CI；没有接入产品认证。
+X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb 和 OpenSSH 的真实互操作放在 Linux CI 上运行。GSSAPI 已有独立 [Rust 探针与隔离 KDC/sshd 夹具](../tools/gssapi-probe/README.zh-CN.md)（`7daa310`），3 项单元测试通过并完成独立安全审查，Linux 四场景及三次新 cache 健康复验已在 [修复版 CI](https://github.com/mofyer/new-windterm/actions/runs/38691371347/job/116277797906) 通过；没有接入产品认证。
 
 ## 绝对不能误报的边界
 
@@ -96,7 +96,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **功能基线**：2026-10-12 已冻结，E1–E12 全部采用推荐选项。用户同时授权在隔离副本中运行上游 2.7.0 做实机盘点；Windows/Linux 上游包的静态核对放到冻结之后。见[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)的决定记录。
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
-- **GSSAPI（C14）**：用户已批准在 Linux CI 容器自建测试领域，本批已实现夹具；无需用户提供真实领域。Linux 运行结果待新 CI。
+- **GSSAPI（C14）**：用户已批准在 Linux CI 容器自建测试领域，本批已实现夹具；无需用户提供真实领域。Linux 四场景已通过；后续产品接入与其他平台认证仍未验证。
 - **辅助功能与上游实机盘点**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)执行。当前的 VS Code 会话不能操作原生窗口；在 Claude 桌面应用中打开 Computer use 后，可以改由代理执行。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
@@ -104,7 +104,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 ## 推荐下一步顺序
 
-1. **收口本批 CI**：WL-1/2/3 已加为新 ID（T35–T37），虚拟串口探针与独立 GSSAPI 探针已合入并完成审查；本机门禁已过，继续核对 Linux KDC 四场景与跨平台 CI。所在 worktree 和进度见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
+1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **上游实机盘点与本机原生验收**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)由用户执行，或在 Claude 桌面应用中打开 Computer use 后由代理执行。共用偏好设置的备份在 `.reference/plist-backup-2026-10-12/`，执行完毕后要还原。
 3. **合并 `main`**：集成 CI 全绿后，向用户申请把新提交同步到 `main`。
 4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、PowerShell 与管理员 shell、Wayland 等，见归档第 5 节。

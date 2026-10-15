@@ -39,6 +39,6 @@ cd apps/desktop/src-tauri
 cargo test --locked --all-features --test serial_virtual_pair
 ```
 
-2026-10-15 本机 macOS arm64 实际运行：**4 passed / 0 failed / 0 ignored**。该文件受 `cfg(unix)` 限制：macOS/Linux 的全套 `cargo test --locked --all-features` 自动包含它；Windows 此测试目标是 0 项，**不算 Windows 串口验证**。Linux 运行结果以新 CI 回执为准。
+2026-10-15 本机 macOS arm64 实际运行：**4 passed / 0 failed / 0 ignored**。该文件受 `cfg(unix)` 限制：macOS/Linux 的全套 `cargo test --locked --all-features` 自动包含它；Windows 此测试目标是 0 项，**不算 Windows 串口验证**。[CI run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571) 的 macOS arm64 与 Linux x64 desktop 作业均为 **4 passed / 0 ignored**；该 run 的独立 GSSAPI 作业失败，不影响此处对串口日志的单独记录。
 
 串口的设备枚举、实际波特率、数据位/校验/流控的电气效果以及拔插都依赖真实硬件；Unix PTY 只能模拟字节流，不能代替 UART。**需要用户提供 USB 串口设备（最好包含一对互连的串口或一台串口设备）后才能做真机验证。** 尚未验证：真实设备权限错误、占用错误、断开恢复、Windows COM 端口、持续吞吐与背压、与终端 UI 的连接。后续顺序：产品会话与设备枚举 → 真机回环与参数变更 → 拔插报错与恢复；X/Y/ZModem（F10–F12）在此之后。

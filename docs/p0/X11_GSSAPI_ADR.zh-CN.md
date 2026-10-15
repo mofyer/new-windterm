@@ -118,8 +118,16 @@ $ command -v kinit
 
 实现与复现说明见 [`tools/gssapi-probe/README.zh-CN.md`](../../tools/gssapi-probe/README.zh-CN.md)。客户端确实使用 russh 的 `authenticate_gssapi_with_mic` 与手写的最小 GSS 标准 ABI 桥接；不是运行系统 ssh。只对测试可执行文件链接系统 GSS，产品 crate、IPC 和 UI 均未改动。
 
-Linux 容器夹具创建临时用户、realm、KDC DB、用户与 host keytab、票据 cache 和只允许 GSSAPI 的 sshd；运行时没有外部网络或宿主挂载。四个场景分别为有效票据、缺失 cache、真实过期票据、错误服务主体，并检查负例没有执行远端命令。macOS 只做编译和单元验证；本机没有 Docker/KDC，**四场景真实互操作尚待 Linux CI，不能据此宣称 C14 已验证**。不改变 C14 台账证据状态。
+Linux 容器夹具创建临时用户、realm、KDC DB、用户与 host keytab、票据 cache 和只允许 GSSAPI 的 sshd；运行时没有外部网络或宿主挂载。四个场景分别为有效票据、缺失 cache、真实过期票据、错误服务主体，并检查负例没有执行远端命令。macOS 只做编译和单元验证，本机没有 Docker/KDC。Linux 实跑记录见下节；产品 crate、IPC、UI 和 macOS/Windows 认证未集成，仍不代表完整 C14 验收。
+
+### Linux KDC 实跑（2026-10-15）
+
+[run 38691371347 / GSSAPI job 116277797906](https://github.com/mofyer/new-windterm/actions/runs/38691371347/job/116277797906)，head `fb824cf`：**4 passed / 0 skipped**。有效票据认证及远端命令成功；缺失、真实过期、错误服务主体均被拒绝且远端执行计数不变。每个负例后使用新 cache 重新 kinit 并正向认证，三次健康复验通过，最终远端执行次数为 4；Linux Rust 单测 3/3。
+
+MIT Kerberos 包版本 `1.20.1-2+deb12u5`，OpenSSH `1:9.2p1-2+deb12u10`。此前 [run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571) 的有效场景因服务主体不存在而失败；固定 `qualify_shortname = ""` 并增加不预热 Rust cache 的主体预检后通过。失败与修复都保留，不把未执行场景算通过。
+
+此证据只证明隔离 Linux Rust 探针，不证明上游 WindTerm 实际行为、产品认证入口、Windows SSPI 或 macOS 原生认证。
 
 ## 结论
 
-两项都不阻断 Rust + russh 路线：报文与通道已有库支持，剩余工作是平台集成与受控测试。X11 已有协议层探针及 Linux OpenSSH/Xvfb 证据，仍缺界面入口和 macOS/Windows 实测。GSSAPI 已有独立探针，尚缺 Linux 实测与产品集成。本轮没有改动功能矩阵中 C14、C15 的状态。
+两项都不阻断 Rust + russh 路线：报文与通道已有库支持，剩余工作是平台集成与受控测试。X11 已有协议层探针及 Linux OpenSSH/Xvfb 证据，仍缺界面入口和 macOS/Windows 实测。GSSAPI 独立 Linux 探针四场景已实测，尚缺产品集成与其他平台认证。本轮没有改动功能矩阵中 C14、C15 的状态。

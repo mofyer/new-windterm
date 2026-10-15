@@ -37,7 +37,7 @@
 
 ## 系统组件（不随应用分发）
 
-2026-10-15 增加独立 [`tools/gssapi-probe`](../../tools/gssapi-probe/README.zh-CN.md) 开发探针：它有自己的 Cargo.lock，仅复用 `russh =0.64.1`（Apache-2.0）和 `tokio =1.50.0`（MIT）及现有版本的传递依赖，没有改动产品 Cargo.toml/Cargo.lock。Linux 测试可执行文件动态链接系统 MIT Kerberos `libgssapi_krb5`；容器中的 `libkrb5-dev`、`libgssapi-krb5-2`、`krb5-kdc`、`krb5-admin-server`、`krb5-user` 与 OpenSSH 只作测试对端/桥接，不进入桌面产品。MIT Kerberos/OpenSSH 含 MIT/BSD 等许可与第三方 notices，以镜像内 Debian copyright 清单为准；基础系统包含 GPL 工具。本仓库不分发该测试镜像。镜像标签、包版本记录方式与可复现限制见探针 README；Linux 互操作尚待 CI，不能据此提升 C14 状态。
+2026-10-15 增加独立 [`tools/gssapi-probe`](../../tools/gssapi-probe/README.zh-CN.md) 开发探针：它有自己的 Cargo.lock，仅复用 `russh =0.64.1`（Apache-2.0）和 `tokio =1.50.0`（MIT）及现有版本的传递依赖，没有改动产品 Cargo.toml/Cargo.lock。Linux 测试可执行文件动态链接系统 MIT Kerberos `libgssapi_krb5`；容器中的 `libkrb5-dev`、`libgssapi-krb5-2`、`krb5-kdc`、`krb5-admin-server`、`krb5-user` 与 OpenSSH 只作测试对端/桥接，不进入桌面产品。MIT Kerberos/OpenSSH 含 MIT/BSD 等许可与第三方 notices，以镜像内 Debian copyright 清单为准；基础系统包含 GPL 工具。本仓库不分发该测试镜像。镜像标签、包版本记录方式与可复现限制见探针 README；Linux 隔离探针四场景已有 CI 证据，未接入产品，不能据此宣称完整 C14 验收。
 
 WebView 由操作系统提供：macOS 的 WKWebView、Windows 的 WebView2 Runtime、Linux 的 WebKitGTK（LGPL，动态链接系统库）。Windows 发行时若捆绑 WebView2 引导程序，需另行遵守 Microsoft 的分发条款；当前没有安装包。
 

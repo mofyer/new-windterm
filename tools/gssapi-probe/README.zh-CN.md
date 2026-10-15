@@ -1,6 +1,6 @@
 # C14：隔离 Linux GSSAPI 探针
 
-状态（2026-10-15）：**已实现探针与容器夹具；[首次 Linux CI](https://github.com/mofyer/new-windterm/actions/runs/38690044571) 的 valid 场景失败，短名称补全修复待重跑验证；不是产品认证入口或 C14 对齐结论。** macOS 只做编译、单元测试与 lint，不调用本机 Kerberos 认证。没有 Tauri 命令、界面或产品库改动。
+状态（2026-10-15）：**已实现探针与容器夹具；[首次 Linux CI](https://github.com/mofyer/new-windterm/actions/runs/38690044571) 的 valid 场景失败；短名称补全修复后，第二轮 Linux 四场景与三次健康复验通过；不是产品认证入口或 C14 对齐结论。** macOS 只做编译、单元测试与 lint，不调用本机 Kerberos 认证。没有 Tauri 命令、界面或产品库改动。
 
 ## 验证什么
 
@@ -9,7 +9,7 @@
 - 只提供 Kerberos DER OID，并校验服务端选择与完成后的实际机制；完成时必须具有 mutual/integrity，不能携带 delegation 旗标；对 russh 提供的 MIC 数据调用 `gss_get_mic`。
 - SSH 固定临时主机密钥的 SHA256 指纹，拒绝证书或不匹配密钥；没有公钥、密码或 keyboard-interactive 回退。
 - GSS 输出 buffer、imported name、partial/complete context 均由 RAII 释放。没有手动 `Send`/`Sync`；原生调用同步完成后返回 `Ready` future。
-- `repr(C)` 定义只含标准 ABI：`OM_uint32 = u32`、buffer 长度为 `usize`、OID 长度为 `u32`、opaque handle 为指针。依据 [RFC 2744](https://www.rfc-editor.org/rfc/rfc2744.html) §3、§5、§6 和 [RFC 4462](https://www.rfc-editor.org/rfc/rfc4462.html) §3；签名同时对照本机 Apple SDK 官方 `GSS.framework/Headers/gssapi_protos.h` 的六个标准函数。Linux 实际 ABI 仍由首次 CI 编译和互操作确认。
+- `repr(C)` 定义只含标准 ABI：`OM_uint32 = u32`、buffer 长度为 `usize`、OID 长度为 `u32`、opaque handle 为指针。依据 [RFC 2744](https://www.rfc-editor.org/rfc/rfc2744.html) §3、§5、§6 和 [RFC 4462](https://www.rfc-editor.org/rfc/rfc4462.html) §3；签名同时对照本机 Apple SDK 官方 `GSS.framework/Headers/gssapi_protos.h` 的六个标准函数。Linux 实际 ABI 已由修复版 CI 编译和受控互操作验证，范围见末节。
 - 输出只包含固定结果标记和 GSS 数字状态，不打印令牌、keytab、ccache 或秘密路径。传输/协议/不变量错误返回 2，认证拒绝返回 10，认证并执行固定远端命令成功才返回 0。
 
 ## 四个场景
@@ -66,3 +66,7 @@ bash -n tools/gssapi-probe/fixture.sh
 ```
 
 macOS 使用系统 GSS.framework 进行链接检查，单元测试只检查机制拒绝、ABI 布局和主机指纹正负例，不进行认证、不读取真实票据。运行入口拒绝非 Linux，Linux 入口还要求显式隔离标记和所有 KRB5 路径位于 `/fixture/`。Windows 不是本探针的构建目标。Linux 四场景须以 CI 日志为准；本机没有 Docker/KDC，不能把本机单元测试计为 Kerberos 互操作成功。
+
+## Linux CI 证据（2026-10-15）
+
+[run 38691371347 / job 116277797906](https://github.com/mofyer/new-windterm/actions/runs/38691371347/job/116277797906)，head `fb824cf`，输出 `P0_GSSAPI_RESULT 4 passed; 0 skipped`；三次 fresh-cache 健康复验也通过，最终远端执行计数 4。Linux 单元测试 3/3。MIT Kerberos `1.20.1-2+deb12u5`，OpenSSH `1:9.2p1-2+deb12u10`。此为独立探针证据，不代表桌面产品已支持 GSSAPI。

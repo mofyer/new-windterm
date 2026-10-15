@@ -4,12 +4,12 @@
 
 
 本轮（2026-10-11 至 10-13）的汇总归档见 [P0 工作归档](P0_ARCHIVE_2026-10.zh-CN.md)。
-## 2026-10-15：中断任务续做（集成验证中）
+## 2026-10-15：中断任务收尾与集成 CI 通过
 
 - **WL-1/2/3**：`831b354` 将用户已批准的三个 Windows shell 能力补为 T35–T37，基线共 164 项；三段结构验证通过。新增项仍为未实现、行为未验证，冻结字段未变。
-- **C04 虚拟串口**：`c6cc289` 新增仅开发依赖 `serialport =4.10.1`（关闭默认特性），通过真实 SerialPort API 对私有 PTY 做 4 项测试。macOS arm64 4/4；读写、配置读取、超时恢复、对端关闭。独立 Rust 评审发现 macOS `ptsname` 共享缓冲的并发风险，已用静态 Mutex 保护 PTY 分配与路径获取，复审通过。属于 loopback 夹具证据，不是 UART、设备枚举、热插拔或产品串口会话验收。Linux 待本批 CI，Windows 不运行该 Unix 测试。
-- **C14 GSSAPI**：`7daa310` 的独立 Rust crate 实现 Kerberos GSS 桥接、固定主机指纹和认证后远端证明；容器覆盖有效、缺失、过期、错误服务主体。评审指出缓存服务票据会掩盖 KDC 故障，现每个负例后用新 cache 重新 kinit 再正向认证，复审通过。3 项单测通过；Linux 真实认证待 CI，暂不提升 C14 证据分组或功能状态。容器预检另发现 Debian `kadmin.local` 需要 `krb5-admin-server`，已补安装与工具存在性检查。
-- **证据台账**：C04 从仅静态更新为原型/探针，计数为 68 / 95 / 1；层级为真实对端 23、真实平台 7、loopback 夹具 9、浏览器 29。三段结构校验再次通过，功能实现状态不变。
+- **C04 虚拟串口**：`c6cc289` 新增仅开发依赖 `serialport =4.10.1`（关闭默认特性），通过真实 SerialPort API 对私有 PTY 做 4 项测试。macOS arm64 4/4；读写、配置读取、超时恢复、对端关闭。独立 Rust 评审发现 macOS `ptsname` 共享缓冲的并发风险，已用静态 Mutex 保护 PTY 分配与路径获取，复审通过。属于 loopback 夹具证据，不是 UART、设备枚举、热插拔或产品串口会话验收。首轮 CI 的 macOS/Linux 均为 4/4，Windows 不运行该 Unix 测试。
+- **C14 GSSAPI**：`7daa310` 的独立 Rust crate 实现 Kerberos GSS 桥接、固定主机指纹和认证后远端证明；容器覆盖有效、缺失、过期、错误服务主体。评审指出缓存服务票据会掩盖 KDC 故障，现每个负例后用新 cache 重新 kinit 再正向认证，复审通过。3 项单测通过；修复版 Linux 四场景及三次健康复验通过，C14 更新为真实对端探针证据，功能状态不变。容器预检另发现 Debian `kadmin.local` 需要 `krb5-admin-server`，已补安装与工具存在性检查。
+- **证据台账**：C04 与 C14 从仅静态更新为原型/探针，计数为 69 / 94 / 1；层级为真实对端 24、真实平台 7、loopback 夹具 9、浏览器 29。三段结构校验再次通过，功能实现状态不变。
 - **CI 门禁**：新增 GSSAPI 隔离容器作业，并补齐原工作流中 X11、agent、非阻塞 lrzsz 的结果摘要。独立工作流审查指出探针路径过滤遗漏，已修复；`wincheck.sh` 在 Cargo 参数区固定 `--locked`，复审通过。
 
 本机已完成的门禁：
@@ -25,7 +25,13 @@
 
 浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。未合并到 main。
 
-首轮 CI：[run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571)，head `31bcdf8`。GSSAPI 镜像构建、Rust 编译与单测通过，但 `valid` 场景返回 10，GSS 错误 `major=0xd0000 minor=0x96c73a07`（服务主体不存在）；其余三场景未执行。MIT 短主机名可能被补上容器 resolver 搜索域；修复 `0212e9e` 固定 `qualify_shortname = ""` 并以独立 cache 的 `kvno` 预检精确主体，不预热 Rust 客户端 cache。该候选根因与修复已做独立代码审查，实际效果待下一轮 CI；失败记录保留，不记为四场景通过。
+首轮 CI：[run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571)，head `31bcdf8`。GSSAPI 镜像构建、Rust 编译与单测通过，但 `valid` 场景返回 10，GSS 错误 `major=0xd0000 minor=0x96c73a07`（服务主体不存在）；其余三场景未执行。MIT 短主机名可能被补上容器 resolver 搜索域；修复 `0212e9e` 固定 `qualify_shortname = ""` 并以独立 cache 的 `kvno` 预检精确主体，不预热 Rust 客户端 cache。该候选根因与修复已做独立代码审查，下一轮四场景通过，支持该修复；首轮失败记录保留，不把首轮未执行场景计为通过。
+
+该轮已核对的独立结果：macOS/Linux desktop 作业成功，串口各 4/4；Linux lrzsz `0.12.21-11build1` 实际 11 passed / 0 failed / 0 ignored（非阻塞步骤的真实 outcome 为 success），X11/agent 对 OpenSSH 各 1 passed / 0 skipped。Linux WebKitGTK、Windows WebView2 三个原生冒烟场景各自通过。Windows Server 2022/2025 desktop 均成功，Rust 各 203 passed / 7 ignored，独立 ConPTY 检查各 2 passed；macOS Rust 209 passed / 33 ignored，Linux Rust 208 passed / 33 ignored。整次 run 仍为 failure，仅 GSSAPI 作业失败。
+
+修复版 [run 38691371347](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，head `fb824cf`，在旧 run 全部结束后触发。GSSAPI job `116277797906` 已成功：服务主体预检通过，四场景 `4 passed; 0 skipped`，三次 fresh-cache 健康复验通过，最终远端执行次数 4；MIT Kerberos `1.20.1-2+deb12u5`、OpenSSH `1:9.2p1-2+deb12u10`。整次 workflow **success，7/7 作业成功**：GSSAPI、macOS desktop、Linux desktop、Windows Server 2022/2025 desktop、Linux WebKitGTK 和 Windows WebView2。原始日志确认 Linux 串口 4/4、lrzsz 11/11（实际 outcome success）、X11/agent 各 1/1；不以整体绿色代替非阻塞步骤核查。
+
+测试代码提交为 `fb824cf`；此后本批只补证据文档与台账，没有改变被测实现。三处台账及冻结提议结构验证通过。`main` 仍为 `e0dd423`，本批没有合并到 main。
 
 ## 输入路径：输入法、宽字符、粘贴与按键
 
@@ -933,8 +939,8 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features 
 
 ## 未完成与下一步（2026-10-15）
 
-1. 完成本批新 CI 回执与失败修复，分别记录 GSSAPI 四场景、虚拟串口、平台生命周期与原生 WebView 的证据。
+1. 本批 CI、失败修复和证据归档已完成；继续按下列实机风险与出口条件收口 P0。
 2. 按 [HANDS_ON_CHECKLIST](HANDS_ON_CHECKLIST.zh-CN.md)完成上游实机差异，尤其是影响范围或[终端内核决策](TERMINAL_CORE_ADR.zh-CN.md#决策前必须验证)的行为。功能基线已为 164 项，不再把“冻结 130 项”作为待办。
 3. 补原生 IME、VoiceOver、WKWebView 输出/输入延迟与资源测量。真实 UART 参数与拔插仍需硬件，不能以虚拟 PTY 通过替代。
 4. 汇总风险和技术调整方案，更新估算并进行 P0 出口评审。完整 SSH/SFTP、ZMODEM、全部终端兼容实现与签名发行按 P1–P5 推进；不因阶段划分删减最终功能。
-5. 本批 CI 完成后，合并 `p0/integration` 到 `main` 仍需用户明确同意。
+5. 本批 CI 已通过，合并 `p0/integration` 到 `main` 仍需用户明确同意。
