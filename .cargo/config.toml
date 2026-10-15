@@ -1,0 +1,6 @@
+[env]
+# Loopback SSH tests share the production process-wide four-reader key budget.
+# Each test authenticates sequentially; keep independent harness cases bounded
+# without reducing concurrency inside a test or changing production admission.
+# Explicit RUST_TEST_THREADS or --test-threads still enables deliberate stress.
+RUST_TEST_THREADS = { value = "2", force = false }
