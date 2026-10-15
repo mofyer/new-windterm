@@ -593,8 +593,11 @@ fn launch_workers(
             terminal_error(&sink, &read_id, message);
         }
         cleanup_trace!(&read_id, "reader_loop.end");
+        // A Unix session leader can wait for its slave output to drain while
+        // exiting. Release every master copy, including the input worker's,
+        // before waiting for the child: the reader no longer drains output here.
         #[cfg(unix)]
-        let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
+        session.close();
         // Reader errors (ACK timeout, sink failure) end the tree too; after a
         // natural exit this only reaps detached children left in the job.
         #[cfg(windows)]
@@ -630,6 +633,8 @@ fn launch_workers(
         cleanup_trace!(&read_id, "writer_join.begin");
         let writer_reaped = writer_worker.join().is_ok();
         cleanup_trace!(&read_id, "writer_join.end");
+        #[cfg(unix)]
+        let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
         if !writer_reaped {
             terminal_error(
                 &sink,
@@ -1071,6 +1076,104 @@ mod tests {
         assert!(checked_size(0, 24).is_err());
         assert!(checked_size(80, 501).is_err());
         assert!(checked_size(120, 40).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_reaping_releases_io_before_waiting_for_the_child() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct IoDrop(Arc<AtomicBool>);
+        impl Read for IoDrop {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Ok(0)
+            }
+        }
+        impl Write for IoDrop {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl Drop for IoDrop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+        #[derive(Clone, Debug)]
+        struct ReapAfterIo {
+            reader: Arc<AtomicBool>,
+            writer: Arc<AtomicBool>,
+        }
+        impl portable_pty::ChildKiller for ReapAfterIo {
+            fn kill(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+                Box::new(self.clone())
+            }
+        }
+        impl portable_pty::Child for ReapAfterIo {
+            fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
+                Ok(None)
+            }
+            fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
+                if !self.reader.load(Ordering::SeqCst) || !self.writer.load(Ordering::SeqCst) {
+                    return Err(std::io::Error::other("PTY I/O still held at child.wait"));
+                }
+                Ok(portable_pty::ExitStatus::with_exit_code(7))
+            }
+            fn process_id(&self) -> Option<u32> {
+                None
+            }
+        }
+
+        let pair = native_pty_system()
+            .openpty(checked_size(80, 24).unwrap())
+            .unwrap();
+        #[cfg(feature = "pty-readiness")]
+        let (readiness, cancel_readiness) = platform::Readiness::new(pair.master.as_ref()).unwrap();
+        drop(pair.slave);
+        let (input, receiver) = sync_channel(1);
+        let session = Arc::new(Session {
+            owner: "cleanup-order-test".into(),
+            #[cfg(feature = "pty-diagnostics")]
+            diagnostics: Diagnostics::default(),
+            flow: Mutex::new(Flow::default()),
+            #[cfg(feature = "pty-readiness")]
+            capacity: Condvar::new(),
+            #[cfg(feature = "pty-readiness")]
+            cancel_readiness,
+            master: Mutex::new(Some(pair.master)),
+            input,
+            done: (Mutex::new(false), Condvar::new()),
+        });
+        let reader_dropped = Arc::new(AtomicBool::new(false));
+        let writer_dropped = Arc::new(AtomicBool::new(false));
+        let (sender, events) = std::sync::mpsc::channel();
+        launch_workers(
+            session.clone(),
+            "cleanup-order-test".into(),
+            Arc::new(move |event| sender.send(event).map_err(|error| error.to_string())),
+            Box::new(IoDrop(reader_dropped.clone())),
+            #[cfg(feature = "pty-readiness")]
+            readiness,
+            Box::new(IoDrop(writer_dropped.clone())),
+            receiver,
+            Box::new(ReapAfterIo {
+                reader: reader_dropped,
+                writer: writer_dropped,
+            }),
+        );
+        let event = events.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(
+            matches!(event, PtyEvent::Exit { code: Some(7), .. }),
+            "{event:?}"
+        );
+        assert!(session.wait_closed(Duration::from_secs(1)));
+        assert!(session.master.lock().unwrap().is_none());
     }
     #[cfg(all(
         feature = "pty-readiness",
