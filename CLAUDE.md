@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-用 Rust + Tauri 2 + xterm.js 独立重构 WindTerm 2.7.0 的**完整**功能（Apache-2.0）。macOS Apple Silicon 优先，但 Windows/Linux 在架构与测试层面同步考虑，不能因先做 macOS 删减平台或功能。当前处于 **P0**，已有的都是原型或探针，尚未验收：
+用 Rust + Tauri 2 + xterm.js 独立重构 WindTerm 2.7.0 的**完整**功能（Apache-2.0）。macOS Apple Silicon 优先，但 Windows/Linux 在架构与测试层面同步考虑，不能因先做 macOS 删减平台或功能。**P0 已于 2026-10-15 经独立技术评审和用户确认关闭，当前进入 P1。** 已有实现仍多为原型或探针，不能视为完整产品验收：
 - 真实本地 PTY（Windows 只有 `cmd.exe` ConPTY）。
 - 受限交互 SSH。
 - 只读 SFTP 文件面板。
@@ -12,17 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 多个 SSH 网络探针（转发、代理、SCP 等）。
 - 苹果风 UI 原型。
 
-整体集成在 `p0/integration` 分支上，合并到 `main` 需要用户同意。
+P0 已合并到 main（`a35582f`），当前集成在 `p1/integration`；合并到 `main` 仍需要用户同意。P1 的切片计划与执行证据见 [docs/p1/PLAN.zh-CN.md](docs/p1/PLAN.zh-CN.md) 和 [docs/p1/RESULTS.zh-CN.md](docs/p1/RESULTS.zh-CN.md)。
 
-当前优先级与交接要点见 [docs/HANDOFF.zh-CN.md](docs/HANDOFF.zh-CN.md)；测试结果与未完成项以 [docs/p0/RESULTS.zh-CN.md](docs/p0/RESULTS.zh-CN.md) 为准。
+当前优先级与交接要点见 [docs/HANDOFF.zh-CN.md](docs/HANDOFF.zh-CN.md)；当前测试结果与未完成项以 [P1 执行记录](docs/p1/RESULTS.zh-CN.md) 为准，[P0 记录](docs/p0/RESULTS.zh-CN.md)保留历史证据。
 
 ### 不能误报的边界
 
 文档和提交说明必须区分“已验证”与“未验证”，不得写成：
 
-- WindTerm 功能已对齐、P0/P1 已通过、产品可用；
+- WindTerm 功能已对齐、P1 已通过或产品可用（P0 已获批准关闭，可如实记录）；
 - SFTP 已完成（只读浏览面板加写操作原型，只对 OpenSSH 夹具与 IPC stub 验证；无原生 WKWebView 实测、递归、续传）；
-- Windows 终端已完整可用（ConPTY 只在 CI 上验证了 cmd.exe 的生命周期，未验证 PowerShell、WebView2 原生窗口和输入法）；
+- Windows 终端已完整可用（已有 cmd.exe 生命周期及 WebView2 原生冒烟证据，PowerShell、输入法和完整 Windows 验收未完成）；
 - 浏览器 E2E 通过等于 Rust/原生成功（浏览器测试使用 IPC stub）；
 - loopback russh 测试服务端通过等于真实 OS shell / OpenSSH 互操作通过；
 - CI 或本地 debug 构建通过等于 IME、高输出性能、签名公证或发行验收。

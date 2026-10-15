@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "apps/desktop/**"
+      - "tests/native/**"
       - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
   pull_request:
     paths:
       - "apps/desktop/**"
+      - "tests/native/**"
       - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
