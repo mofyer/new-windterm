@@ -22,8 +22,8 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 | 门禁 | 本轮结果 | 边界 |
 | --- | --- | --- |
 | 前端 TypeScript / Vite build | 通过 | 不代表原生运行 |
-| Rust fmt / Clippy all targets、all features | 通过 | Rust 产品代码未修改 |
-| Rust all targets、all features | 209 passed / 0 failed / 33 ignored | ignored 不算通过 |
+| Rust fmt / Clippy all targets、all features | `13c9aee` 集成复验通过 | 生产入口保留全局容量池 |
+| Rust all targets、all features | `13c9aee` 集成复验 210 passed / 0 failed / 33 ignored | 新增 1 项容量回归；ignored 不算通过 |
 | Windows wincheck | 通过 | 只做类型检查，不是运行 |
 | Native runner helper | 15 passed / 0 failed | 不代表新增原生场景已执行 |
 | 浏览器全套 | 376 passed / 0 failed（2.2 分钟） | IPC stub；含 12 项本地生命周期契约 |
@@ -39,6 +39,10 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 
 `09a0362`（来源 `5ddaa49`）将标签读回改为 DOM `textContent`，断言非空、旧标签位置与名称保持、新标签名称不同且已选中。真实输出、双向隔离、旧退出码和关闭检查全部保留；独立 code-reviewer APPROVE，Node 语法、helper 15/15 和 diff 检查通过，原生运行待下一轮 CI。
 
-同轮 Linux desktop 的 `cancelled_reader_holds_capacity_until_blocking_work_really_ends` 在等待启动信号时出现 `RecvError`，Rust lib 结果 159 passed / 1 failed / 7 ignored；后续 lrzsz 等步骤未执行，不能算通过。正在独立诊断。
+同轮 Linux desktop 的 `cancelled_reader_holds_capacity_until_blocking_work_really_ends` 在等待启动信号时出现 `RecvError`，Rust lib 结果 159 passed / 1 failed / 7 ignored；后续 lrzsz 等步骤未执行，不能算通过。测试先占用全局池的大部分许可，其他并发认证可能抢走最后一个许可；容量拒绝会丢弃未启动闭包，使通知接收端得到 `RecvError`。具体争用者无法从日志确定。
 
-Windows 原生四个场景已通过，独立复核 summary 与第四场景文本确认新旧输出隔离、退出码 7 保留、关闭后仅剩初始标签；Windows helper 为 14 passed / 1 skipped。Linux GSSAPI 四认证场景与三次新 cache 健康复验通过。其余作业最终结果及修复后的运行另记。
+`13c9aee`（来源 `7eeb760`）保留生产 `KEY_READS` 全局池和原入口，将同一读取算法抽为接收容量池的内部函数；原测试使用独立池，继续验证取消后阻塞读取实际结束前不能释放容量。新增确定性满池回归验证上述错误链及另一个池的独立执行。定向 3/3、10 轮并发回归 30/30；独立 Rust reviewer APPROVE，check / fmt / Clippy / 全 Rust 测试 210 passed、33 ignored。
+
+修复合入 `13c9aee` 后重新完成集成门禁：fmt、Clippy、Rust 210 passed / 33 ignored、wincheck、前端 build、浏览器 376 passed（2.2 分钟）、真实 OpenSSH 11 passed / 0 skipped。原生 helper 在 `09a0362` 上为 15/15，后续 Rust 修复没有改动原生脚本。日志保留在本机 ignored `.artifacts/p1/batch1/*-final.log`。跨平台修复复验仍待运行。
+
+首轮最终为 5 个作业成功、2 个失败，整体失败。Windows 原生四个场景通过，独立复核 summary 与第四场景文本确认新旧输出隔离、退出码 7 保留、关闭后仅剩初始标签；Windows helper 为 14 passed / 1 skipped。Linux GSSAPI 3 个单元测试、四认证场景与三次新 cache 健康复验通过。macOS desktop 为 209 passed / 33 ignored，两种真实 PTY 探针通过；Windows 2022、2025 desktop 均为 203 passed / 7 ignored，另 2 项隔离 ConPTY 诊断通过。Server 2022 保留每轮一个句柄的系统基线增长，不代表零泄漏；Server 2025 该检查稳定。
