@@ -147,6 +147,54 @@ export async function localTerminal(ctx) {
   return { marker, input, startedState: started.state, shellIdentity: identity.row, status };
 }
 
+/** A real exited local PTY keeps its output while reopen starts a separate, usable shell. */
+export async function localTerminalReopen(ctx) {
+  const { session } = ctx;
+  const before = await tabCount(session);
+  const oldTab = `#tabs .tab:nth-child(${before + 1}) [role="tab"]`;
+  const newTab = `#tabs .tab:nth-child(${before + 2}) [role="tab"]`;
+  await clickCss(session, '#local-open');
+  await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'the local tab to exit' });
+  await waitForSessionState(ctx, '本机 shell 已启动', 'initial local PTY startup');
+  const oldLabel = await session.getText(await session.findElement(oldTab));
+  const oldMarker = `p1old${randomBytes(6).toString('hex')}`;
+  await typeInTerminal(ctx, `echo ${oldMarker}${Keys.ENTER}`);
+  const original = await waitForRow(ctx, row => row === oldMarker, 'old shell marker as a standalone output row');
+  // Both the Linux Bash fixture and Windows cmd.exe support this exit status.
+  await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
+  const exited = await waitForSessionState(ctx, '已退出 · code 7', 'local exit status 7');
+  const reopen = 'button[aria-label="重新打开本地终端"]';
+  await waitFor(() => inPage(session, (css) => {
+    const button = document.querySelector(css);
+    return !!button && !button.disabled && button.getClientRects().length > 0;
+  }, reopen), { description: 'an enabled, visible local reopen button' });
+  await clickCss(session, reopen);
+  await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'a second local tab without replacing the exited tab' });
+  const restarted = await waitForSessionState(ctx, '本机 shell 已启动', 'reopened local PTY startup');
+  const newLabel = await session.getText(await session.findElement(newTab));
+  if (oldLabel === newLabel) throw new Error(`reopened tab reused the old label: ${oldLabel}`);
+  const newMarker = `p1new${randomBytes(6).toString('hex')}`;
+  await typeInTerminal(ctx, `echo ${newMarker}${Keys.ENTER}`);
+  // An input echo contains "echo "; it cannot satisfy the exact output-row predicate.
+  const resumed = await waitForRow(ctx, row => row === newMarker, 'reopened shell marker as a standalone output row');
+  if (rowsMatching(resumed.rows, row => row === oldMarker).length)
+    throw new Error('reopened shell contains output from the old shell');
+  await clickCss(session, oldTab);
+  const preservedState = await waitForSessionState(ctx, '已退出 · code 7', 'old tab to retain its exit status');
+  const preserved = await waitForRow(ctx, row => row === oldMarker, 'old output still readable after reopening');
+  if (rowsMatching(preserved.rows, row => row === newMarker).length)
+    throw new Error('old shell contains output from the reopened shell');
+  await ctx.writeText('04-local-terminal-reopen.txt', rowsText({ original: original.rows, reopened: resumed.rows, preserved: preserved.rows }));
+  await ctx.screenshot('04-local-terminal-reopen');
+  await clickCss(session, newTab);
+  await waitForSessionState(ctx, '本机 shell 已启动', 'new tab selected for cleanup');
+  await closeActiveTab(ctx, before + 1);
+  await clickCss(session, oldTab);
+  await closeActiveTab(ctx, before);
+  return { oldLabel, newLabel, oldMarker, newMarker, exitState: exited.state, restartedState: restarted.state,
+    preservedState: preservedState.state, remainingTabs: await tabCount(session) };
+}
+
 /** 3. SSH terminal to the loopback russh fixture: real probe, fingerprint check, shell channel round trip. */
 export async function sshTerminal(ctx) {
   const fixture = ctx.fixture?.info;
@@ -201,4 +249,5 @@ export const SCENARIOS = Object.freeze([
   { name: 'workbench', run: workbench },
   { name: 'local-terminal', run: localTerminal },
   { name: 'ssh-terminal', run: sshTerminal },
+  { name: 'local-terminal-reopen', run: localTerminalReopen },
 ]);
