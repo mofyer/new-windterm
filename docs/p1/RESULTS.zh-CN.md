@@ -22,16 +22,16 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 | 门禁 | 本轮结果 | 边界 |
 | --- | --- | --- |
 | 前端 TypeScript / Vite build | 通过 | 不代表原生运行 |
-| Rust fmt / Clippy all targets、all features | `13c9aee` 集成复验通过 | 生产入口保留全局容量池 |
-| Rust all targets、all features | `13c9aee` 集成复验 210 passed / 0 failed / 33 ignored | 新增 1 项容量回归；ignored 不算通过 |
+| Rust fmt / Clippy all targets、all features | 回收修复集成后通过 | 生产入口保留全局容量池 |
+| Rust all targets、all features | 本机 211 passed / 0 failed / 33 ignored | 含容量及 Unix 资源释放回归；ignored 不算通过 |
 | Windows wincheck | 通过 | 只做类型检查，不是运行 |
 | Native runner helper | 15 passed / 0 failed | 不代表新增原生场景已执行 |
 | 浏览器全套 | 376 passed / 0 failed（2.2 分钟） | IPC stub；含 12 项本地生命周期契约 |
 | 真实 OpenSSH 夹具 | 11 passed / 0 failed / 0 skipped | 受控本机夹具 |
 | macOS 原生退出/重开 | 单轮通过，见[专题记录](NATIVE_LIFECYCLE_2026-10-15.zh-CN.md) | CUA 真实 WKWebView；不覆盖失败注入、完整 IME/读屏/VT |
-| 跨平台 CI 与新增原生场景 | 第三轮 7/7 作业通过；两平台原生 4/4 均通过 | 第二轮真实失败保留，`P1-PTY-CLOSE-001` 根因未关闭 |
+| 跨平台 CI 与新增原生场景 | 修复后的第四轮 7/7 作业通过；两平台原生 4/4 均通过 | 资源等待机制已修复；历史第二轮具体卡点无法追溯 |
 
-本轮不改变默认 Shell、启动参数、凭据、协议或终端屏幕状态来源；功能台账保持原状态。main 仍为 P0 关闭提交 `a35582f`，本批合并前需用户确认。
+本轮不改变默认 Shell、启动参数、凭据、协议或终端屏幕状态来源；功能台账保持原状态。用户「先修复，再合并」的条件授权已满足，实际合并另记于本文末尾。
 
 ## 首轮 CI 发现与修复
 
@@ -59,7 +59,7 @@ Windows 原生同样 4/4 通过；Linux desktop 的 lrzsz 实跑 11 passed / 0 s
 
 对失败的只读诊断未找到确定的 readiness 丢失唤醒：flow 条件变量在同锁下检查/等待，poll 有取消通道且单轮最长 250ms。原周期探针丢弃全部 Error/Exit，`done=false` 同时可能表示线程阻塞或回收已经报错，故现有日志无法判定根因。本机额外单轮 12 周期通过；自身进程栈采样主要观察到 child wait，只是成功运行中的等待位置，不等于失败原因。正在补充有界诊断，未扩大期限或改动回收算法。
 
-## 未关闭问题：P1-PTY-CLOSE-001
+## P1-PTY-CLOSE-001：第三轮结束时的未关闭记录
 
 macOS CI 的间歇关闭回收失败保留为待定位问题。readiness 默认关闭，但 child cleanup 与默认路径共用，尚不能证明问题只影响可选后端。关闭条件是取得失败阶段/根因证据、完成相应修复及有针对性的回归，并通过跨平台门禁；后续单轮 CI 绿灯不能单独关闭该问题。main 合并评审必须明确呈现这项风险。
 
@@ -91,7 +91,7 @@ macOS 本轮作业通过，两个探针均为 12/12 周期回收成功；每种�
 
 2026-10-15 用户明确选择「先定位并修复回收问题，再合并」。因此 main 继续冻结；调查共同的 Unix 子进程终止/等待链路，默认与 readiness 均纳入回归，不用成功重跑、放宽超时或风险接受代替修复。
 
-## Unix 回收顺序修复（待最终门禁）
+## Unix 回收顺序修复
 
 `7d17178`（来源 `cfbfc75`）修正共同的 Unix 清理路径：原先在 reader/readiness 副本和 writer 仍存活时等待 child，这时读取循环已停止排空。现在先关闭 flow，释放 reader/readiness、join writer，再等待 child；Windows 顺序、原 2 秒关闭期限和错误处理不变。独立 Rust 审阅批准该单文件修复。
 
@@ -110,6 +110,18 @@ Apple XNU 的 [进程退出路径](https://raw.githubusercontent.com/apple-oss-d
 
 证据保留于 `/tmp/p1-reap-before-{1..3}.log`、`/tmp/p1-reap-after-{1..3}.log`、`/tmp/p1-reap-order-{red,green}.log`、`/tmp/p1-reap-default-after.log`，均经独立复核。
 
+协调者另将上述日志、预算 2 的门禁日志及原始 collector 命令回执复制到本机 ignored `.artifacts/p1/batch1/reap-ab/`。`p1-reap-collector-command-evidence.md` 含实际命令、执行回执和二进制 SHA256；stdout/stderr 分别按行接收，外部单调时钟前缀存在调度/缓冲影响。整轮耗时从 spawn 前到子进程 exit 后，包含少量启动开销。这些是本机留存工件，不冒称公开 CI 附件。
+
 全量 Rust 首次验证另外发现 `remote_forward_routes_only_registered_ports` 返回 `Private key reader capacity reached`（lib 162 passed / 1 failed / 7 ignored）。并行的独立 loopback 测试共用产品四槽池，生产容量行为正确；采用测试 harness 并发预算 2，根 Cargo 配置与 CI 一致，不修改生产容量、测试内部并发或容量负例，不重试吞掉错误。已核实当前相关测试的 key-auth 顺序执行，forward 并发发生在已认证连接内，integration 自有测试锁。最终门禁另记，失败原始日志保留于 `/tmp/p1-reap-all-tests.log`。
 
 预算配置提交 `dfb574f`（来源 `e4048b8`）及 CI 配套经独立审阅；根/子目录 Cargo 实测默认预算均为 2，显式环境覆盖仍有效。完整集成门禁通过：Rust 211 passed / 0 failed / 33 ignored、fmt / Clippy / wincheck、前端 build、浏览器 376 passed（2.2 分钟）、真实 OpenSSH 11 passed / 0 skipped。新结果保留在本机 `.artifacts/p1/batch1/*-reap-fix.log`；后续跨平台 CI 须验证准确提交。
+
+## 第四轮 CI（回收顺序修复）
+
+[修复后 CI](https://github.com/mofyer/new-windterm/actions/runs/38718601579) 被测提交 `645ed38d46bf52457d12075bfe95745ebd474f25`，最终 7/7 作业成功。独立核对两个 Unix 后端的资源释放顺序、原期限下的关闭周期、自然退出与输出完整性，以及其余平台门禁。
+
+macOS 与 Linux desktop 已通过。macOS 默认/readiness 均为 12/12 周期回收成功，内部最大 wait 为 360/341ms、最大总周期 411/490ms；实际 `child.wait` 前已释放 reader、join writer，readiness 还已释放 poll 引用。两种后端均保留 2MiB 输出、UTF-8、Ctrl+C、exit 7，无错误或超时。Linux 两种后端最大内部 wait 均 70ms；lrzsz 实跑 11 passed / 0 skipped，X11/agent 各 1 passed / 0 skipped。readiness 有一行 stdout/stderr 在合并流中拼接，但成功标志仍完整存在，未将日志排版问题算作未完成。
+
+第四轮 Rust 结果：macOS 211 passed / 33 ignored、Linux 210 passed / 33 ignored、Windows 2022/2025 各 204 passed / 7 ignored，均为 0 failed。两 Windows 平台另各 2 项 ConPTY 检查通过，2022 的系统基线句柄增长仍保留，2025 保持稳定。两平台原生各 4/4；GSSAPI 为 3 单元、4 认证场景、3 次新 cache 健康检查通过。
+
+最终独立验证 PASS：真实 A/B、确定性红绿回归、默认/readiness 新资源顺序、本机全门禁与准确修复 SHA 的跨平台 CI 已共同满足技术关闭条件。`P1-PTY-CLOSE-001` 按「修复已验证的同路径资源等待机制」关闭；第二轮历史超时的具体卡点无法追溯，原失败记录保留，不声称精确重建历史故障。可执行用户已确认的「先修复，再合并」条件授权。P1 仅完成本批生命周期切片，完整阶段与 164 项功能对齐仍按计划推进。
