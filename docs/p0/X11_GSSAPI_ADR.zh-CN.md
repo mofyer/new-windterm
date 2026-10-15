@@ -1,6 +1,6 @@
 # X11 转发（C15）与 GSSAPI 认证（C14）决策记录
 
-状态：X11 **已有 Rust 协议层探针（无界面、无 IPC），只在本仓库的 russh 夹具上验证过；对 OpenSSH + Xvfb 的 Linux CI 步骤已加入但尚未运行**。GSSAPI 仍为**提议，未写实现代码**。日期：2026-10-11，2026-10-12 补充 X11 实现。
+状态：X11 **已有 Rust 协议层探针（无界面、无 IPC），Linux OpenSSH + Xvfb CI 结果见下文**。GSSAPI **已有独立 Rust 探针与一次性 Linux KDC/sshd 容器夹具，Linux 互操作尚未运行，未接入产品**。日期：2026-10-11；2026-10-15 补充 GSSAPI 隔离探针。
 
 ## X11 转发（C15）
 
@@ -91,6 +91,35 @@ node --test tests/fixtures/ssh-terminal/x11-client.test.mjs   # 仅 Linux，需�
 
 验证所需：一个测试 Kerberos 领域（KDC）、服务主体 `host/<主机>@REALM` 的 keytab 和启用了 `GSSAPIAuthentication yes` 的 OpenSSH 服务端。本机没有 KDC（`/usr/libexec/kdc` 不存在）。可选路线：在 Linux CI 容器内启动 MIT krb5 KDC 与 sshd 做端到端测试，或由你提供企业测试领域。FEATURE_PARITY 已注明 2.7.0 的 README 与延期路线图在这一项上矛盾，**须先在上游实机确认该选项是否真的完成认证**，再决定投入。
 
+### 2026-10-13 受控探针门槛记录
+
+本次续做先按“隔离 Linux KDC + sshd”路线检查运行前提，没有启动任何生产服务、没有读取用户 Kerberos 配置，也没有修改 `~/.ssh`。探针在本 worktree 执行了以下只读检查：
+
+```text
+$ uname -s -m
+Darwin arm64
+$ command -v krb5kdc
+(无输出，退出码 1)
+$ command -v docker
+(无输出，退出码 1)
+$ command -v podman
+(无输出，退出码 1)
+$ command -v sshd
+/usr/sbin/sshd
+$ command -v kinit
+/usr/bin/kinit
+```
+
+因此当前机器既不是 Linux，也没有 `krb5kdc`、Docker 或 Podman，无法在本地建立隔离 MIT KDC；macOS 自带的 `kinit`/`klist` 只能作为客户端，不能替代 KDC。仅有 `/usr/sbin/sshd` 也不能形成带测试 realm、`host/<主机>@REALM` keytab 和 `GSSAPIAuthentication yes` 的服务端夹具。没有这些前提时继续执行会退化为未受控的系统 Kerberos，不能产生 C14 所要求的有效、过期、缺失票据和错误服务主体四类可审计结果，因此本次不宣称任何认证结果。
+
+**可复现解除条件**：在 Linux CI runner（或获批准的 Linux 容器运行时）安装固定版本 MIT krb5 KDC、客户端工具与 OpenSSH server，使用临时 realm、临时 keytab、临时用户和临时 `KRB5_CONFIG/KRB5CCNAME`；sshd 配置仅允许 GSSAPI 并禁止密码/公钥回退。随后保存 KDC/sshd 日志和四类测试的退出码，脱敏后再更新本节与 C14 台账。当前结论是“环境门槛阻塞，未运行”，不是“认证失败”或“功能不支持”。
+
+### 2026-10-15：独立 Rust GSSAPI 探针
+
+实现与复现说明见 [`tools/gssapi-probe/README.zh-CN.md`](../../tools/gssapi-probe/README.zh-CN.md)。客户端确实使用 russh 的 `authenticate_gssapi_with_mic` 与手写的最小 GSS 标准 ABI 桥接；不是运行系统 ssh。只对测试可执行文件链接系统 GSS，产品 crate、IPC 和 UI 均未改动。
+
+Linux 容器夹具创建临时用户、realm、KDC DB、用户与 host keytab、票据 cache 和只允许 GSSAPI 的 sshd；运行时没有外部网络或宿主挂载。四个场景分别为有效票据、缺失 cache、真实过期票据、错误服务主体，并检查负例没有执行远端命令。macOS 只做编译和单元验证；本机没有 Docker/KDC，**四场景真实互操作尚待 Linux CI，不能据此宣称 C14 已验证**。不改变 C14 台账证据状态。
+
 ## 结论
 
-两项都不阻断 Rust + russh 路线：报文与通道已有库支持，剩余工作是平台集成与受控测试环境。X11 已有协议层探针，仍缺真实 X 服务器上的运行证据（Linux CI 结果待记录）、界面入口和 macOS/Windows 实测。GSSAPI 按上面所需条件准备好之后再实现。本轮没有改动功能矩阵中 C14、C15 的状态。
+两项都不阻断 Rust + russh 路线：报文与通道已有库支持，剩余工作是平台集成与受控测试。X11 已有协议层探针及 Linux OpenSSH/Xvfb 证据，仍缺界面入口和 macOS/Windows 实测。GSSAPI 已有独立探针，尚缺 Linux 实测与产品集成。本轮没有改动功能矩阵中 C14、C15 的状态。
