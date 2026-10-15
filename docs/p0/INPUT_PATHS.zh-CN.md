@@ -2,6 +2,8 @@
 
 日期：2026-10-12。范围：HANDOFF 列为 P0 优先级的“输入法、中文组合态、emoji、宽字符和粘贴路径”。
 
+2026-10-15 补充：[macOS 原生实测](NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)已记录用户确认的一轮系统拼音选字、真实 PTY 的 1 MiB 粘贴逐字节一致和 ESC 过滤。完整组字/重复提交、VoiceOver、宽字符与前后台显示差异仍待验收；不改变下方浏览器探针的证据边界。
+
 ## 先说边界
 
 - **CDP 模拟的输入法不等于 macOS 原生输入法或 VoiceOver 验证。** 组合态用 Chrome DevTools Protocol 的 `Input.imeSetComposition` / `Input.insertText` 驱动，是 Chromium 对输入法事件的模拟；没有经过 macOS 输入法框架、候选窗、按住选字母（press-and-hold）、听写或 VoiceOver，也没有在 WKWebView、WebView2、WebKitGTK 中运行。
@@ -127,7 +129,9 @@ npx playwright test          # 全量
 
 Rust 端新增两项单元测试：`pty::tests::full_input_queue_is_retryable_and_a_closed_one_is_final`、`ssh::terminal::tests::full_input_queue_is_retryable_and_a_closed_one_is_final`。
 
-## 未验证与限制
+## 2026-10-12 浏览器批次的未验证范围与限制
+
+以下保留该批次的证据边界；2026-10-15 新增的有限原生证据见本文顶部链接，不把历史“未测试”当作后续仍完全没有证据。
 
 - 原生 macOS 输入法（拼音、注音、日文候选窗位置、按住选字母、听写、表情面板）、VoiceOver 朗读、WKWebView / WebView2 / WebKitGTK 的组合事件顺序都未测试；`insertText` 桥接与默认动作守卫只在 Chrome 中验证。
 - F5 等键在 WKWebView、WebView2 中的默认动作未实测；守卫在 Chrome 中阻止了重载与失焦。

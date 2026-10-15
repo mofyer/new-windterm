@@ -60,7 +60,7 @@
 使用有界 Perl 输出负载：循环最多 8 秒、另设 12 秒 alarm、内容上限 2.5 MiB；没有运行无限 `yes`。负载与采样仅用于受控观察，不连接外部服务器。
 
 ```sh
-/usr/bin/perl -MTime::HiRes=time,sleep -e '$|=1; $SIG{INT}=sub { printf "\r\nP0_NATIVE_INTERRUPTED %.6f\r\n", time; exit 0 }; $SIG{ALRM}=sub { exit 124 }; alarm 12; my $end=time+8; my $chunk=(("x"x78)."\r\n")x64; for (1..512) { last if time >= $end; print $chunk; sleep 0.02 }; printf "\r\nP0_NATIVE_DONE %.6f\r\n", time'
+/usr/bin/perl -MTime::HiRes=time,sleep -e '$|=1; $SIG{INT}=sub { print qq(\r\nP0_NATIVE_INTERRUPTED\r\n); exit 0 }; $SIG{ALRM}=sub { exit 124 }; alarm 12; my $end=time+8; my $chunk=((qq(x)x78).qq(\r\n))x64; for (1..512) { last if time >= $end; print $chunk; sleep 0.02 }; print qq(\r\nP0_NATIVE_DONE\r\n)'
 ```
 
 观察结果：
@@ -137,3 +137,37 @@ printf 'A\U0001f468\u200d\U0001f469\u200d\U0001f467Z\n'
 | 真实串口 | 用户当前无设备，未测；虚拟 PTY 证据不能替代 |
 
 本轮仅新增本报告，不提升功能台账状态，不宣布 P0 通过。下一步保留并定位前后台可见渲染差异，补齐原生输入与可访问性、受控端到端响应/全应用资源测量；真实串口保留明确的硬件缺口。
+
+## 附录：本轮有界粘贴接收器
+
+临时文件 `/tmp/new-windterm-native-paste-20261015.py` 的本轮内容如下。在应用真实终端执行 `/usr/bin/python3 /tmp/new-windterm-native-paste-20261015.py large`（过滤样本改用 `control`），读到 `P0_PASTE_READY` 后分别粘贴第 3 节载荷。raw 模式下暂时关闭 bracketed paste 包装以核对载荷字节；60 秒超时，finally 恢复 termios，不将大段文本当 shell 命令执行。
+
+```python
+import hashlib
+import os
+import signal
+import sys
+import termios
+import tty
+
+mode = sys.argv[1]
+expected = ('中A' * 262144).encode() if mode == 'large' else b'P0_BEGIN[201~P0_END'
+original = termios.tcgetattr(0)
+def expired(signum, frame):
+    raise TimeoutError('bounded paste capture expired')
+signal.signal(signal.SIGALRM, expired)
+received = bytearray()
+try:
+    tty.setraw(0)
+    os.write(1, b'\x1b[?2004l\r\nP0_PASTE_READY\r\n')
+    signal.alarm(60)
+    while len(received) < len(expected):
+        block = os.read(0, min(65536, len(expected) - len(received)))
+        if not block:
+            break
+        received.extend(block)
+finally:
+    signal.alarm(0)
+    termios.tcsetattr(0, termios.TCSANOW, original)
+print('\r\nP0_PASTE_RESULT bytes=%d sha256=%s match=%s' % (len(received), hashlib.sha256(received).hexdigest(), bytes(received) == expected), flush=True)
+```

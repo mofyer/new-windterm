@@ -20,12 +20,12 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-15，本批已收口）
+## 当前仓库状态（2026-10-15，集成批次已合并，原生验收继续）
 
 ### 分支
 
-- **远端 `main`**：2026-10-15 用户明确回复「合并」后，已从 `e0dd423` 快进到本批集成提交 `f964239` 并推送；后续仅补本次合并记录。
-- **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。后续开发仍使用集成分支；下一批合并到 `main` 仍需用户明确同意。
+- **远端 `main`**：2026-10-15 用户明确回复「合并」后，已从 `e0dd423` 快进到本批集成提交 `f964239` 并推送；合并记录提交为 `63a1b3e`，本轮验收文档尚未合入 main。
+- **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口草案](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。下一批合并到 `main` 仍需用户明确同意。
 - **推送范围**：用户授权推送 `p0/*` 工作分支，并手动触发 CI。
 - **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
 - **多代理工作方式与续做方法**：见 [AGENT_WORKFLOW](p0/AGENT_WORKFLOW.zh-CN.md)。
@@ -54,9 +54,9 @@
 | 连接复用 | 应用内复用的探针，以及 ControlMaster 决策记录 | 测试与[决策记录](p0/CONTROLMASTER_ADR.zh-CN.md) | 不实现 OpenSSH ControlMaster socket |
 | SCP | `scp -t -d/-f` 传单个文件；SFTP 面板中可选，上传需要先开启写入 | 真实 OpenSSH 夹具；浏览器测试 | 没有目录或递归；没有原生窗口实测 |
 | agent 转发 | 终端连接对话框中按连接开启，默认关闭，不保存 | loopback 夹具与私有临时 ssh-agent | 没有与 OpenSSH 服务端互操作 |
-| 原生 WebView 冒烟 | 用 tauri-driver 驱动真实应用：工作台、本地终端、SSH 终端 | CI：Linux WebKitGTK 2.52.6、Windows WebView2 131 | 没有 macOS WKWebView、输入法和屏幕阅读器 |
+| 原生 WebView 冒烟 | 用 tauri-driver 驱动真实应用：工作台、本地终端、SSH 终端 | CI：Linux WebKitGTK 2.52.6、Windows WebView2 131；macOS 另有 CUA 有限实测 | macOS 完整输入法、屏幕阅读器与性能验收未完成 |
 | Telnet / Raw TCP | 编解码器，以及桌面终端标签页（五个 `net_*` 命令） | loopback 服务器；浏览器测试；真实 telnetd 308（6 项，本机） | 没有 login 认证、LINEMODE 或网络设备 |
-| 输入路径 | 有序输入队列（16 MiB）；按 UTF-8 边界分块输出，绕过 xterm.js #6003；粘贴与拖放过滤控制字符；无按键输入的文本会转发；拦截 F 键默认动作 | 浏览器测试（CDP） | 没有原生输入法、VoiceOver 或 WebView 实测 |
+| 输入路径 | 有序输入队列（16 MiB）；按 UTF-8 边界分块输出，绕过 xterm.js #6003；粘贴与拖放过滤控制字符；无按键输入的文本会转发；拦截 F 键默认动作 | 浏览器测试（CDP）；10-15 原生 PTY 大段粘贴/过滤、用户单轮拼音确认 | 完整 IME、VoiceOver、宽字符差异和前后台显示风险未关闭 |
 | XMODEM/YMODEM | 不依赖 I/O 的发送与接收；评估了 ZMODEM 的 `zmodem2`，结论是不采用 | 单元测试；与真实 lrzsz 0.13.1 互操作 11/11 | 没有接入终端、SSH 或串口；ZMODEM 需要自行实现 |
 | tmux 控制模式 | 解析器，跟踪窗口与窗格 | 单元测试；本机 tmux | 没有界面 |
 | 终端概念验证 | 压缩历史、折叠/大纲、Free Type、VT52 | Playwright | 都是隔离原型，未接入生产终端 |
@@ -94,10 +94,10 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 - **合并**：2026-10-15 本批已获用户明确同意，CI 通过后已合并并推送 `main`；下一批仍需单独批准。
 - **功能基线**：2026-10-12 已冻结，E1–E12 全部采用推荐选项。用户同时授权在隔离副本中运行上游 2.7.0 做实机盘点；Windows/Linux 上游包的静态核对放到冻结之后。见[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)的决定记录。
-- **串口（C04）**：需要一个真实的 USB 串口设备。
+- **串口（C04）**：用户已确认暂时没有测试设备，先推进其他验收；真实 UART 参数与拔插保持阻塞，不重复询问现有设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
 - **GSSAPI（C14）**：用户已批准在 Linux CI 容器自建测试领域，本批已实现夹具；无需用户提供真实领域。Linux 四场景已通过；后续产品接入与其他平台认证仍未验证。
-- **辅助功能与上游实机盘点**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)执行。当前的 VS Code 会话不能操作原生窗口；在 Claude 桌面应用中打开 Computer use 后，可以改由代理执行。
+- **辅助功能与上游实机盘点**：协调者已用 CUA 执行有限操作；用户确认系统拼音候选窗与“你好”选字正常，也确认 Local 3 置前台后两条输出正常。临时添加的拼音已移除，输入法列表恢复 ABC 和豆包；VoiceOver 未测。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
@@ -105,8 +105,8 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 ## 推荐下一步顺序
 
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
-2. **上游实机盘点与本机原生验收**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)由用户执行，或在 Claude 桌面应用中打开 Computer use 后由代理执行。共用偏好设置的备份在 `.reference/plist-backup-2026-10-12/`，执行完毕后要还原。
-3. **后续集成**：本批已同步 `main`。后续新提交继续在 `p0/integration` 验证，门禁与 CI 通过后，再向用户申请下一批合并。
+2. **继续有限实测后的缺口**：A1 模式切换与 A3 设置保存已取得证据，A2 SCP、A4 多窗口/活会话及内核行为仍需补齐。原生 1 MiB 粘贴完整性与过滤已测；下一步做完整 IME、VoiceOver、宽字符和明确前台状态的性能测量。后台自动化截图停滞尚未定根因，用户前台操作与后续截图正常，不能宣称前台渲染缺陷。上游已退出，共用偏好已用本轮 `.reference/plist-backup-2026-10-15/` 备份恢复并 cmp 一致；后续重测须重新备份当时状态，不用历史备份覆盖。
+3. **出口评审**：按[P0 出口草案](p0/P0_EXIT_REVIEW.zh-CN.md)补 E1–E4；旧工期估算仍基于 130 项，须按 164 项去重重估。后续代码继续在 `p0/integration` 完成门禁与 CI，合并 main 前再询问用户。
 4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、PowerShell 与管理员 shell、Wayland 等，见归档第 5 节。
 5. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 之前，需要评审 CSP 中的 `wasm-unsafe-eval`。
 
