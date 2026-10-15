@@ -1,6 +1,6 @@
 # P0 结果与下一步
 
-日期：2026-10-11。**P0 仍在进行中**，完整功能基线、关键可行性与阶段验收均未完成。浅色白银浮层方向保持用户认可；用户随后明确回复“沿这个中性炭灰方向继续”，认可深色方向。本轮将真实 SSH 接入交互终端，并进行默认关闭的 PTY readiness 实验；方向认可与有限测试均不代表 IME、高输出性能或完整功能验收。
+初建于 2026-10-11，最新续做记录见下方 2026-10-15 一节。**P0 仍在进行中**：功能基线已冻结并按用户批准扩展为 164 项，关键实机风险与阶段出口尚未收口。浅色白银浮层、深色中性炭灰方向已获认可；原型与有限测试不代表完整功能或发行验收。
 
 
 本轮（2026-10-11 至 10-13）的汇总归档见 [P0 工作归档](P0_ARCHIVE_2026-10.zh-CN.md)。
@@ -23,7 +23,9 @@
 | 前端 build / Playwright 全套 | 通过 / 370 passed |
 | 台账三段结构验证 | 通过 |
 
-浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。GSSAPI 的 Linux KDC 运行结果和新 CI 链接待本批运行后补充。未合并到 main。
+浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。未合并到 main。
+
+首轮 CI：[run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571)，head `31bcdf8`。GSSAPI 镜像构建、Rust 编译与单测通过，但 `valid` 场景返回 10，GSS 错误 `major=0xd0000 minor=0x96c73a07`（服务主体不存在）；其余三场景未执行。MIT 短主机名可能被补上容器 resolver 搜索域；修复 `0212e9e` 固定 `qualify_shortname = ""` 并以独立 cache 的 `kvno` 预检精确主体，不预热 Rust 客户端 cache。该候选根因与修复已做独立代码审查，实际效果待下一轮 CI；失败记录保留，不记为四场景通过。
 
 ## 输入路径：输入法、宽字符、粘贴与按键
 
@@ -929,10 +931,10 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features 
 
 本机 debug 产物位于 `apps/desktop/src-tauri/target/debug/bundle/macos/New WindTerm P0.app`，不随 Git 分发，无签名公证。浏览器临时回执位于被忽略的 `apps/desktop/test-results/`，后续运行会覆盖。
 
-## 未完成与下一步
+## 未完成与下一步（2026-10-15）
 
-1. 在当前三平台 CI、Rust 独立复验与 macOS 原生冒烟基础上继续平台专项；Windows ConPTY 先按[决策记录](WINDOWS_CONPTY_ADR.zh-CN.md)完成可取消 reader/child 生命周期，再解除拒绝策略。保留两次失败与修订成功记录，沿已认可的浅深色方向完善。
-2. 完成原生 IME、Ctrl-C 分层延迟、资源与可访问性专项，不能以 Chrome 状态优化代替。
-3. 继续 VT52 接入策略、其他 VT 方言、Free Type、折叠与压缩历史验证；当前台账为130项：原117项保留，新增13项（11项入口已观察、2项静态候选），新增项行为均未实测；完整基线尚未冻结、功能对齐未完成，不降低完整功能目标。
-4. 在交互 SSH 通道基础上继续 OpenSSH/真实系统 shell 互操作、rekey、安全主机信任持久化、完整认证、长期背压与 Rust SFTP；再扩展 agent、跳板/转发及 tmux，不能将有限命令协议测试等同远程连接产品。
-5. 完成功能基线、平台运行与风险预算后才重估工期、判断 P0 出口；当前没有正式发行版，P0 未完成。
+1. 完成本批新 CI 回执与失败修复，分别记录 GSSAPI 四场景、虚拟串口、平台生命周期与原生 WebView 的证据。
+2. 按 [HANDS_ON_CHECKLIST](HANDS_ON_CHECKLIST.zh-CN.md)完成上游实机差异，尤其是影响范围或[终端内核决策](TERMINAL_CORE_ADR.zh-CN.md#决策前必须验证)的行为。功能基线已为 164 项，不再把“冻结 130 项”作为待办。
+3. 补原生 IME、VoiceOver、WKWebView 输出/输入延迟与资源测量。真实 UART 参数与拔插仍需硬件，不能以虚拟 PTY 通过替代。
+4. 汇总风险和技术调整方案，更新估算并进行 P0 出口评审。完整 SSH/SFTP、ZMODEM、全部终端兼容实现与签名发行按 P1–P5 推进；不因阶段划分删减最终功能。
+5. 本批 CI 完成后，合并 `p0/integration` 到 `main` 仍需用户明确同意。

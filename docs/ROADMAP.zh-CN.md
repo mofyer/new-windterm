@@ -1,6 +1,6 @@
 # 实施路线与验收标准
 
-状态：P0 进行中，本地原型可运行；尚未达到 P0 出口条件。核查基准日期：2026-10-11。
+状态：P0 进行中，本地原型可运行；尚未达到 P0 出口条件。更新日期：2026-10-15。
 
 已确认：公开仓库 `mofyer/new-windterm`；Rust + Tauri 2 + xterm.js；Apache-2.0；现代苹果风；macOS M 系列优先验证和交付，Windows/Linux 从现在共同纳入架构与测试计划。**最终交付是完整重构 WindTerm 2.7.0 已有功能，阶段划分仅决定实施顺序。** 当前已有真实本地 PTY、SSH 固定命令验证与交互终端入口；通用连接表单与文件传输仍为演示。
 
@@ -8,11 +8,18 @@
 
 已建立164项台账：原117项保留，第二轮新增13项（11项入口已观察、2项静态候选），2026-10-12 冻结时又从静态候选中新增31项；随后用户批准 WL-1/2/3 为 T35–T37，于 2026-10-15 完成台账收尾；新增项行为均未实测。功能基线（ID 集合、能力名称、验收要点措辞与阶段）已于 2026-10-12 由用户批准冻结，依据为 README 加上游静态证据，见[决定记录](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#决定记录2026-10-12)；上游实机盘点已获授权但尚未开始，功能对齐未完成。浅色白银浮层与深色中性炭灰方向均已获用户认可。
 
-最新本地轮把只读 SFTP 接入文件面板（窗口内短时授权、每次操作重新固定校验主机密钥、有界目录与 64 KiB 预览），真实 OpenSSH 夹具与浏览器 108 项通过，原生面板与三平台回执待补。此前一轮将真实 SSH 字节流接入 xterm 标签页，加入输入、尺寸更新、取消、关闭和受限输出队列。协议测试使用真实 TCP/SSH 的 loopback russh 有限命令服务端，不等于真实远端系统 shell、OpenSSH 或 SFTP 验收。本机 Rust 独立复验与 macOS arm64 WKWebView 交互冒烟通过，最终 `8ee49a4` 的三平台 CI 通过，含三端 SSH target（9 协议 + 1 helper）及 Mac/Linux 默认与 readiness PTY；Windows PTY 仍跳过，前两次失败保留。[本轮结果](p0/RESULTS.zh-CN.md) · [各轮平台回执](p0/CROSS_PLATFORM_VALIDATION.zh-CN.md)
+当前已有本地 PTY、交互 SSH、SFTP 读写、代理与转发、Telnet/Raw TCP、X/YMODEM、tmux 控制模式及终端兼容原型；Windows ConPTY 生命周期和 Linux/Windows 原生 WebView 冒烟已有历史 CI 证据。本批补齐 T35–T37 台账、虚拟串口探针和独立 Linux GSSAPI 夹具，最新验证范围以 [RESULTS](p0/RESULTS.zh-CN.md) 为准。浏览器 IPC stub、loopback 夹具、真实 OpenSSH、原生 WebView 与硬件验收分别记录，不互相替代。
 
 PTY `pty-readiness` 是默认关闭的实验。本机三组配对通过有界 2 MiB 完整性与响应筛选，仅用于继续评估；默认应用策略未切换，GUI 高输出性能仍未验收。[实验报告](p0/PTY_READINESS.zh-CN.md)
 
-此前的状态 DOM 合并、开发模式聚合诊断、隔离 VT52 实验与 DECSCL 判据修正保留。P0 仍需上游逐项行为盘点、完整终端兼容方案、Free Type/折叠/压缩历史概念验证、真实远端 shell 与 SSH/SFTP 完整能力、原生 IME 和资源测量；Windows ConPTY、签名公证和正式发行尚未完成。原型或有限协议样本可运行不能宣告 P0 或 P1 完成。
+P0 的剩余收口工作按以下顺序推进：
+
+1. 完成本批 Linux GSSAPI、虚拟串口与跨平台 CI 的实跑验证，修复失败并记录准确边界。
+2. 按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)完成上游实机差异记录，并执行[终端内核决策前验证](p0/TERMINAL_CORE_ADR.zh-CN.md#决策前必须验证)，重点解决影响架构与范围的行为疑问。
+3. 补 macOS 原生 IME、VoiceOver、WKWebView 持续输出、输入延迟和内存的风险结论；真实串口参数与拔插仍需设备，虚拟 PTY 不能代替。
+4. 将新证据汇入技术调整 ADR、风险清单和工期估算，按下方 P0 出口条件做一次明确评审。尚缺条件的事项必须列出未验证风险及处理建议，不能默认豁免或宣称通过。
+
+Free Type、折叠、压缩历史等隔离 PoC 已有记录，后续重点是确认上游差异与技术路线。完整 SSH/SFTP、全部 VT 实现、ZMODEM、签名公证与正式发行仍属于下方 P1–P5 的交付范围，不作为无限扩张 P0 的理由；完整重构目标不变。
 
 ## 交付原则
 
