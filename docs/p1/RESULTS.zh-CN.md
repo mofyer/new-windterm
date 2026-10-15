@@ -29,7 +29,7 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 | 浏览器全套 | 376 passed / 0 failed（2.2 分钟） | IPC stub；含 12 项本地生命周期契约 |
 | 真实 OpenSSH 夹具 | 11 passed / 0 failed / 0 skipped | 受控本机夹具 |
 | macOS 原生退出/重开 | 单轮通过，见[专题记录](NATIVE_LIFECYCLE_2026-10-15.zh-CN.md) | CUA 真实 WKWebView；不覆盖失败注入、完整 IME/读屏/VT |
-| 跨平台 CI 与新增原生场景 | 第二轮 6/7 作业通过；两平台原生 4/4 均通过；macOS readiness 关闭失败 | `P1-PTY-CLOSE-001` 未关闭；诊断版下一轮待跑 |
+| 跨平台 CI 与新增原生场景 | 第三轮 7/7 作业通过；两平台原生 4/4 均通过 | 第二轮真实失败保留，`P1-PTY-CLOSE-001` 根因未关闭 |
 
 本轮不改变默认 Shell、启动参数、凭据、协议或终端屏幕状态来源；功能台账保持原状态。main 仍为 P0 关闭提交 `a35582f`，本批合并前需用户确认。
 
@@ -68,3 +68,21 @@ macOS CI 的间歇关闭回收失败保留为待定位问题。readiness 默认�
 诊断版本机连续 5 轮、60/60 关闭周期通过，最大 wait 841ms，未复现；日志在 `/tmp/p1-readiness-diagnostic-run-{1..5}.log`，已独立核对。本机成功结果不覆盖第二轮 CI 失败。诊断合入后的门禁与下一轮 CI 另记。
 
 `c824b2f` 集成后本机门禁再次通过：fmt / Clippy / Rust 210 passed、33 ignored / wincheck / 前端 build / 浏览器 376 passed（2.1 分钟）/ 真实 OpenSSH 11 passed、0 skipped。本机日志为 `.artifacts/p1/batch1/*-diagnostic.log`；默认产品构建不启用诊断输出。下一轮 CI 将显式打开探针 trace，完整保留成功与失败阶段。
+
+## 第三轮 CI（诊断增强）
+
+[第三轮 CI](https://github.com/mofyer/new-windterm/actions/runs/38711086052)，被测提交 `c18dba0fb895b05f1da678917bdaaf45e68e8af3`，第二轮完全结束后手动触发。最终 7/7 作业成功，已独立核对日志与工件；`P1-PTY-CLOSE-001` 仍未关闭，结果必须区分本次门禁与根因修复。
+
+macOS 本轮作业通过，两个探针均为 12/12 周期回收成功；每种后端各 13 个会话（主流程 1 + 周期 12）均到达 `done.reaped`，未见清理超时或错误。默认探针最大 wait/总周期为 1297/1397ms，readiness 为 1285/1386ms。两平台原生场景再次各 4/4 通过。以上证明本轮成功，不解释第二轮间歇失败原因。
+
+| 第三轮作业 | 独立核对的实际结果 |
+| --- | --- |
+| Linux GSSAPI | 3 项单测、4 个认证场景、3 次新 cache 健康检查通过 |
+| Linux 原生 WebKitGTK | 4/4 场景；helper 14 passed / 1 skipped；新旧输出、exit 7 与关闭回收通过 |
+| Windows 原生 WebView2 | 4/4 场景；helper 14 passed / 1 skipped；同样完成真实 Shell 读回与隔离 |
+| Linux desktop | Rust 209 passed / 33 ignored；lrzsz 另 11 passed / 0 skipped；两种 PTY 各 12 周期通过；X11/agent 各 1 passed / 0 skipped |
+| macOS desktop | Rust 210 passed / 33 ignored；两种 PTY 及完整诊断阶段通过，见上文 |
+| Windows Server 2022 | Rust 204 passed / 7 ignored；另 2 项 ConPTY 诊断通过；bare 与 Session 的 24 周期都增长 24 个句柄，保留系统基线限制 |
+| Windows Server 2025 | Rust 204 passed / 7 ignored；另 2 项 ConPTY 诊断通过；bare 增长 0，Session 维持 117 |
+
+本批结论：本地终端生命周期切片及第三轮门禁已通过；P1 整阶段未完成，既有间歇回收问题仍需定位。本批 main 合并决策必须明确保留 `P1-PTY-CLOSE-001`，不能把诊断增强说成回收故障修复。当前仅推送 `p1/integration`，main 保持 `a35582f`，等待用户明确确认。
