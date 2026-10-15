@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "apps/desktop/**"
+      - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
   pull_request:
     paths:
       - "apps/desktop/**"
+      - "tools/gssapi-probe/**"
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
   workflow_dispatch:
@@ -22,6 +24,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gssapi:
+    name: Linux x64 — isolated Rust GSSAPI and KDC probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build isolated probe image and run Rust unit tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/p0-gssapi"
+          docker build --progress plain -t p0-gssapi-probe tools/gssapi-probe 2>&1 | tee "$RUNNER_TEMP/p0-gssapi/build.log"
+          docker image inspect p0-gssapi-probe --format '{{.Id}}' | tee "$RUNNER_TEMP/p0-gssapi/image-id.log"
+
+      - name: Run four authentication cases without host network or mounts
+        id: gssapi_cases
+        run: |
+          timeout --kill-after=10 180 docker run --rm --network none --hostname localhost \
+            --pids-limit 128 --memory 512m --name "p0-gssapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            p0-gssapi-probe 2>&1 | tee "$RUNNER_TEMP/p0-gssapi/cases.log"
+          grep -qx 'P0_GSSAPI_RESULT 4 passed; 0 skipped' "$RUNNER_TEMP/p0-gssapi/cases.log"
+
+      - name: Clean up only this run's container
+        if: always()
+        run: |
+          container="p0-gssapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if docker container inspect "$container" >/dev/null 2>&1; then docker rm -f "$container"; fi
+
+      - name: Record probe boundary
+        if: always()
+        run: |
+          {
+            printf '### Isolated Rust GSSAPI probe\n\nCommit: %s\n\n' "$GITHUB_SHA"
+            printf 'Four-case outcome: %s\n\n' '${{ steps.gssapi_cases.outcome }}'
+            printf 'Rust gssapi-with-mic against a disposable MIT KDC and OpenSSH: valid, missing, expired and wrong-service tickets. No desktop authentication integration, macOS/Windows GSS bridge, credential delegation or full C14 acceptance is implied.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized probe logs only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: p0-gssapi-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p0-gssapi/
+          if-no-files-found: warn
+          retention-days: 14
+
   desktop:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
@@ -186,9 +239,12 @@ jobs:
             printf '| Clippy | %s |\n' '${{ steps.clippy.outcome }}'
             printf '| Desktop executable link | %s |\n' '${{ steps.desktop_build.outcome }}'
             printf '| Default real PTY probe | %s |\n' '${{ steps.pty.outcome }}'
-            printf '| Opt-in readiness real PTY probe | %s |\n\n' '${{ steps.pty_readiness.outcome }}'
+            printf '| Opt-in readiness real PTY probe | %s |\n' '${{ steps.pty_readiness.outcome }}'
+            printf '| X/YMODEM against lrzsz (non-blocking; inspect outcome) | %s |\n' '${{ steps.lrzsz_interop.outcome }}'
+            printf '| X11 forwarding against OpenSSH and Xvfb | %s |\n' '${{ steps.x11_openssh.outcome }}'
+            printf '| Agent forwarding against OpenSSH | %s |\n\n' '${{ steps.agent_openssh.outcome }}'
             printf 'Windows runs cmd.exe ConPTY lifecycle tests inside the Rust test step (exit code, UTF-8, resize, close, Ctrl-C, ACK budget/timeout, reload, Job Object tree reaping); a handle-leak check (4 warm-up + 24 open/close/reap cycles) runs alone in its own step; the Unix pty_probe is skipped there.\n\n'
-            printf 'SSH tests use a bounded in-memory russh server, not an OS shell. No GUI, IME, WebView, PowerShell, signing, installer, OpenSSH interoperability, SFTP or full feature-parity acceptance is implied.\n'
+            printf 'The Rust test step uses controlled loopback SSH fixtures. Separate Linux steps exercise X11 and agent forwarding against OpenSSH; their outcomes above apply only to those paths. No IME, PowerShell, signing, installer, SFTP or full feature-parity acceptance is implied. Native WebView smoke is reported by its separate job.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload validation logs
