@@ -1,0 +1,3198 @@
+{
+  "schema_version": 1,
+  "estimated_on": "2026-10-15",
+  "source_commit": "5dd6fa87ad8eaee64b7d4bc261d77b028ef63a99",
+  "baseline_sha256": "6dc2643c4964904a59c7854c6881270ffcb24e5050293f09c1bb92ff67e1bb10",
+  "status": "planning estimate; independently review before P0 exit; not measured velocity or delivery promise",
+  "unit": "person-week = 5 effective engineer days",
+  "scope": "164 frozen IDs; no parity promotion; P0 restricted to three user-approved decision packages",
+  "packages": [
+    {
+      "key": "D1",
+      "phase": "P0",
+      "name": "终端架构关键判断",
+      "ids": [],
+      "O": 0.3,
+      "M": 0.6,
+      "P": 1.2,
+      "dependencies": [],
+      "evidence": "VT/历史/折叠探针及上游首轮观察已有",
+      "remaining": "核对双尺寸、左右边距、矩形和实时折叠边界",
+      "acceptance": "证据与架构取舍、触发闸门可供决定",
+      "assumption": "时间盒取得结论；不实现全 VT，失败提交具体路线建议",
+      "stage_allocation": {
+        "P0": 1
+      },
+      "PERT": 0.6499999999999999,
+      "sigma": 0.15
+    },
+    {
+      "key": "D2",
+      "phase": "P0",
+      "name": "最小原生可行性",
+      "ids": [],
+      "O": 0.3,
+      "M": 0.6,
+      "P": 1.2,
+      "dependencies": [],
+      "evidence": "系统拼音单轮、1 MiB PTY 粘贴、前台 marker 正常",
+      "remaining": "前台固定负载、含 WebKit 资源边界、最小读屏、字符异常分类",
+      "acceptance": "明确可继续/需调整/证据不足",
+      "assumption": "不以工具 418 ms 当按键延迟；不将主进程 RSS 当总内存",
+      "stage_allocation": {
+        "P0": 1
+      },
+      "PERT": 0.6499999999999999,
+      "sigma": 0.15
+    },
+    {
+      "key": "D3",
+      "phase": "P0",
+      "name": "出口与工期决定",
+      "ids": [],
+      "O": 0.2,
+      "M": 0.4,
+      "P": 0.8,
+      "dependencies": [
+        "D1",
+        "D2"
+      ],
+      "evidence": "164 范围已冻结、重估准备完成",
+      "remaining": "完成本轮估算、ADR、风险责任阶段及独立出口评审",
+      "acceptance": "形成可批准或驳回的决定",
+      "assumption": "本包为资料基点剩余预算，包含本次文档工作，非又加一次",
+      "stage_allocation": {
+        "P0": 1
+      },
+      "PERT": 0.43333333333333335,
+      "sigma": 0.10000000000000002
+    },
+    {
+      "key": "A1",
+      "phase": "P1",
+      "name": "应用与终端边界基础",
+      "ids": [],
+      "O": 5,
+      "M": 8,
+      "P": 12,
+      "dependencies": [
+        "D3"
+      ],
+      "evidence": "Tauri/前端工作台原型已有",
+      "remaining": "状态/组件拆分、版本设置、动作注册、连接接口与 H4 边界",
+      "acceptance": "迁移、生命周期与接口契约",
+      "assumption": "原技术栈；共享基础只在此计一次，不强制拆 crate",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 8.166666666666666,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "A2",
+      "phase": "P1",
+      "name": "macOS Shell 与启动配置",
+      "ids": [
+        "T01",
+        "T34"
+      ],
+      "O": 2,
+      "M": 4,
+      "P": 6,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "真实 PTY、本地输出及粘贴已有",
+      "remaining": "Shell 发现、参数/环境/目录、退出和 I/O 产品接入",
+      "acceptance": "异常退出/取消/缩放及启动参数",
+      "assumption": "吞吐预算与跨平台回归分别在 X4/X1",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 4,
+      "sigma": 0.6666666666666666
+    },
+    {
+      "key": "A3",
+      "phase": "P1",
+      "name": "VT 适配、初始模式与复位",
+      "ids": [
+        "T07",
+        "T08",
+        "T10",
+        "T11",
+        "T25",
+        "T26",
+        "T31",
+        "T32"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 11,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "生产回复适配器及 VT52 隔离探针已有",
+      "remaining": "终端类型策略、影子状态、键盘映射、复位语义接入",
+      "acceptance": "逐类型状态、回复与跨块回归",
+      "assumption": "公开 hooks 范围；无法 hooks 实现的 buffer 操作只在 A4",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 7.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "A4",
+      "phase": "P1",
+      "name": "VT 内核缺口与专项验收",
+      "ids": [
+        "T20",
+        "T21"
+      ],
+      "O": 10,
+      "M": 17,
+      "P": 29,
+      "dependencies": [
+        "A3"
+      ],
+      "evidence": "63 项矩阵和受控实验已定位缺口",
+      "remaining": "双尺寸/边距/矩形等受控补丁、类型配置、完整 vttest",
+      "acceptance": "原生屏幕、光标、矩形/边距及升级回归",
+      "assumption": "H1+H4 规划情景，包含有界受控分支劳动；不无限等待上游，不默认已批准换核",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 17.833333333333332,
+      "sigma": 3.1666666666666665
+    },
+    {
+      "key": "A5",
+      "phase": "P1",
+      "name": "VT340 图形路径",
+      "ids": [
+        "T09"
+      ],
+      "O": 2,
+      "M": 4,
+      "P": 8,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "SIXEL 插件隔离探针已有；生产未启用",
+      "remaining": "身份协调、就绪门控、图像/历史关系、限额/CSP 审查",
+      "acceptance": "三 WebView 启用前限额内最坏负载和恶意输入",
+      "assumption": "不假设 CSP 已获批准；保留图形范围核对，需新渲染器转条件情景",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 4.333333333333333,
+      "sigma": 1
+    },
+    {
+      "key": "A6",
+      "phase": "P1",
+      "name": "xterm 属性与剪贴板策略",
+      "ids": [
+        "T12",
+        "T13",
+        "T16",
+        "T17",
+        "T18",
+        "T30"
+      ],
+      "O": 2,
+      "M": 3,
+      "P": 5,
+      "dependencies": [
+        "A3"
+      ],
+      "evidence": "回复、鼠标、颜色及 OSC 52 原型已有",
+      "remaining": "权限持久策略、终端窗口/鼠标映射、括号粘贴核对",
+      "acceptance": "拒绝/授权/鼠标与选择冲突",
+      "assumption": "G43 括号粘贴归此，大段确认归 W2",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 3.1666666666666665,
+      "sigma": 0.5
+    },
+    {
+      "key": "A7",
+      "phase": "P1",
+      "name": "宽字符、emoji 与字体",
+      "ids": [
+        "T14",
+        "T15",
+        "T23",
+        "T24"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 12,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "Unicode provider 与有限原生字形观察已有",
+      "remaining": "列宽/字素/字体回退、Powerline/提示符集成",
+      "acceptance": "按上游样本比较显示/光标/选区/复制",
+      "assumption": "不按 Unicode 版本宣告验收；Windows 提示符实机复核在 X1/P5",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 7.333333333333333,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "A8",
+      "phase": "P1",
+      "name": "编码、Hex 显示与 Bell",
+      "ids": [
+        "T27",
+        "T28",
+        "T29",
+        "T33"
+      ],
+      "O": 5,
+      "M": 8,
+      "P": 13,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "主要为静态证据，当前 UTF-8 路径",
+      "remaining": "流式多编码解码、自动检测/手动回退、Hex 显示、Bell 节流",
+      "acceptance": "跨块非法序列、输入/复制/搜索及编码切换",
+      "assumption": "包含已冻结其余字符集，不再限 Big5/EUC-JP；音效独立来源",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 8.333333333333334,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "A9",
+      "phase": "P1",
+      "name": "压缩与大历史",
+      "ids": [
+        "Q04",
+        "Q06"
+      ],
+      "O": 6,
+      "M": 10,
+      "P": 17,
+      "dependencies": [
+        "A4"
+      ],
+      "evidence": "有界热窗口/压缩冷块探针；回滚设置读回已有",
+      "remaining": "生产热冷边界、虚拟浏览、元数据、历史容量",
+      "acceptance": "实际容量、搜索/滚动和含 WebKit 内存",
+      "assumption": "设置接受 99999999 不证明可承载；只读折叠接入在 W4",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 10.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "A10",
+      "phase": "P1",
+      "name": "Windows Shell 发现扩展",
+      "ids": [
+        "T35",
+        "T36",
+        "T37"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 12,
+      "dependencies": [
+        "A2"
+      ],
+      "evidence": "WSL/Git Bash/Cygwin/Clink 静态证据",
+      "remaining": "发行版/程序发现、cwd、Clink 来源和注入回退",
+      "acceptance": "真实 Windows 启动、缺失/路径/版本失败",
+      "assumption": "冻结为 P1；实现阶段不后移 P5，基础 ConPTY 复用不重复重写",
+      "stage_allocation": {
+        "P1": 1
+      },
+      "PERT": 7.333333333333333,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "B1",
+      "phase": "P2",
+      "name": "SSH 核心、信任与连接选项",
+      "ids": [
+        "C01",
+        "C24",
+        "C25",
+        "C26"
+      ],
+      "O": 6,
+      "M": 10,
+      "P": 16,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "真实 OpenSSH 和主机信任原型已有",
+      "remaining": "透明 rekey、窗口流控、算法/证书配置、保活/超时/TCP、休眠",
+      "acceptance": "真实服务器策略、变更拒绝、慢消费/断线",
+      "assumption": "C24 认证执行在 B2；C26 接入 Telnet/串口不重建设置框架",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 10.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "B2",
+      "phase": "P2",
+      "name": "认证与平台凭据",
+      "ids": [
+        "C09",
+        "C11",
+        "C12",
+        "C13"
+      ],
+      "O": 6,
+      "M": 10,
+      "P": 16,
+      "dependencies": [
+        "B1"
+      ],
+      "evidence": "密码/私钥/agent/kbdint 探针已有",
+      "remaining": "RSA/证书/Pageant、实时认证 UI、三平台秘密存储",
+      "acceptance": "真实 PAM/agent、取消/锁定/不可用不落明文",
+      "assumption": "凭据底座只在此；W10 使用引用，跨平台 API 实现也在此",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 10.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "B3",
+      "phase": "P2",
+      "name": "GSSAPI 产品化",
+      "ids": [
+        "C14"
+      ],
+      "O": 3,
+      "M": 6,
+      "P": 10,
+      "dependencies": [
+        "B1"
+      ],
+      "evidence": "Linux KDC/OpenSSH 场景与桥接探针已有",
+      "remaining": "产品状态机、macOS GSS/Windows SSPI 接入",
+      "acceptance": "平台真实领域、缓存到期、拒绝与秘密生命周期",
+      "assumption": "复用 KDC 夹具；Linux 探针不代表三平台产品通过",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 6.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "B4",
+      "phase": "P2",
+      "name": "X11 与隧道管理",
+      "ids": [
+        "C10",
+        "C15",
+        "C16",
+        "C17",
+        "C18",
+        "C22"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 15,
+      "dependencies": [
+        "B1"
+      ],
+      "evidence": "X11/agent/转发真实对端有限证据",
+      "remaining": "X cookie 安全、监听策略、持久隧道管理/状态/生命周期",
+      "acceptance": "真实 X 服务/拒绝策略/IPv6/退出释放",
+      "assumption": "C23 内置 X Server 不在已冻结范围；夹具复用",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 9.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "B5",
+      "phase": "P2",
+      "name": "代理链与系统代理",
+      "ids": [
+        "C07",
+        "C08",
+        "C19",
+        "C20",
+        "C21",
+        "C27"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 12,
+      "dependencies": [
+        "B1"
+      ],
+      "evidence": "HTTP/SOCKS/多跳/路由探针已有",
+      "remaining": "全局继承/覆盖、系统代理、DNS、多跳失败 UI、进程清理",
+      "acceptance": "逐跳信任/超时/取消与 Windows ProxyCommand",
+      "assumption": "共享连接层复用；不重复计各跳 SSH 认证",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 7.333333333333333,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "B6",
+      "phase": "P2",
+      "name": "复用、重连与登录后动作",
+      "ids": [
+        "C05",
+        "C06",
+        "S16"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 11,
+      "dependencies": [
+        "B1",
+        "B2"
+      ],
+      "evidence": "单连接多 channel 探针已有",
+      "remaining": "连接代理、MaxSessions、断线/回车重连、登录后执行",
+      "acceptance": "复用终端/文件/隧道，断线不重放旧输入",
+      "assumption": "应用内复用情景；外部 OpenSSH mux 另列条件增量",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 7.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "B7",
+      "phase": "P2",
+      "name": "Telnet/TCP 与自定义协议",
+      "ids": [
+        "C02",
+        "C03",
+        "T19"
+      ],
+      "O": 3,
+      "M": 6,
+      "P": 10,
+      "dependencies": [
+        "A8",
+        "B1"
+      ],
+      "evidence": "Telnet/TCP 原型及真实 telnetd 有限证据",
+      "remaining": "配置保存/本地回显/编码、扩展协议等价格式",
+      "acceptance": "真实设备差异、跨块协商/断线与模式配置",
+      "assumption": "扩展接口自有格式；不复制上游规则资产",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 6.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "B8",
+      "phase": "P2",
+      "name": "串口产品与实物验收",
+      "ids": [
+        "C04"
+      ],
+      "O": 3,
+      "M": 5,
+      "P": 9,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "Unix 虚拟 PTY 参数/生命周期已有",
+      "remaining": "设备枚举/权限、参数/流控、二进制通道和拔插",
+      "acceptance": "真实 UART 收发/波特率/流控/拔插",
+      "assumption": "用户暂无设备，P2 前等待单列，虚拟 PTY 不替代实物",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 5.333333333333333,
+      "sigma": 1
+    },
+    {
+      "key": "B9",
+      "phase": "P2",
+      "name": "会话配置产品化",
+      "ids": [
+        "S01"
+      ],
+      "O": 5,
+      "M": 8,
+      "P": 12,
+      "dependencies": [
+        "A1",
+        "B2"
+      ],
+      "evidence": "演示表单/协议配置原型",
+      "remaining": "按协议表单、模型校验、持久化和秘密引用",
+      "acceptance": "配置往返、继承、取消和协议组合",
+      "assumption": "功能实现成本在各协议包；此包仅表单/集成，P4 工作流扩展计 W7",
+      "stage_allocation": {
+        "P2": 1
+      },
+      "PERT": 8.166666666666666,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "C1",
+      "phase": "P3",
+      "name": "SFTP 与辅助属性",
+      "ids": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F24"
+      ],
+      "O": 5,
+      "M": 8,
+      "P": 13,
+      "dependencies": [
+        "B6",
+        "C2"
+      ],
+      "evidence": "真实 OpenSSH 读写与属性探针已有",
+      "remaining": "持久会话、流式落盘、非 UTF-8 名、大目录及链接/权限 UI",
+      "acceptance": "取消/部分文件/覆盖/异常目录、原生 UI",
+      "assumption": "F24 共享属性模型只此建设，本地接入在 C6",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 8.333333333333334,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "C2",
+      "phase": "P3",
+      "name": "传输队列与选项",
+      "ids": [
+        "F21",
+        "F25"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 11,
+      "dependencies": [
+        "B6"
+      ],
+      "evidence": "模拟队列，F25/F26 已拆 ID",
+      "remaining": "并发/分块、暂停恢复移除、递归/时间戳/非法路径",
+      "acceptance": "大树、中断/续传、进度一致与终端队列隔离",
+      "assumption": "不再估拆 ID；各协议传输执行在各包",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 7.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "C3",
+      "phase": "P3",
+      "name": "SCP 产品接入",
+      "ids": [
+        "F08",
+        "F09"
+      ],
+      "O": 2,
+      "M": 3,
+      "P": 5,
+      "dependencies": [
+        "B6",
+        "C2"
+      ],
+      "evidence": "真实对端单文件探针，上游入口仍未穷尽",
+      "remaining": "目录递归/时间戳、UI、上游入口进一步核对",
+      "acceptance": "真实 SSH 错误/取消/递归与权限",
+      "assumption": "保留冻结范围；未找到入口不按删除功能估乐观值",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 3.1666666666666665,
+      "sigma": 0.5
+    },
+    {
+      "key": "C4",
+      "phase": "P3",
+      "name": "X/YMODEM 与冲突设置",
+      "ids": [
+        "F10",
+        "F11",
+        "F26"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 11,
+      "dependencies": [
+        "B7",
+        "B8",
+        "C2"
+      ],
+      "evidence": "sans-IO 与 lrzsz 互操作已有",
+      "remaining": "PTY/SSH/Telnet/串口分流、流式文件、冲突/填充/拖放 UI",
+      "acceptance": "链路切换、重试/取消、余字节返回和设备通路",
+      "assumption": "共享 modem UI/分流只此；ZMODEM 仅计专有状态机接入",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 7.166666666666667,
+      "sigma": 1.1666666666666667
+    },
+    {
+      "key": "C5",
+      "phase": "P3",
+      "name": "ZMODEM 默认自研",
+      "ids": [
+        "F12"
+      ],
+      "O": 7,
+      "M": 11,
+      "P": 18,
+      "dependencies": [
+        "C4"
+      ],
+      "evidence": "zmodem2 0.7.3 发送恢复问题，不适合作产品依赖",
+      "remaining": "按公开协议独立实现、自动识别、ZRPOS/CRC32、流式双工",
+      "acceptance": "lrzsz 双向恢复/错误/取消、Windows 非 ASCII 名",
+      "assumption": "O/M/P 均按自研；不得用 zmodem2 可直接采用压低 O",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 11.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "C6",
+      "phase": "P3",
+      "name": "本地文件管理",
+      "ids": [
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20"
+      ],
+      "O": 3,
+      "M": 5,
+      "P": 8,
+      "dependencies": [
+        "A1",
+        "C2"
+      ],
+      "evidence": "演示 UI，真实文件产品路径未验收",
+      "remaining": "授权路径 IPC、所有本地操作、平台路径/权限、F24 本地接入",
+      "acceptance": "UNC/Unicode/覆盖/删除与授权边界",
+      "assumption": "复用 C1 属性和 C2 任务模型；不重复建设",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 5.166666666666667,
+      "sigma": 0.8333333333333334
+    },
+    {
+      "key": "C7",
+      "phase": "P3",
+      "name": "目录联动与外部编辑回传",
+      "ids": [
+        "F22",
+        "F23"
+      ],
+      "O": 3,
+      "M": 5,
+      "P": 9,
+      "dependencies": [
+        "C1",
+        "C6"
+      ],
+      "evidence": "静态证据",
+      "remaining": "cwd 探测/双向同步、临时文件、编辑器/变更检测/回传确认",
+      "acceptance": "目录失效、并发远端修改、退出清理",
+      "assumption": "基础上传/下载/目录访问已计 C1/C6",
+      "stage_allocation": {
+        "P3": 1
+      },
+      "PERT": 5.333333333333333,
+      "sigma": 1
+    },
+    {
+      "key": "W1",
+      "phase": "P4",
+      "name": "tmux",
+      "ids": [
+        "T22"
+      ],
+      "O": 5,
+      "M": 8,
+      "P": 13,
+      "dependencies": [
+        "B6",
+        "W6"
+      ],
+      "evidence": "真实 tmux 控制协议解析探针",
+      "remaining": "窗格/标签映射、尺寸、输入、pause 流控、重连",
+      "acceptance": "真实多会话/窗格生命周期与组合限制",
+      "assumption": "沿用解析器，分屏模型复用 W6",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 8.333333333333334,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "W2",
+      "phase": "P4",
+      "name": "编辑、模式、粘贴与 Vim",
+      "ids": [
+        "G03",
+        "G12",
+        "G13",
+        "G14",
+        "G35",
+        "G36",
+        "G37"
+      ],
+      "O": 11,
+      "M": 18,
+      "P": 29,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "Free Type 草稿探针，上游 Ctrl+Return 观察",
+      "remaining": "编辑作用对象核对、已发送命令同步、Hex/虚拟空间/多光标、Vim、大段确认",
+      "acceptance": "编辑/终端焦点、发送隔离与模式切换",
+      "assumption": "不把终端十六进制显示 T33 当 Hex 编辑；完整 IME 组合验收在 X3",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 18.666666666666668,
+      "sigma": 3
+    },
+    {
+      "key": "W3",
+      "phase": "P4",
+      "name": "选择、鼠标粘贴与在线搜索",
+      "ids": [
+        "G29",
+        "G30",
+        "G31",
+        "G32",
+        "G52"
+      ],
+      "O": 3,
+      "M": 5,
+      "P": 8,
+      "dependencies": [
+        "W2"
+      ],
+      "evidence": "基础终端选择能力已有，目标高级选区未交付",
+      "remaining": "块/锁定/拆分/反选选择、分词、选择即复制、粘贴策略",
+      "acceptance": "应用鼠标模式冲突与剪贴板安全",
+      "assumption": "复用编辑/复制模型；在线搜索只由用户主动触发",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 5.166666666666667,
+      "sigma": 0.8333333333333334
+    },
+    {
+      "key": "W4",
+      "phase": "P4",
+      "name": "历史折叠、大纲、导航与搜索",
+      "ids": [
+        "G15",
+        "G16",
+        "G17",
+        "G20",
+        "G21",
+        "G44"
+      ],
+      "O": 9,
+      "M": 15,
+      "P": 25,
+      "dependencies": [
+        "A9",
+        "W2"
+      ],
+      "evidence": "折叠/冷块搜索隔离原型",
+      "remaining": "生产视图、命令分段/时间戳、历史持久与导航、正则预览",
+      "acceptance": "热冷/折叠搜索定位、保留策略和大历史",
+      "assumption": "基础冷存储在 A9；若上游实时折叠要求改变模型，触发 R1 重估",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 15.666666666666666,
+      "sigma": 2.6666666666666665
+    },
+    {
+      "key": "W5",
+      "phase": "P4",
+      "name": "输出配色、Text Marks 与显示",
+      "ids": [
+        "G19",
+        "G22",
+        "G23",
+        "G50",
+        "G51"
+      ],
+      "O": 6,
+      "M": 10,
+      "P": 17,
+      "dependencies": [
+        "A9"
+      ],
+      "evidence": "静态证据为主",
+      "remaining": "原创语法方案、配对/分隔符、手动标记、显示选项",
+      "acceptance": "高输出样式/选区/缩放与历史一致",
+      "assumption": "手动标记不等于语法着色；格式资产独立制作",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 10.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "W6",
+      "phase": "P4",
+      "name": "分屏、多窗口、停靠与面板",
+      "ids": [
+        "G04",
+        "G09",
+        "G10",
+        "G18",
+        "G47",
+        "G48"
+      ],
+      "O": 7,
+      "M": 12,
+      "P": 20,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "双分屏原型，上游部分布局恢复观察",
+      "remaining": "任意分屏/多窗口所有权、跨窗口移动、停靠/栏定制、Focus",
+      "acceptance": "焦点/尺寸/退出/恢复与视图归属",
+      "assumption": "窗口/布局底座只此；恢复策略在 W7，平台修正在 X1",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 12.5,
+      "sigma": 2.1666666666666665
+    },
+    {
+      "key": "W7",
+      "phase": "P4",
+      "name": "会话树、恢复、导入与连接入口",
+      "ids": [
+        "S02",
+        "S03",
+        "S04",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S14",
+        "S15",
+        "S17"
+      ],
+      "O": 8,
+      "M": 13,
+      "P": 22,
+      "dependencies": [
+        "B9",
+        "W6"
+      ],
+      "evidence": "名称过滤原型；上游部分视图恢复观察",
+      "remaining": "分组/复制、恢复/启动集合、最近会话、URL、OpenSSH/PuTTY/Shell 导入",
+      "acceptance": "非秘密导入/冲突、布局/会话恢复、不重放输入",
+      "assumption": "S11 仅名称过滤；导入模型在此，WindTerm 格式适配在 X7",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 13.666666666666666,
+      "sigma": 2.3333333333333335
+    },
+    {
+      "key": "W8",
+      "phase": "P4",
+      "name": "命令面板、标签与用户配置",
+      "ids": [
+        "G07",
+        "G25",
+        "G26",
+        "G27",
+        "G45",
+        "G46",
+        "G49",
+        "G53"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 15,
+      "dependencies": [
+        "A1",
+        "W7"
+      ],
+      "evidence": "命令面板/标签原型已有",
+      "remaining": "标题/图标、关闭/鼠标行为、Anything/计算器、动作键位覆盖/配置目录",
+      "acceptance": "未完成任务关闭、远端标题不可信、快捷键冲突",
+      "assumption": "G53 不扩展为 JS 宏或插件系统；动作注册框架在 A1",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 9.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "W9",
+      "phase": "P4",
+      "name": "发送器、Quick Bar、同步与触发器",
+      "ids": [
+        "G05",
+        "G08",
+        "G11",
+        "G41"
+      ],
+      "O": 7,
+      "M": 11,
+      "P": 18,
+      "dependencies": [
+        "W6",
+        "W8"
+      ],
+      "evidence": "静态证据",
+      "remaining": "文本/Hex/节流、目标通道、规则匹配/事件/动作和持久配置",
+      "acceptance": "目标确认、循环/误发防护、断线隔离",
+      "assumption": "共用发送执行器只此计价，登录编排复用它",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 11.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "W10",
+      "phase": "P4",
+      "name": "保护、锁屏与 OneKey 登录编排",
+      "ids": [
+        "G06",
+        "G34",
+        "G42"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 15,
+      "dependencies": [
+        "B2",
+        "W9"
+      ],
+      "evidence": "静态证据",
+      "remaining": "主密码/锁屏、凭据模板、expect/send 登录向导",
+      "acceptance": "锁定/取消/超时、敏感日志/存储与后台连接",
+      "assumption": "三平台 vault 在 B2；此处只策略/模板/编排",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 9.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "W11",
+      "phase": "P4",
+      "name": "自动补全与原创数据",
+      "ids": [
+        "G02"
+      ],
+      "O": 4,
+      "M": 7,
+      "P": 12,
+      "dependencies": [
+        "W2",
+        "W4"
+      ],
+      "evidence": "上游命令定义仅可作范围证据",
+      "remaining": "引擎、历史/路径、自研命令数据和敏感输入策略",
+      "acceptance": "常用 shell/git 行为、候选选择和误触发",
+      "assumption": "不复制上游数据，不以条目数相等代替行为；新增长尾数据需重估",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 7.333333333333333,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "W12",
+      "phase": "P4",
+      "name": "多语言与主题/窗口行为",
+      "ids": [
+        "G01",
+        "G24",
+        "G28",
+        "G33",
+        "G38",
+        "G39"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 16,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "已认可白银/炭灰主题原型",
+      "remaining": "i18n 工程/翻译流程、窗口透明/全屏/置顶/隐藏指针",
+      "acceptance": "布局回退、平台窗口行为和主题可读性",
+      "assumption": "译文制作/审校外部费用另列；保留完整语言目标，不复制上游译文",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 9.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "W13",
+      "phase": "P4",
+      "name": "日志、Debug 与 Sysmon",
+      "ids": [
+        "G40",
+        "S05",
+        "S06",
+        "S12",
+        "S13"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 15,
+      "dependencies": [
+        "B1"
+      ],
+      "evidence": "主要静态证据",
+      "remaining": "Rust 日志轮转/策略、序列可视化、固定命令远端/本地采样",
+      "acceptance": "秘密过滤、断线停止、启停不影响字节流",
+      "assumption": "S13 的 P2 安全通道在 B1，本包 P4 完成 UI；采样不写入交互 shell",
+      "stage_allocation": {
+        "P4": 1
+      },
+      "PERT": 9.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "E1",
+      "phase": "P5",
+      "name": "Linux Shell 产品验收",
+      "ids": [
+        "T02"
+      ],
+      "O": 2,
+      "M": 3,
+      "P": 5,
+      "dependencies": [
+        "A2"
+      ],
+      "evidence": "Bash/原生 WebKitGTK 冒烟已有",
+      "remaining": "zsh/pwsh 发现、信号/退出和发行版差异",
+      "acceptance": "真实本地 Shell 异常及前台交互",
+      "assumption": "三发行版以内；通用跨平台回归在 X1",
+      "stage_allocation": {
+        "P5": 1
+      },
+      "PERT": 3.1666666666666665,
+      "sigma": 0.5
+    },
+    {
+      "key": "E2",
+      "phase": "P5",
+      "name": "Windows Shell 与管理员会话",
+      "ids": [
+        "T03",
+        "T04",
+        "T05",
+        "T06"
+      ],
+      "O": 5,
+      "M": 9,
+      "P": 15,
+      "dependencies": [
+        "A2",
+        "A10"
+      ],
+      "evidence": "ConPTY 生命周期和原生 WebView2 冒烟已有",
+      "remaining": "PowerShell/管理员代理、Job/权限/取消、代码页和 ConPTY 方案",
+      "acceptance": "真实提权/拒绝/退出/句柄与进程释放",
+      "assumption": "P1 T35-T37 复用当前可用 cmd 路径，不以此延后它们",
+      "stage_allocation": {
+        "P5": 1
+      },
+      "PERT": 9.333333333333334,
+      "sigma": 1.6666666666666667
+    },
+    {
+      "key": "X1",
+      "phase": "P5",
+      "name": "平台适配与最终回归",
+      "ids": [
+        "Q01",
+        "Q02",
+        "Q03"
+      ],
+      "O": 17,
+      "M": 28,
+      "P": 46,
+      "dependencies": [
+        "E1",
+        "E2"
+      ],
+      "evidence": "三平台原生冒烟，不是全面产品验收",
+      "remaining": "菜单/焦点/路径/窗口差异、每平台两轮适用功能回归",
+      "acceptance": "实际目标机器及支持矩阵",
+      "assumption": "不重复包内实现和首次功能验收；IME 专项归 X3，安装归 X6",
+      "stage_allocation": {
+        "P1": 0.15,
+        "P2": 0.15,
+        "P3": 0.1,
+        "P4": 0.1,
+        "P5": 0.5
+      },
+      "PERT": 29.166666666666668,
+      "sigma": 4.833333333333333
+    },
+    {
+      "key": "X2",
+      "phase": "P1",
+      "name": "共享 QA 设施",
+      "ids": [],
+      "O": 7,
+      "M": 12,
+      "P": 20,
+      "dependencies": [
+        "D3"
+      ],
+      "evidence": "OpenSSH/KDC/lrzsz/tmux/虚拟串口和 CI 已有",
+      "remaining": "复用扩展夹具、原生自动化/录制、vttest 底座与防抖",
+      "acceptance": "设施可靠性与证据可追溯",
+      "assumption": "不从零重建已有夹具；每包案例执行计各包",
+      "stage_allocation": {
+        "P1": 0.35,
+        "P2": 0.25,
+        "P3": 0.15,
+        "P4": 0.15,
+        "P5": 0.1
+      },
+      "PERT": 12.5,
+      "sigma": 2.1666666666666665
+    },
+    {
+      "key": "X3",
+      "phase": "P1",
+      "name": "原生 IME 与无障碍专项",
+      "ids": [],
+      "O": 6,
+      "M": 10,
+      "P": 18,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "单轮拼音和真实粘贴；完整读屏未通过",
+      "remaining": "CJK 组合态/候选/提交、读屏/键盘、编辑层专项",
+      "acceptance": "P1 首平台终端交付前；P4 编辑层及各平台交付前补齐",
+      "assumption": "三平台专项成本只此；需要原生桥接另列 R2",
+      "stage_allocation": {
+        "P1": 0.45,
+        "P4": 0.25,
+        "P5": 0.3
+      },
+      "PERT": 10.666666666666666,
+      "sigma": 2
+    },
+    {
+      "key": "X4",
+      "phase": "P1",
+      "name": "端到端性能",
+      "ids": [
+        "Q05"
+      ],
+      "O": 6,
+      "M": 10,
+      "P": 17,
+      "dependencies": [
+        "A2"
+      ],
+      "evidence": "有限负载/中断和主进程 RSS，非整机预算通过",
+      "remaining": "固定负载、PTY/IPC 渲染优化、全应用内存和 CI 预算",
+      "acceptance": "吞吐/按键/多会话/历史/启动、跨 WebView 实机对照",
+      "assumption": "包内 I/O 产品接入在 A2/B1；此处跨层优化与重复测量",
+      "stage_allocation": {
+        "P1": 0.5,
+        "P2": 0.1,
+        "P3": 0.1,
+        "P4": 0.1,
+        "P5": 0.2
+      },
+      "PERT": 10.5,
+      "sigma": 1.8333333333333333
+    },
+    {
+      "key": "X5",
+      "phase": "P2",
+      "name": "跨功能安全专项",
+      "ids": [],
+      "O": 5,
+      "M": 8,
+      "P": 13,
+      "dependencies": [
+        "A1"
+      ],
+      "evidence": "现有权限/评审门禁",
+      "remaining": "威胁模型、模糊测试、跨边界秘密/IPC 审计、发行审查",
+      "acceptance": "审计发现闭环",
+      "assumption": "包内普通独立评审已含，不在此重复；第三方费用不计",
+      "stage_allocation": {
+        "P1": 0.15,
+        "P2": 0.3,
+        "P3": 0.2,
+        "P4": 0.15,
+        "P5": 0.2
+      },
+      "PERT": 8.333333333333334,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "X6",
+      "phase": "P5",
+      "name": "签名、公证、安装升级",
+      "ids": [],
+      "O": 4,
+      "M": 7,
+      "P": 12,
+      "dependencies": [
+        "X1"
+      ],
+      "evidence": "探针二进制发行排除门控已有",
+      "remaining": "三平台签名/公证/安装包、升级回退/许可证与发行 CI",
+      "acceptance": "安装/升级/卸载与凭据安全",
+      "assumption": "证书/账户等待另列；不再从零估排除探针",
+      "stage_allocation": {
+        "P1": 0.1,
+        "P5": 0.9
+      },
+      "PERT": 7.333333333333333,
+      "sigma": 1.3333333333333333
+    },
+    {
+      "key": "X7",
+      "phase": "P5",
+      "name": "WindTerm 非秘密配置迁移",
+      "ids": [],
+      "O": 3,
+      "M": 5,
+      "P": 9,
+      "dependencies": [
+        "W7"
+      ],
+      "evidence": "格式静态材料",
+      "remaining": "WindTerm 格式/平台适配、预览/冲突、源文件保护",
+      "acceptance": "脱敏真实样本往返与不解密秘密",
+      "assumption": "导入通用模型在 W7；本包仅 WindTerm 适配",
+      "stage_allocation": {
+        "P5": 1
+      },
+      "PERT": 5.333333333333333,
+      "sigma": 1
+    },
+    {
+      "key": "X8",
+      "phase": "P5",
+      "name": "用户与验收文档整编",
+      "ids": [],
+      "O": 3,
+      "M": 5,
+      "P": 8,
+      "dependencies": [
+        "D3"
+      ],
+      "evidence": "专题与台账文档已有",
+      "remaining": "中文手册、支持矩阵、逐 ID 证据/差异汇编和发布说明",
+      "acceptance": "可复现验收记录和用户流程",
+      "assumption": "包内技术文档已含，本包仅跨包整编；其它语言文档外部条件",
+      "stage_allocation": {
+        "P1": 0.15,
+        "P2": 0.15,
+        "P3": 0.15,
+        "P4": 0.2,
+        "P5": 0.35
+      },
+      "PERT": 5.166666666666667,
+      "sigma": 0.8333333333333334
+    },
+    {
+      "key": "X9",
+      "phase": "P5",
+      "name": "跨功能稳定化",
+      "ids": [],
+      "O": 10,
+      "M": 17,
+      "P": 28,
+      "dependencies": [
+        "W1",
+        "W3",
+        "W4",
+        "W5",
+        "W10",
+        "W11",
+        "W12",
+        "W13",
+        "C3",
+        "C5",
+        "C7",
+        "X6",
+        "X7"
+      ],
+      "evidence": "单项原型测试已有，组合未产品化",
+      "remaining": "阶段组合验收、alpha 反馈与修复",
+      "acceptance": "tmux/分屏/同步、复用/传输等组合",
+      "assumption": "不重复包内验收或 X1 平台回归；此处仅组合缺陷",
+      "stage_allocation": {
+        "P1": 0.2,
+        "P2": 0.2,
+        "P3": 0.15,
+        "P4": 0.25,
+        "P5": 0.2
+      },
+      "PERT": 17.666666666666668,
+      "sigma": 3
+    }
+  ],
+  "coverage": [
+    {
+      "id": "C01",
+      "capability": "SSH v2",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B1",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "C02",
+      "capability": "Telnet",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B7",
+      "shared_dependencies": [
+        "A8",
+        "B1"
+      ]
+    },
+    {
+      "id": "C03",
+      "capability": "Raw TCP",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B7",
+      "shared_dependencies": [
+        "A8",
+        "B1"
+      ]
+    },
+    {
+      "id": "C04",
+      "capability": "串口",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B8",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "C05",
+      "capability": "SSH 认证后自动执行",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B6",
+      "shared_dependencies": [
+        "B1",
+        "B2"
+      ]
+    },
+    {
+      "id": "C06",
+      "capability": "SSH ControlMaster",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B6",
+      "shared_dependencies": [
+        "B1",
+        "B2"
+      ]
+    },
+    {
+      "id": "C07",
+      "capability": "ProxyCommand",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C08",
+      "capability": "ProxyJump",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C09",
+      "capability": "SSH agent",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B2",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C10",
+      "capability": "agent forwarding",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C11",
+      "capability": "密码认证及自动登录",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B2",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C12",
+      "capability": "公钥认证及自动登录",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B2",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C13",
+      "capability": "keyboard-interactive",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B2",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C14",
+      "capability": "gssapi-with-mic",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B3",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C15",
+      "capability": "X11 forwarding",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C16",
+      "capability": "本地/直接端口转发",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C17",
+      "capability": "远端/反向端口转发",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C18",
+      "capability": "动态端口转发",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C19",
+      "capability": "HTTP 代理",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C20",
+      "capability": "SOCKS5 代理",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C21",
+      "capability": "Jump Server 会话代理",
+      "frozen_phase": "P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "T01",
+      "capability": "macOS bash/zsh/PowerShell Core",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T02",
+      "capability": "Linux bash/zsh/PowerShell Core",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "E1",
+      "shared_dependencies": [
+        "A2"
+      ]
+    },
+    {
+      "id": "T03",
+      "capability": "Windows Cmd",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "E2",
+      "shared_dependencies": [
+        "A2",
+        "A10"
+      ]
+    },
+    {
+      "id": "T04",
+      "capability": "Windows PowerShell",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "E2",
+      "shared_dependencies": [
+        "A2",
+        "A10"
+      ]
+    },
+    {
+      "id": "T05",
+      "capability": "Windows 管理员 Cmd",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "E2",
+      "shared_dependencies": [
+        "A2",
+        "A10"
+      ]
+    },
+    {
+      "id": "T06",
+      "capability": "Windows 管理员 PowerShell",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "E2",
+      "shared_dependencies": [
+        "A2",
+        "A10"
+      ]
+    },
+    {
+      "id": "T07",
+      "capability": "VT100",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T08",
+      "capability": "VT220",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T09",
+      "capability": "VT340",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A5",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T10",
+      "capability": "VT420",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T11",
+      "capability": "VT520",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T12",
+      "capability": "xterm",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T13",
+      "capability": "xterm-256-colors",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T14",
+      "capability": "Unicode 13 与宽字符",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A7",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T15",
+      "capability": "emoji",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A7",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T16",
+      "capability": "true-color",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T17",
+      "capability": "终端鼠标协议",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T18",
+      "capability": "自动换行模式",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T19",
+      "capability": "自定义协议",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "initial_117",
+      "primary_package": "B7",
+      "shared_dependencies": [
+        "A8",
+        "B1"
+      ]
+    },
+    {
+      "id": "T20",
+      "capability": "自定义终端类型",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A4",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T21",
+      "capability": "vttest 兼容范围",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A4",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T22",
+      "capability": "tmux 集成",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W1",
+      "shared_dependencies": [
+        "B6",
+        "W6"
+      ]
+    },
+    {
+      "id": "T23",
+      "capability": "Powerline / Oh-My-Zsh",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A7",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T24",
+      "capability": "Powerline / Oh-My-Posh",
+      "frozen_phase": "P1/P5",
+      "scope_origin": "initial_117",
+      "primary_package": "A7",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "F01",
+      "capability": "SFTP 文件浏览",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F02",
+      "capability": "SFTP 下载",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F03",
+      "capability": "SFTP 上传",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F04",
+      "capability": "SFTP 删除",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F05",
+      "capability": "SFTP 重命名",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F06",
+      "capability": "SFTP 新建文件",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F07",
+      "capability": "SFTP 新建目录",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F08",
+      "capability": "SCP 下载",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C3",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F09",
+      "capability": "SCP 上传",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C3",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F10",
+      "capability": "XModem",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C4",
+      "shared_dependencies": [
+        "B7",
+        "B8",
+        "C2"
+      ]
+    },
+    {
+      "id": "F11",
+      "capability": "YModem",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C4",
+      "shared_dependencies": [
+        "B7",
+        "B8",
+        "C2"
+      ]
+    },
+    {
+      "id": "F12",
+      "capability": "ZModem",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C5",
+      "shared_dependencies": [
+        "C4"
+      ]
+    },
+    {
+      "id": "F13",
+      "capability": "本地文件浏览",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F14",
+      "capability": "本地文件移动",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F15",
+      "capability": "本地文件复制到目标",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F16",
+      "capability": "本地文件从来源复制",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F17",
+      "capability": "本地删除",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F18",
+      "capability": "本地重命名",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F19",
+      "capability": "本地新建文件",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F20",
+      "capability": "本地新建目录",
+      "frozen_phase": "P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C6",
+      "shared_dependencies": [
+        "A1",
+        "C2"
+      ]
+    },
+    {
+      "id": "F21",
+      "capability": "传输的其他实际选项",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "initial_117",
+      "primary_package": "C2",
+      "shared_dependencies": [
+        "B6"
+      ]
+    },
+    {
+      "id": "G01",
+      "capability": "多语言界面",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G02",
+      "capability": "自动补全",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W11",
+      "shared_dependencies": [
+        "W2",
+        "W4"
+      ]
+    },
+    {
+      "id": "G03",
+      "capability": "Free Type 模式",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G04",
+      "capability": "Focus 模式",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G05",
+      "capability": "同步输入",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W9",
+      "shared_dependencies": [
+        "W6",
+        "W8"
+      ]
+    },
+    {
+      "id": "G06",
+      "capability": "用户名/密码保护",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W10",
+      "shared_dependencies": [
+        "B2",
+        "W9"
+      ]
+    },
+    {
+      "id": "G07",
+      "capability": "命令面板",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G08",
+      "capability": "命令发送器",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W9",
+      "shared_dependencies": [
+        "W6",
+        "W8"
+      ]
+    },
+    {
+      "id": "G09",
+      "capability": "Explorer 面板",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G10",
+      "capability": "Shell 面板",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G11",
+      "capability": "Quick Bar",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W9",
+      "shared_dependencies": [
+        "W6",
+        "W8"
+      ]
+    },
+    {
+      "id": "G12",
+      "capability": "粘贴对话框",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G13",
+      "capability": "本地/远程输入模式",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G14",
+      "capability": "Vim 键位",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G15",
+      "capability": "时间戳",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G16",
+      "capability": "文本折叠",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G17",
+      "capability": "大纲",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G18",
+      "capability": "分屏",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G19",
+      "capability": "输出配色方案",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W5",
+      "shared_dependencies": [
+        "A9"
+      ]
+    },
+    {
+      "id": "G20",
+      "capability": "文本搜索",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G21",
+      "capability": "搜索预览",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G22",
+      "capability": "配对分隔符高亮",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W5",
+      "shared_dependencies": [
+        "A9"
+      ]
+    },
+    {
+      "id": "G23",
+      "capability": "自定义分隔符",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W5",
+      "shared_dependencies": [
+        "A9"
+      ]
+    },
+    {
+      "id": "G24",
+      "capability": "UI 主题",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G25",
+      "capability": "标签颜色",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G26",
+      "capability": "已打开标签搜索",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G27",
+      "capability": "关闭右侧标签",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G28",
+      "capability": "窗口透明度",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G29",
+      "capability": "选择即复制",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W3",
+      "shared_dependencies": [
+        "W2"
+      ]
+    },
+    {
+      "id": "G30",
+      "capability": "右键粘贴",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W3",
+      "shared_dependencies": [
+        "W2"
+      ]
+    },
+    {
+      "id": "G31",
+      "capability": "中键粘贴",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W3",
+      "shared_dependencies": [
+        "W2"
+      ]
+    },
+    {
+      "id": "G32",
+      "capability": "在线文本搜索",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W3",
+      "shared_dependencies": [
+        "W2"
+      ]
+    },
+    {
+      "id": "G33",
+      "capability": "输入时隐藏鼠标指针",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G34",
+      "capability": "锁屏",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W10",
+      "shared_dependencies": [
+        "B2",
+        "W9"
+      ]
+    },
+    {
+      "id": "S01",
+      "capability": "会话配置对话框",
+      "frozen_phase": "P2/P4",
+      "scope_origin": "initial_117",
+      "primary_package": "B9",
+      "shared_dependencies": [
+        "A1",
+        "B2"
+      ]
+    },
+    {
+      "id": "S02",
+      "capability": "会话树与分组",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S03",
+      "capability": "会话重命名",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S04",
+      "capability": "会话复制",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S05",
+      "capability": "手动会话日志",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W13",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "S06",
+      "capability": "自动会话日志",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W13",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "S07",
+      "capability": "重启恢复会话",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S08",
+      "capability": "重启恢复布局",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S09",
+      "capability": "启动指定单会话",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S10",
+      "capability": "启动指定会话集合",
+      "frozen_phase": "P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S11",
+      "capability": "会话搜索",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "initial_117",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "Q01",
+      "capability": "macOS 平台",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "X1",
+      "shared_dependencies": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "id": "Q02",
+      "capability": "Windows 平台",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "X1",
+      "shared_dependencies": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "id": "Q03",
+      "capability": "Linux 平台",
+      "frozen_phase": "P5",
+      "scope_origin": "initial_117",
+      "primary_package": "X1",
+      "shared_dependencies": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "id": "Q04",
+      "capability": "动态内存压缩",
+      "frozen_phase": "P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A9",
+      "shared_dependencies": [
+        "A4"
+      ]
+    },
+    {
+      "id": "Q05",
+      "capability": "吞吐与低延迟",
+      "frozen_phase": "P0→P5",
+      "scope_origin": "initial_117",
+      "primary_package": "X4",
+      "shared_dependencies": [
+        "A2"
+      ]
+    },
+    {
+      "id": "Q06",
+      "capability": "大规模滚动历史",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "initial_117",
+      "primary_package": "A9",
+      "shared_dependencies": [
+        "A4"
+      ]
+    },
+    {
+      "id": "T25",
+      "capability": "VT52",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "p0_round_2",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T26",
+      "capability": "VT102",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "p0_round_2",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T27",
+      "capability": "终端 Bell 与节流设置",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "p0_round_2",
+      "primary_package": "A8",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T28",
+      "capability": "Big5 会话字符编码",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "p0_round_2",
+      "primary_package": "A8",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T29",
+      "capability": "EUC-JP 会话字符编码",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "p0_round_2",
+      "primary_package": "A8",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "S12",
+      "capability": "本地 Shell Sysmon",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W13",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "S13",
+      "capability": "SSH 远端 Sysmon",
+      "frozen_phase": "P0→P2/P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W13",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "G35",
+      "capability": "Hex 编辑模式",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G36",
+      "capability": "虚拟空间",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G37",
+      "capability": "多插入符号 / 多光标",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G38",
+      "capability": "全屏模式",
+      "frozen_phase": "P0→P4/P5",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G39",
+      "capability": "窗口总是置顶",
+      "frozen_phase": "P0→P4/P5",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W12",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G40",
+      "capability": "会话 Debug 模式",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "p0_round_2",
+      "primary_package": "W13",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C22",
+      "capability": "隧道管理器（独立对话框、与会话绑定、状态显示）",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B4",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "C24",
+      "capability": "SSH 算法、重协商与证书公钥类型配置",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B1",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "C25",
+      "capability": "主机指纹信任管理（信任/取消信任/查看）",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B1",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "C26",
+      "capability": "连接超时、保活与 TCP 选项",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B1",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "C27",
+      "capability": "应用级全局代理（无/系统/HTTP/SOCKS5，代理 DNS）",
+      "frozen_phase": "P0→P2",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B5",
+      "shared_dependencies": [
+        "B1"
+      ]
+    },
+    {
+      "id": "T30",
+      "capability": "远端读写剪贴板（OSC 52）权限",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "A6",
+      "shared_dependencies": [
+        "A3"
+      ]
+    },
+    {
+      "id": "T31",
+      "capability": "终端键盘与初始模式设置",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T32",
+      "capability": "终端清屏与复位",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "A3",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T33",
+      "capability": "其余会话字符集、十六进制显示与自动检测",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "A8",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "T34",
+      "capability": "本地 Shell 会话启动参数",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "A2",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "F22",
+      "capability": "文件面板与终端当前目录同步",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "C7",
+      "shared_dependencies": [
+        "C1",
+        "C6"
+      ]
+    },
+    {
+      "id": "F23",
+      "capability": "远端文件用外部编辑器打开并回传",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "C7",
+      "shared_dependencies": [
+        "C1",
+        "C6"
+      ]
+    },
+    {
+      "id": "F24",
+      "capability": "文件面板辅助：新建链接、属性与权限编辑、复制路径/名称到终端、隐藏项",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "C1",
+      "shared_dependencies": [
+        "B6",
+        "C2"
+      ]
+    },
+    {
+      "id": "F25",
+      "capability": "传输队列暂停/恢复/移除与并发参数（F21 拆分）",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "C2",
+      "shared_dependencies": [
+        "B6"
+      ]
+    },
+    {
+      "id": "F26",
+      "capability": "X/Y/Z Modem 冲突策略、填充与拖放协议（F21 拆分）",
+      "frozen_phase": "P0→P3",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "C4",
+      "shared_dependencies": [
+        "B7",
+        "B8",
+        "C2"
+      ]
+    },
+    {
+      "id": "G41",
+      "capability": "触发器（全局/会话级）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W9",
+      "shared_dependencies": [
+        "W6",
+        "W8"
+      ]
+    },
+    {
+      "id": "G42",
+      "capability": "OneKey 凭据模板与登录向导（expect/send）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W10",
+      "shared_dependencies": [
+        "B2",
+        "W9"
+      ]
+    },
+    {
+      "id": "G44",
+      "capability": "命令级导航、选择、复制与命令历史存储",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W4",
+      "shared_dependencies": [
+        "A9",
+        "W2"
+      ]
+    },
+    {
+      "id": "G45",
+      "capability": "会话颜色/图标与标签标题跟随远端",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G46",
+      "capability": "标签栏行为与关闭确认",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G47",
+      "capability": "多窗口与窗口管理器",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G48",
+      "capability": "停靠窗格布局、栏显隐、工具栏定制与状态栏项",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W6",
+      "shared_dependencies": [
+        "A1"
+      ]
+    },
+    {
+      "id": "G49",
+      "capability": "Anything 面板、跳转行/符号/会话与计算器面板",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "G50",
+      "capability": "手动文本高亮标记（Text Marks）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W5",
+      "shared_dependencies": [
+        "A9"
+      ]
+    },
+    {
+      "id": "G51",
+      "capability": "字体缩放与文本显示选项（行号、空白、行尾、缩进线、列标记）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W5",
+      "shared_dependencies": [
+        "A9"
+      ]
+    },
+    {
+      "id": "G52",
+      "capability": "列/块选择与高级选择（锁定、拆分、反选、分词符）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W3",
+      "shared_dependencies": [
+        "W2"
+      ]
+    },
+    {
+      "id": "G53",
+      "capability": "用户自定义动作/键位与配置目录",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W8",
+      "shared_dependencies": [
+        "A1",
+        "W7"
+      ]
+    },
+    {
+      "id": "S14",
+      "capability": "会话导入（OpenSSH config / PuTTY / Shell）",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S15",
+      "capability": "地址栏快速连接与会话 URL",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "S16",
+      "capability": "断开/重连会话与回车重连",
+      "frozen_phase": "P0→P2/P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "B6",
+      "shared_dependencies": [
+        "B1",
+        "B2"
+      ]
+    },
+    {
+      "id": "S17",
+      "capability": "重新打开已关闭视图与最近会话",
+      "frozen_phase": "P0→P4",
+      "scope_origin": "baseline_freeze_2026_10_12",
+      "primary_package": "W7",
+      "shared_dependencies": [
+        "B9",
+        "W6"
+      ]
+    },
+    {
+      "id": "T35",
+      "capability": "WSL 发行版作为本地 Shell 会话（枚举、启动、当前目录检测）",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "post_freeze_2026_10_12",
+      "primary_package": "A10",
+      "shared_dependencies": [
+        "A2"
+      ]
+    },
+    {
+      "id": "T36",
+      "capability": "Git Bash 与 Cygwin 本地 Shell 自动发现",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "post_freeze_2026_10_12",
+      "primary_package": "A10",
+      "shared_dependencies": [
+        "A2"
+      ]
+    },
+    {
+      "id": "T37",
+      "capability": "cmd 会话注入 Clink 行编辑",
+      "frozen_phase": "P0→P1",
+      "scope_origin": "post_freeze_2026_10_12",
+      "primary_package": "A10",
+      "shared_dependencies": [
+        "A2"
+      ]
+    }
+  ],
+  "scope_exclusions": {
+    "merged_candidate": {
+      "id": "G43",
+      "covered_by": [
+        "T12",
+        "G12"
+      ],
+      "packages": [
+        "A6",
+        "W2"
+      ]
+    },
+    "deferred": [
+      "C23",
+      "C28",
+      "G54",
+      "G55"
+    ]
+  },
+  "stage_totals": {
+    "P0": {
+      "O": 0.8,
+      "M": 1.6,
+      "P": 3.2,
+      "PERT": 1.7333333333333332
+    },
+    "P1": {
+      "O": 58.300000000000004,
+      "M": 98.95000000000002,
+      "P": 165.44999999999996,
+      "PERT": 103.25833333333334
+    },
+    "P2": {
+      "O": 47.85,
+      "M": 82.75000000000001,
+      "P": 135.29999999999998,
+      "PERT": 85.69166666666668
+    },
+    "P3": {
+      "O": 34.300000000000004,
+      "M": 56.49999999999999,
+      "P": 92.3,
+      "PERT": 58.76666666666666
+    },
+    "P4": {
+      "O": 88.69999999999999,
+      "M": 149.55,
+      "P": 249.34999999999997,
+      "PERT": 156.04166666666666
+    },
+    "P5": {
+      "O": 29.85,
+      "M": 50.25,
+      "P": 84.6,
+      "PERT": 52.574999999999996
+    }
+  },
+  "total": {
+    "O": 259.8,
+    "M": 439.6,
+    "P": 730.2,
+    "PERT": 458.06666666666655
+  },
+  "staffing": [
+    {
+      "people": 1,
+      "efficiency": 1,
+      "effective_weeks_per_year": 44,
+      "years": {
+        "O": 5.904545454545455,
+        "M": 9.990909090909092,
+        "P": 16.595454545454547,
+        "PERT": 10.410606060606058
+      }
+    },
+    {
+      "people": 2,
+      "efficiency": 0.9,
+      "effective_weeks_per_year": 44,
+      "years": {
+        "O": 3.2803030303030303,
+        "M": 5.55050505050505,
+        "P": 9.21969696969697,
+        "PERT": 5.783670033670032
+      }
+    },
+    {
+      "people": 4,
+      "efficiency": 0.8,
+      "effective_weeks_per_year": 44,
+      "years": {
+        "O": 1.8451704545454546,
+        "M": 3.122159090909091,
+        "P": 5.186079545454545,
+        "PERT": 3.2533143939393927
+      }
+    }
+  ]
+}
