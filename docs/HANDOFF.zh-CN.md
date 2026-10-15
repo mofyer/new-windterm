@@ -24,8 +24,8 @@
 
 ### 分支
 
-- **远端 `main`**：`e0dd423`。2026-10-12 经用户同意，从集成分支快进而来。
-- **集成分支 `p0/integration`**：所有工作都在这里；10-15 已合入并推送 T35–T37、虚拟串口和独立 GSSAPI 探针；被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档。比 `main` 多冻结、E11、互操作修复和归档等提交。再次合并到 `main` 需要用户明确同意。
+- **远端 `main`**：2026-10-15 用户明确回复「合并」后，已从 `e0dd423` 快进到本批集成提交 `f964239` 并推送；后续仅补本次合并记录。
+- **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。后续开发仍使用集成分支；下一批合并到 `main` 仍需用户明确同意。
 - **推送范围**：用户授权推送 `p0/*` 工作分支，并手动触发 CI。
 - **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
 - **多代理工作方式与续做方法**：见 [AGENT_WORKFLOW](p0/AGENT_WORKFLOW.zh-CN.md)。
@@ -92,7 +92,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 这些事项已向用户说明过，不要自行绕过：
 
-- **合并**：同意把 `p0/integration` 合并到 `main`（需要在 CI 通过之后）。
+- **合并**：2026-10-15 本批已获用户明确同意，CI 通过后已合并并推送 `main`；下一批仍需单独批准。
 - **功能基线**：2026-10-12 已冻结，E1–E12 全部采用推荐选项。用户同时授权在隔离副本中运行上游 2.7.0 做实机盘点；Windows/Linux 上游包的静态核对放到冻结之后。见[冻结方案](p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md)的决定记录。
 - **串口（C04）**：需要一个真实的 USB 串口设备。
 - **X11 转发（C15）**：Linux CI 已用 Xvfb 验证；如果要在 macOS 上验证，需要批准安装 XQuartz。
@@ -106,7 +106,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **上游实机盘点与本机原生验收**：按[手工清单](p0/HANDS_ON_CHECKLIST.zh-CN.md)由用户执行，或在 Claude 桌面应用中打开 Computer use 后由代理执行。共用偏好设置的备份在 `.reference/plist-backup-2026-10-12/`，执行完毕后要还原。
-3. **合并 `main`**：集成 CI 全绿后，向用户申请把新提交同步到 `main`。
+3. **后续集成**：本批已同步 `main`。后续新提交继续在 `p0/integration` 验证，门禁与 CI 通过后，再向用户申请下一批合并。
 4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、PowerShell 与管理员 shell、Wayland 等，见归档第 5 节。
 5. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 之前，需要评审 CSP 中的 `wasm-unsafe-eval`。
 

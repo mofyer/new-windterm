@@ -23,7 +23,7 @@
 | 前端 build / Playwright 全套 | 通过 / 370 passed |
 | 台账三段结构验证 | 通过 |
 
-浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。未合并到 main。
+浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。
 
 首轮 CI：[run 38690044571](https://github.com/mofyer/new-windterm/actions/runs/38690044571)，head `31bcdf8`。GSSAPI 镜像构建、Rust 编译与单测通过，但 `valid` 场景返回 10，GSS 错误 `major=0xd0000 minor=0x96c73a07`（服务主体不存在）；其余三场景未执行。MIT 短主机名可能被补上容器 resolver 搜索域；修复 `0212e9e` 固定 `qualify_shortname = ""` 并以独立 cache 的 `kvno` 预检精确主体，不预热 Rust 客户端 cache。该候选根因与修复已做独立代码审查，下一轮四场景通过，支持该修复；首轮失败记录保留，不把首轮未执行场景计为通过。
 
@@ -31,7 +31,9 @@
 
 修复版 [run 38691371347](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，head `fb824cf`，在旧 run 全部结束后触发。GSSAPI job `116277797906` 已成功：服务主体预检通过，四场景 `4 passed; 0 skipped`，三次 fresh-cache 健康复验通过，最终远端执行次数 4；MIT Kerberos `1.20.1-2+deb12u5`、OpenSSH `1:9.2p1-2+deb12u10`。整次 workflow **success，7/7 作业成功**：GSSAPI、macOS desktop、Linux desktop、Windows Server 2022/2025 desktop、Linux WebKitGTK 和 Windows WebView2。原始日志确认 Linux 串口 4/4、lrzsz 11/11（实际 outcome success）、X11/agent 各 1/1；不以整体绿色代替非阻塞步骤核查。
 
-测试代码提交为 `fb824cf`；此后本批只补证据文档与台账，没有改变被测实现。三处台账及冻结提议结构验证通过。`main` 仍为 `e0dd423`，本批没有合并到 main。
+测试代码提交为 `fb824cf`；此后本批只补证据文档与台账，没有改变被测实现。三处台账及冻结提议结构验证通过。
+
+**合并记录（2026-10-15）**：用户在获知 CI 7/7 通过后明确回复「合并」。独立复核远端分支为 0/26、无分叉，`fb824cf..f964239` 仅有文档与台账变更；随后以 `--ff-only` 将 `main` 从 `e0dd423` 快进到 `f964239`，并成功推送 `origin/main`。本记录为后续文档补充，没有改变被测代码，也没有重复执行 CI。P0 仍在进行中，本次合并不代表阶段出口或产品验收通过。
 
 ## 输入路径：输入法、宽字符、粘贴与按键
 
@@ -943,4 +945,4 @@ cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features 
 2. 按 [HANDS_ON_CHECKLIST](HANDS_ON_CHECKLIST.zh-CN.md)完成上游实机差异，尤其是影响范围或[终端内核决策](TERMINAL_CORE_ADR.zh-CN.md#决策前必须验证)的行为。功能基线已为 164 项，不再把“冻结 130 项”作为待办。
 3. 补原生 IME、VoiceOver、WKWebView 输出/输入延迟与资源测量。真实 UART 参数与拔插仍需硬件，不能以虚拟 PTY 通过替代。
 4. 汇总风险和技术调整方案，更新估算并进行 P0 出口评审。完整 SSH/SFTP、ZMODEM、全部终端兼容实现与签名发行按 P1–P5 推进；不因阶段划分删减最终功能。
-5. 本批 CI 已通过，合并 `p0/integration` 到 `main` 仍需用户明确同意。
+5. 本批 CI 已通过，2026-10-15 经用户明确同意已合并并推送 `main`；后续批次合并仍需另行批准。
