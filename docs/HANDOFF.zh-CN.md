@@ -26,16 +26,16 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 ### 分支
 
-- **远端 `main`**：2026-10-15 用户明确回复「合并」后，已从 `e0dd423` 快进到本批集成提交 `f964239` 并推送；合并记录提交为 `63a1b3e`，这是收尾前的历史基点；用户现已批准将 `ab113a7` 及其关闭记录合入 main，接手时用远端 refs 核对最新合并提交。
+- **远端 `main`**：P0 关闭及合并已完成，当前基点为 `a35582f`。P1 第一批仍在 `p1/integration` 验证，尚未合入 main；接手时用远端 refs 核对是否有后续批准与合并。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
-- **推送范围**：用户授权推送 `p0/*` 工作分支，并手动触发 CI。
+- **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
 - **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
 - **多代理工作方式与续做方法**：见 [AGENT_WORKFLOW](p0/AGENT_WORKFLOW.zh-CN.md)。
 
 ### CI 与文档
 
-- **CI**：`.github/workflows/p0-cross-platform.yml`，覆盖 macOS arm64、Linux x64、Windows x64。工作分支上可以用 `gh workflow run p0-cross-platform.yml --ref <分支>` 手动触发。最近的证据以 [RESULTS](p0/RESULTS.zh-CN.md) 顶部各节为准。
-- **结果与边界**：[docs/p0/RESULTS.zh-CN.md](p0/RESULTS.zh-CN.md)。
+- **CI**：`.github/workflows/p0-cross-platform.yml`，覆盖 macOS arm64、Linux x64、Windows x64。工作分支上可以用 `gh workflow run p0-cross-platform.yml --ref <分支>` 手动触发。当前 P1 证据以 [P1 执行记录](p1/RESULTS.zh-CN.md) 为准。
+- **结果与边界**：[P1 执行记录](p1/RESULTS.zh-CN.md)；下文 P0 历史成果对应 [P0 执行记录](p0/RESULTS.zh-CN.md)。
 - **功能总矩阵**：[docs/FEATURE_PARITY.zh-CN.md](FEATURE_PARITY.zh-CN.md)。2026-10-12 由用户批准冻结，冻结时共 161 个 ID；用户随后批准 WL-1/2/3 为 T35–T37，10-15 收尾后共 164 个 ID。新增项未实现、行为未验证；原有行的状态未改变。
 - **路线图**：[docs/ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 

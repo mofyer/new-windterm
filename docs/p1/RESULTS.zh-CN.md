@@ -28,6 +28,17 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 | Native runner helper | 15 passed / 0 failed | 不代表新增原生场景已执行 |
 | 浏览器全套 | 376 passed / 0 failed（2.2 分钟） | IPC stub；含 12 项本地生命周期契约 |
 | 真实 OpenSSH 夹具 | 11 passed / 0 failed / 0 skipped | 受控本机夹具 |
-| 跨平台 CI 与新增原生场景 | 待推送后执行 | Linux/Windows 真正结果另记 |
+| macOS 原生退出/重开 | 单轮通过，见[专题记录](NATIVE_LIFECYCLE_2026-10-15.zh-CN.md) | CUA 真实 WKWebView；不覆盖失败注入、完整 IME/读屏/VT |
+| 跨平台 CI 与新增原生场景 | `ed6501d` 的首轮 run `38706436663` 已发现两个 Linux 失败，待修复复验 | 不记为通过，见下文 |
 
 本轮不改变默认 Shell、启动参数、凭据、协议或终端屏幕状态来源；功能台账保持原状态。main 仍为 P0 关闭提交 `a35582f`，本批合并前需用户确认。
+
+## 首轮 CI 发现与修复
+
+[首轮 CI](https://github.com/mofyer/new-windterm/actions/runs/38706436663) 被测提交为 `ed6501d`。Linux 原生作业的前三个场景通过，新增第四个场景在标签名称比较处失败：WebDriver `getText` 返回空串，同一失败工件的 DOM JSON 和截图却显示 Local 4、Local 5 两个标签及新 Shell 提示符。失败发生在新会话输出与旧会话回看之前，因此不能据此宣布第四场景通过。
+
+`09a0362`（来源 `5ddaa49`）将标签读回改为 DOM `textContent`，断言非空、旧标签位置与名称保持、新标签名称不同且已选中。真实输出、双向隔离、旧退出码和关闭检查全部保留；独立 code-reviewer APPROVE，Node 语法、helper 15/15 和 diff 检查通过，原生运行待下一轮 CI。
+
+同轮 Linux desktop 的 `cancelled_reader_holds_capacity_until_blocking_work_really_ends` 在等待启动信号时出现 `RecvError`，Rust lib 结果 159 passed / 1 failed / 7 ignored；后续 lrzsz 等步骤未执行，不能算通过。正在独立诊断。
+
+Windows 原生四个场景已通过，独立复核 summary 与第四场景文本确认新旧输出隔离、退出码 7 保留、关闭后仅剩初始标签；Windows helper 为 14 passed / 1 skipped。Linux GSSAPI 四认证场景与三次新 cache 健康复验通过。其余作业最终结果及修复后的运行另记。
