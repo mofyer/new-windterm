@@ -29,7 +29,7 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 | 浏览器全套 | 376 passed / 0 failed（2.2 分钟） | IPC stub；含 12 项本地生命周期契约 |
 | 真实 OpenSSH 夹具 | 11 passed / 0 failed / 0 skipped | 受控本机夹具 |
 | macOS 原生退出/重开 | 单轮通过，见[专题记录](NATIVE_LIFECYCLE_2026-10-15.zh-CN.md) | CUA 真实 WKWebView；不覆盖失败注入、完整 IME/读屏/VT |
-| 跨平台 CI 与新增原生场景 | `ed6501d` 的首轮 run `38706436663` 已发现两个 Linux 失败，待修复复验 | 不记为通过，见下文 |
+| 跨平台 CI 与新增原生场景 | 第二轮 6/7 作业通过；两平台原生 4/4 均通过；macOS readiness 关闭失败 | `P1-PTY-CLOSE-001` 未关闭；诊断版下一轮待跑 |
 
 本轮不改变默认 Shell、启动参数、凭据、协议或终端屏幕状态来源；功能台账保持原状态。main 仍为 P0 关闭提交 `a35582f`，本批合并前需用户确认。
 
@@ -46,3 +46,25 @@ TDD：原实现上原 6 项契约通过，新增用例中 4 项失败，复现�
 修复合入 `13c9aee` 后重新完成集成门禁：fmt、Clippy、Rust 210 passed / 33 ignored、wincheck、前端 build、浏览器 376 passed（2.2 分钟）、真实 OpenSSH 11 passed / 0 skipped。原生 helper 在 `09a0362` 上为 15/15，后续 Rust 修复没有改动原生脚本。日志保留在本机 ignored `.artifacts/p1/batch1/*-final.log`。跨平台修复复验仍待运行。
 
 首轮最终为 5 个作业成功、2 个失败，整体失败。Windows 原生四个场景通过，独立复核 summary 与第四场景文本确认新旧输出隔离、退出码 7 保留、关闭后仅剩初始标签；Windows helper 为 14 passed / 1 skipped。Linux GSSAPI 3 个单元测试、四认证场景与三次新 cache 健康复验通过。macOS desktop 为 209 passed / 33 ignored，两种真实 PTY 探针通过；Windows 2022、2025 desktop 均为 203 passed / 7 ignored，另 2 项隔离 ConPTY 诊断通过。Server 2022 保留每轮一个句柄的系统基线增长，不代表零泄漏；Server 2025 该检查稳定。
+
+## 第二轮 CI
+
+[修复后 CI](https://github.com/mofyer/new-windterm/actions/runs/38708582959) 在首轮完全结束后手动触发，被测提交 `3050635df1e27abaa1b2497a758a5e642b80f6ac`（产品/测试代码基点 `13c9aee`）。本轮出现 macOS readiness PTY 关闭超时，不能作为合并 main 的通过证据。
+
+已独立复核 Linux 原生 summary：4/4 场景通过，新增场景 Local 4→Local 5、独立 marker、旧 exit 7 保留、关闭后 remainingTabs=1，夹具清理后 active=0。CI 原生 helper 为 14 passed / 1 skipped；本机 helper 的 15 passed 属于不同平台结果。GSSAPI 再次通过 3 项单元、4 个认证场景与 3 次新 cache 健康检查。
+
+Windows 原生同样 4/4 通过；Linux desktop 的 lrzsz 实跑 11 passed / 0 skipped，默认与 readiness PTY 均通过，X11/agent 各 1 passed / 0 skipped。macOS desktop 的 readiness 探针已通过 2 MiB 输出、UTF-8、退出码 7，随后重复关闭报 `PTY cleanup did not finish within the shutdown deadline` / `Repeated close failed to reap worker`；此时 Rust 测试已通过，但关闭回收门禁失败，正在诊断。
+
+第二轮最终为 6 个作业成功、1 个失败。Rust 总数分平台为 Linux 209 passed / 33 ignored、macOS 210 passed / 33 ignored、Windows 2022 和 2025 各 204 passed / 7 ignored；均为 0 failed。Windows 各自另有 2 项隔离 ConPTY 检查通过。这些通过项不覆盖失败的 macOS readiness 关闭周期。
+
+对失败的只读诊断未找到确定的 readiness 丢失唤醒：flow 条件变量在同锁下检查/等待，poll 有取消通道且单轮最长 250ms。原周期探针丢弃全部 Error/Exit，`done=false` 同时可能表示线程阻塞或回收已经报错，故现有日志无法判定根因。本机额外单轮 12 周期通过；自身进程栈采样主要观察到 child wait，只是成功运行中的等待位置，不等于失败原因。正在补充有界诊断，未扩大期限或改动回收算法。
+
+## 未关闭问题：P1-PTY-CLOSE-001
+
+macOS CI 的间歇关闭回收失败保留为待定位问题。readiness 默认关闭，但 child cleanup 与默认路径共用，尚不能证明问题只影响可选后端。关闭条件是取得失败阶段/根因证据、完成相应修复及有针对性的回归，并通过跨平台门禁；后续单轮 CI 绿灯不能单独关闭该问题。main 合并评审必须明确呈现这项风险。
+
+诊断提交 `c824b2f`（来源 `c860af3`）保留每轮编号、会话关联、close/wait 耗时及 Error/Exit；只有 `dev-tools` 且显式 `P0_PTY_CLEANUP_TRACE=1` 时输出静态回收阶段与随机会话 ID，不输出终端内容、凭据或环境值。两项 Unix CI 探针启用该变量。原超时、kill、ACK、回收次序保持不变。独立 Rust 审阅 PASS，仅批准诊断增强，不是根因修复。
+
+诊断版本机连续 5 轮、60/60 关闭周期通过，最大 wait 841ms，未复现；日志在 `/tmp/p1-readiness-diagnostic-run-{1..5}.log`，已独立核对。本机成功结果不覆盖第二轮 CI 失败。诊断合入后的门禁与下一轮 CI 另记。
+
+`c824b2f` 集成后本机门禁再次通过：fmt / Clippy / Rust 210 passed、33 ignored / wincheck / 前端 build / 浏览器 376 passed（2.1 分钟）/ 真实 OpenSSH 11 passed、0 skipped。本机日志为 `.artifacts/p1/batch1/*-diagnostic.log`；默认产品构建不启用诊断输出。下一轮 CI 将显式打开探针 trace，完整保留成功与失败阶段。

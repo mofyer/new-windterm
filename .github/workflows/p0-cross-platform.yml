@@ -194,11 +194,15 @@ jobs:
       - name: Run real Unix PTY probe
         id: pty
         if: matrix.real_pty
+        env:
+          P0_PTY_CLEANUP_TRACE: "1"
         run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-probe.log"
 
       - name: Run opt-in readiness Unix PTY probe
         id: pty_readiness
         if: matrix.real_pty
+        env:
+          P0_PTY_CLEANUP_TRACE: "1"
         run: cargo run --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-tools,pty-readiness --bin pty_probe 2>&1 | tee "$RUNNER_TEMP/p0-logs/pty-readiness-probe.log"
 
       # Private sshd (X11Forwarding yes) and Xvfb with a generated cookie; the
