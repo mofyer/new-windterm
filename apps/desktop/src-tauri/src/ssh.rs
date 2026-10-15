@@ -1618,9 +1618,17 @@ async fn read_key_bounded(
     cancel: watch::Receiver<bool>,
     read: impl FnOnce() -> Result<PrivateKeyWithHashAlg, String> + Send + 'static,
 ) -> Result<PrivateKeyWithHashAlg, String> {
+    read_key_with_capacity(&KEY_READS, cancel, read).await
+}
+
+async fn read_key_with_capacity(
+    capacity: &'static tokio::sync::Semaphore,
+    cancel: watch::Receiver<bool>,
+    read: impl FnOnce() -> Result<PrivateKeyWithHashAlg, String> + Send + 'static,
+) -> Result<PrivateKeyWithHashAlg, String> {
     // A cancelled filesystem read cannot be forcibly stopped. Keep its permit
     // in the blocking closure, even after its awaiting operation has gone away.
-    let permit = KEY_READS
+    let permit = capacity
         .try_acquire()
         .map_err(|_| "Private key reader capacity reached")?;
     tokio::task::spawn_blocking(move || {
@@ -1793,20 +1801,23 @@ mod tests {
 
     #[tokio::test]
     async fn cancelled_reader_holds_capacity_until_blocking_work_really_ends() {
+        // Other loopback authentication tests also use KEY_READS concurrently.
+        // Exercise the same reader logic without reserving their global capacity.
+        static CAPACITY: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(MAX_ACTIVE);
         let reserved: Vec<_> = (0..MAX_ACTIVE - 1)
-            .map(|_| KEY_READS.try_acquire().unwrap())
+            .map(|_| CAPACITY.try_acquire().unwrap())
             .collect();
         let (cancel, receiver) = watch::channel(false);
         let (started, ready) = tokio::sync::oneshot::channel();
         let (release, wait) = std::sync::mpsc::channel();
-        let task = tokio::spawn(read_key_bounded(receiver, move || {
+        let task = tokio::spawn(read_key_with_capacity(&CAPACITY, receiver, move || {
             started.send(()).unwrap();
             wait.recv().unwrap();
             Err("controlled read finished".into())
         }));
         ready.await.unwrap();
         assert_eq!(
-            read_key_bounded(cancel.subscribe(), || unreachable!())
+            read_key_with_capacity(&CAPACITY, cancel.subscribe(), || unreachable!())
                 .await
                 .err()
                 .unwrap(),
@@ -1815,22 +1826,46 @@ mod tests {
         cancel.send_replace(true);
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
-        assert!(KEY_READS.try_acquire().is_err());
+        assert!(CAPACITY.try_acquire().is_err());
         release.send(()).unwrap();
-        let released = tokio::time::timeout(Duration::from_secs(2), KEY_READS.acquire())
+        let released = tokio::time::timeout(Duration::from_secs(2), CAPACITY.acquire())
             .await
             .unwrap()
             .unwrap();
         drop(released);
         assert_eq!(
-            read_key_bounded(cancel.subscribe(), || unreachable!())
+            read_key_with_capacity(&CAPACITY, cancel.subscribe(), || unreachable!())
                 .await
                 .err()
                 .unwrap(),
             "SSH operation cancelled"
         );
         drop(reserved);
-        assert_eq!(KEY_READS.available_permits(), MAX_ACTIVE);
+        assert_eq!(CAPACITY.available_permits(), MAX_ACTIVE);
+    }
+
+    #[tokio::test]
+    async fn saturated_reader_capacity_drops_unstarted_work_without_affecting_another_pool() {
+        static BUSY: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+        static FREE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+        let held = BUSY.try_acquire().unwrap();
+        let (_cancel, receiver) = watch::channel(false);
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let result = read_key_with_capacity(&BUSY, receiver.clone(), move || {
+            started.send(()).unwrap();
+            panic!("saturated reader must not execute its read closure");
+        })
+        .await;
+        assert_eq!(result.err().unwrap(), "Private key reader capacity reached");
+        // This is the deterministic cause of the previous ready.await RecvError.
+        assert!(ready.await.is_err());
+        let result =
+            read_key_with_capacity(&FREE, receiver, || Err("independent read ran".into())).await;
+        assert_eq!(result.err().unwrap(), "independent read ran");
+        assert_eq!(BUSY.available_permits(), 0);
+        assert_eq!(FREE.available_permits(), 1);
+        drop(held);
+        assert_eq!(BUSY.available_permits(), 1);
     }
     #[test]
     fn output_is_bounded_across_both_streams() {
