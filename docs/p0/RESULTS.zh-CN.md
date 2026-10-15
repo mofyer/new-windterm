@@ -4,6 +4,27 @@
 
 
 本轮（2026-10-11 至 10-13）的汇总归档见 [P0 工作归档](P0_ARCHIVE_2026-10.zh-CN.md)。
+## 2026-10-15：中断任务续做（集成验证中）
+
+- **WL-1/2/3**：`831b354` 将用户已批准的三个 Windows shell 能力补为 T35–T37，基线共 164 项；三段结构验证通过。新增项仍为未实现、行为未验证，冻结字段未变。
+- **C04 虚拟串口**：`c6cc289` 新增仅开发依赖 `serialport =4.10.1`（关闭默认特性），通过真实 SerialPort API 对私有 PTY 做 4 项测试。macOS arm64 4/4；读写、配置读取、超时恢复、对端关闭。独立 Rust 评审发现 macOS `ptsname` 共享缓冲的并发风险，已用静态 Mutex 保护 PTY 分配与路径获取，复审通过。属于 loopback 夹具证据，不是 UART、设备枚举、热插拔或产品串口会话验收。Linux 待本批 CI，Windows 不运行该 Unix 测试。
+- **C14 GSSAPI**：`7daa310` 的独立 Rust crate 实现 Kerberos GSS 桥接、固定主机指纹和认证后远端证明；容器覆盖有效、缺失、过期、错误服务主体。评审指出缓存服务票据会掩盖 KDC 故障，现每个负例后用新 cache 重新 kinit 再正向认证，复审通过。3 项单测通过；Linux 真实认证待 CI，暂不提升 C14 证据分组或功能状态。容器预检另发现 Debian `kadmin.local` 需要 `krb5-admin-server`，已补安装与工具存在性检查。
+- **证据台账**：C04 从仅静态更新为原型/探针，计数为 68 / 95 / 1；层级为真实对端 23、真实平台 7、loopback 夹具 9、浏览器 29。三段结构校验再次通过，功能实现状态不变。
+- **CI 门禁**：新增 GSSAPI 隔离容器作业，并补齐原工作流中 X11、agent、非阻塞 lrzsz 的结果摘要。独立工作流审查指出探针路径过滤遗漏，已修复；`wincheck.sh` 在 Cargo 参数区固定 `--locked`，复审通过。
+
+本机已完成的门禁：
+
+| 门禁 | 2026-10-15 结果 |
+| --- | --- |
+| Rust fmt / Clippy 全 targets、全 features | 通过 |
+| Rust `cargo test --locked --all-features` | 209 passed / 0 failed / 33 ignored；ignored 不算通过 |
+| Windows 目标 wincheck | 通过；仅类型检查，不是 Windows 运行 |
+| OpenSSH/SFTP 四个 Node 测试入口 | 11 passed / 0 failed / 0 skipped |
+| 前端 build / Playwright 全套 | 通过 / 370 passed |
+| 台账三段结构验证 | 通过 |
+
+浏览器测试使用 IPC stub，不代表原生窗口；真实 OpenSSH 证据只覆盖夹具运行的路径。GSSAPI 的 Linux KDC 运行结果和新 CI 链接待本批运行后补充。未合并到 main。
+
 ## 输入路径：输入法、宽字符、粘贴与按键
 
 用浏览器层探针（Playwright 加 CDP 模拟输入法）检查了输入路径，见[说明](INPUT_PATHS.zh-CN.md)。共找到并修复 7 个真实缺陷，每个都附了回归测试；拿掉修复后，对应测试都会失败。
@@ -658,9 +679,9 @@ Rust 评审的 HIGH、3 个 MEDIUM 和 5 个 LOW 都已修复。代码评审结�
 - Wayland。
 - 经代理或跳板的 X11。
 
-GSSAPI（C14）仍然只有决策记录。
+该阶段 GSSAPI（C14）只有决策记录；2026-10-15 已新增独立探针，见本文顶部续做记录。
 
-## X11 转发与 GSSAPI（C15/C14）决策记录
+## X11 转发与 GSSAPI（C15/C14）早期决策记录
 
 russh 0.64.1 已提供 `request_x11` 与 `authenticate_gssapi_with_mic`，两项都不阻断当前路线。X11 将作为显式开启的第三种路由，采用不可信转发（假 cookie 替换）；GSSAPI 需要接系统 GSS（macOS GSS.framework、Linux libgssapi、Windows SSPI）。验证分别需要 XQuartz/Xvfb 与测试 Kerberos 领域，本机均不具备，未写实现代码。[决策记录与所需条件](X11_GSSAPI_ADR.zh-CN.md)
 

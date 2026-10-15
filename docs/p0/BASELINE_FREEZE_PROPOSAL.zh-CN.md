@@ -99,8 +99,8 @@
 | --- | --- |
 | 追踪 ID | 164（原 117 + 第二轮 13 + 冻结新增 31 + 冻结后新增 3）；冻结前 130，冻结当时 161 |
 | 静态复核结论 | 支持 135（含冻结新增 31 项与冻结后新增 3 项，取自候选表）、部分 23、矛盾 4（其中 Q06 为弱矛盾）、沉默 2；冻结前支持 101 |
-| P0 证据分组 | 原型/探针 67、仅静态 96、皆无 1（S08）；冻结前 64、65、1；2026-10-11 时为 57、72、1 |
-| “原型/探针”的证据层级 | 真实对端 23、真实平台 7、loopback 夹具 8、浏览器 29；冻结前 21、7、9、27；2026-10-11 时为 6、7、17、27 |
+| P0 证据分组 | 原型/探针 68、仅静态 95、皆无 1（S08）；冻结前 64、65、1；2026-10-11 时为 57、72、1 |
+| “原型/探针”的证据层级 | 真实对端 23、真实平台 7、loopback 夹具 9、浏览器 29；冻结前 21、7、9、27；2026-10-11 时为 6、7、17、27 |
 | 需要定措辞的冲突 | 4 项矛盾（G13、F08/F09、Q06）与 2 项路线图不一致（C14、G02），另有 4 项同步措辞（S11、G17、G33、F21）：均已按 E2–E7 定稿 |
 | 静态候选 | 36 项：纳入 31（其中 G53 限定范围）、不纳入 1（G43）、暂缓 4（C23、C28、G54、G55） |
 | 对齐计数标记 | S08 上游未证实；F08、F09 先确认上游是否存在；其余 161 项照常计入 |
@@ -336,15 +336,15 @@
 
 | 系列 | 总数 | 原型/探针 | 仅静态 | 皆无 |
 | --- | ---: | ---: | ---: | ---: |
-| C | 26 | 18 | 8 | 0 |
+| C | 26 | 19 | 7 | 0 |
 | T | 37 | 22 | 15 | 0 |
 | F | 26 | 12 | 14 | 0 |
 | G | 52 | 7 | 45 | 0 |
 | S | 17 | 2 | 14 | 1 |
 | Q | 6 | 6 | 0 | 0 |
-| 合计 | 164 | 67 | 96 | 1 |
+| 合计 | 164 | 68 | 95 | 1 |
 
-“原型/探针”组按证据层级再分：真实对端 23 项（真实 OpenSSH、tmux、telnetd、lrzsz，以及 Linux CI 上的 OpenSSH 加 Xvfb），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 8 项（russh 或测试内服务器、自发自收），浏览器 29 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C04、C14、F12 另有方案或决策记录，但没有运行证据。冻结前（130 项）分组为 64、65、1，层级为 21、7、9、27；差额来自冻结新增的 31 项和冻结后新增的 T35–T37，分别见下文对应记录；后 3 项只增加“仅静态”计数，不改变运行证据层级。
+“原型/探针”组按证据层级再分：真实对端 23 项（真实 OpenSSH、tmux、telnetd、lrzsz，以及 Linux CI 上的 OpenSSH 加 Xvfb），真实平台 7 项（CI 或本机真实 PTY、原生构建），loopback 夹具 9 项（russh 或测试内服务器、自发自收），浏览器 29 项（headless Chrome 探针、隔离 PoC 或 IPC stub 界面原型）。“仅静态”组中 C14、F12 另有方案或决策记录，但没有运行证据。冻结前（130 项）分组为 64、65、1，层级为 21、7、9、27；差额来自冻结新增的 31 项、冻结后新增的 T35–T37，以及 2026-10-15 C04 的虚拟串口探针证据，分别见下文对应记录；后 3 项只增加“仅静态”计数，不改变运行证据层级。
 
 [UI_MAP](UI_MAP.zh-CN.md#已实现的原型行为) 还把部分界面原型映射到 S02、S08、G04、G09、G10、G19、G26、G27、F13、F21。这些入口使用演示数据或模拟状态机，或者语义与该行不同，因此不计为运行证据。各行的“覆盖范围与缺口”写明了理由；baseline.json 的 `evidence_refresh.ui_prototype_not_counted` 列出同一组 ID。F02、F03 原先也在这一组；2026-10-12 起它们有 SFTP 写操作原型的运行证据，因此移出，但原型中的模拟传输队列仍然不计为运行证据。
 
@@ -394,7 +394,7 @@ E8 决定后，(b) 表中纳入的 31 项按本节的分组与层级规则加入
 | C01 | SSH v2 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_TERMINAL](SSH_TERMINAL.zh-CN.md#验证与未验收项)、[OPENSSH_INTERACTIVE](OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作)、[RESULTS](RESULTS.zh-CN.md#持久化主机信任) | loopback russh 交互通道、真实 OpenSSH shell 互操作与主机信任持久化；无断线重连，rekey 被拒绝 |
 | C02 | Telnet | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [NET_TERMINAL](NET_TERMINAL.zh-CN.md#证据)、[TRANSPORTS](TRANSPORTS.zh-CN.md#telnetc02)、[NET_TERMINAL](NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12) | Telnet 编解码与终端标签（测试内 loopback 服务器）；本机以非 root 对 Apple telnetd 308 做回环互操作，被测程序是测试脚本而非 login(1)；无网络设备与其它 telnetd，CI 未运行 |
 | C03 | Raw TCP | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [NET_TERMINAL](NET_TERMINAL.zh-CN.md#证据) | Raw TCP 终端标签的字节完整性与背压，仅 loopback；无真实服务互操作 |
-| C04 | 串口 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | [TRANSPORTS](TRANSPORTS.zh-CN.md#串口c04) | 仅验证计划，需要 USB 串口设备；无代码（不计为运行证据） |
+| C04 | 串口 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [TRANSPORTS](TRANSPORTS.zh-CN.md#串口c04) | Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口 |
 | C05 | SSH 认证后自动执行 | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 仅静态 | — | — | 无 P0 原型或探针 |
 | C06 | SSH ControlMaster | [部分](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | loopback 夹具 | [CONTROLMASTER_ADR](CONTROLMASTER_ADR.zh-CN.md#证据) | 单连接多 PTY 通道探针（russh 夹具）与提议 ADR；无外部 ControlPath |
 | C07 | ProxyCommand | [支持](UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发) | 原型/探针 | 真实对端 | [SSH_FORWARDING](SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](SSH_ROUTES.zh-CN.md#证据macos-arm64本地) | 不经 shell 的 ProxyCommand 探针；已接入连接对话框，确认 argv 后经 /usr/bin/nc 到达真实 OpenSSH（只读 SFTP）与 russh 夹具，IPC stub 界面；不保存配置，只在 macOS 运行 |

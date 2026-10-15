@@ -164,21 +164,22 @@
           "result": "支持；证据类型 D R I B L；静态证据不等于行为已验证"
         },
         {
-          "type": "p0_decision_record",
+          "type": "p0_prototype_probe",
           "source": "docs/p0/TRANSPORTS.zh-CN.md#串口c04",
-          "result": "仅验证计划，需要 USB 串口设备；无代码"
+          "result": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口"
         }
       ],
       "static_review_conclusion": "supported",
-      "p0_evidence_group": "static_only",
-      "p0_evidence_note": "仅验证计划，需要 USB 串口设备；无代码",
+      "p0_evidence_group": "prototype_or_probe",
+      "p0_evidence_note": "Rust serialport API 虚拟 PTY 对：双向全字节读写、配置读取、超时恢复、对端关闭；macOS 4 项通过；非真实 UART，未测枚举、波特率物理效果、热插拔或 Windows 串口",
       "upstream_ui": "entry_observed_only",
       "upstream_protocol": "not_tested",
       "parity": "not_verified",
       "verification_path": "受控本地/测试网协议端点：正常、拒绝、断线、取消、重连；保存两端日志与字节/连接状态。 专项：设备枚举、波特率等串口配置、读写和拔插",
       "not_tested_reason": "缺少物理串口/回环适配器；伪终端不能替代拔插和驱动验证。",
       "upstream_behavior": "not_tested",
-      "scope_origin": "initial_117"
+      "scope_origin": "initial_117",
+      "p0_evidence_level": "loopback_fixture"
     },
     {
       "id": "C05",
@@ -5979,8 +5980,8 @@
       "silent": 2
     },
     "p0_evidence_counts": {
-      "prototype_or_probe": 67,
-      "static_only": 96,
+      "prototype_or_probe": 68,
+      "static_only": 95,
       "neither": 1
     },
     "p0_evidence_group_meaning": {
@@ -5991,7 +5992,7 @@
     "p0_evidence_level_counts": {
       "real_peer": 23,
       "real_platform": 7,
-      "loopback_fixture": 8,
+      "loopback_fixture": 9,
       "browser": 29
     },
     "p0_evidence_level_meaning": {
@@ -6067,7 +6068,8 @@
     "static_candidates_outside_ids": 5,
     "candidate_ids_assigned": 31,
     "freeze_additions_static_conclusion": "The 31 baseline-freeze additions take 'supported' from the static review candidate table: the inclusion criterion (an explicit menu, action, config or string in the release bundle) matches the 'supported' definition. This is static evidence only.",
-    "post_freeze_additions_note": "T35-T37 (user-approved 2026-10-12) are indexed like the 31 freeze additions: supported by the Windows/Linux static review candidate table, static_only."
+    "post_freeze_additions_note": "T35-T37 (user-approved 2026-10-12) are indexed like the 31 freeze additions: supported by the Windows/Linux static review candidate table, static_only.",
+    "post_freeze_probe_refresh": "2026-10-15: C04 virtual serial API probe on macOS; no real UART or product integration acceptance."
   },
   "post_freeze_additions": {
     "approved_on": "2026-10-12",

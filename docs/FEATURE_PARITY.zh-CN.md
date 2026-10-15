@@ -26,7 +26,7 @@
 | C01 | SSH v2 | P2 | 交互、缩放、退出码、断线状态；首次主机密钥确认和变化拒绝 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_TERMINAL](p0/SSH_TERMINAL.zh-CN.md#验证与未验收项)、[OPENSSH_INTERACTIVE](p0/OPENSSH_INTERACTIVE.zh-CN.md#rust-ssh_open-互操作)、[RESULTS](p0/RESULTS.zh-CN.md#持久化主机信任) |
 | C02 | Telnet | P2 | 协议协商、交互和断线；匹配上游配置项 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [NET_TERMINAL](p0/NET_TERMINAL.zh-CN.md#证据)、[TRANSPORTS](p0/TRANSPORTS.zh-CN.md#telnetc02)、[NET_TERMINAL](p0/NET_TERMINAL.zh-CN.md#真实-telnetd-互操作2026-10-12) |
 | C03 | Raw TCP | P2 | 双向字节流、编码及关闭行为 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [NET_TERMINAL](p0/NET_TERMINAL.zh-CN.md#证据) |
-| C04 | 串口 | P2 | 设备枚举、波特率等串口配置、读写和拔插 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：仅静态，另有方案记录 [TRANSPORTS](p0/TRANSPORTS.zh-CN.md#串口c04)（无运行证据） |
+| C04 | 串口 | P2 | 设备枚举、波特率等串口配置、读写和拔插 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [TRANSPORTS](p0/TRANSPORTS.zh-CN.md#串口c04) |
 | C05 | SSH 认证后自动执行 | P2 | 显式启用、执行顺序、失败及重连策略；不误重放输入 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：仅静态 |
 | C06 | SSH ControlMaster | P2 | 复用连接、主从生命周期及退出隔离 | 未实现 | 静态：[部分](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [CONTROLMASTER_ADR](p0/CONTROLMASTER_ADR.zh-CN.md#证据) |
 | C07 | ProxyCommand | P2 | 命令参数、代理进程关闭和错误反馈 | 未实现 | 静态：[支持](p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#协议认证代理与转发)；P0：原型/探针 [SSH_FORWARDING](p0/SSH_FORWARDING.zh-CN.md#经代理连接与-proxycommandc07c19c20)、[SSH_ROUTES](p0/SSH_ROUTES.zh-CN.md#证据macos-arm64本地) |
