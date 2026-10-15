@@ -160,14 +160,46 @@ fn run() -> Result<(), String> {
         }
         println!("PASS real PTY: ownership, resize 132x43, UTF-8 bytes, 2 MiB exact output, Ctrl-C, exit 7, idempotent close; peak unacknowledged={} bytes", session.peak_pending_bytes());
 
-        for _ in 0..12 {
-            let next = sessions.open("cycle", 80, 24, Arc::new(|_| Ok(())))?;
+        for cycle in 1..=12 {
+            println!("START PTY close cycle {cycle}/12 with withheld ACKs");
+            let cycle_started = Instant::now();
+            // Preserve only lifecycle evidence: never buffer terminal Data or ACK it.
+            // The fixed fixture can emit only a few Error/Exit events per session.
+            let (lifecycle_sender, lifecycle_receiver) = sync_channel(8);
+            let next = sessions.open(
+                "cycle",
+                80,
+                24,
+                Arc::new(move |event| {
+                    if !matches!(event, PtyEvent::Data { .. })
+                        && lifecycle_sender.try_send(event).is_err()
+                    {
+                        eprintln!(
+                            "PTY close cycle {cycle}/12 lifecycle evidence channel unavailable"
+                        );
+                    }
+                    Ok(())
+                }),
+            )?;
+            println!("PTY close cycle {cycle}/12 session={next}");
             let active = sessions.get("cycle", &next)?;
             active.write(b"yes bounded-output\n".to_vec())?;
             std::thread::sleep(Duration::from_millis(30));
+            let close_started = Instant::now();
+            println!("PTY close cycle {cycle}/12 close begin");
             sessions.close("cycle", &next)?;
-            if !active.wait_closed(Duration::from_secs(2)) {
-                return Err("Repeated close failed to reap worker".into());
+            let close_ms = close_started.elapsed().as_millis();
+            println!("PTY close cycle {cycle}/12 close returned after {close_ms} ms");
+            let wait_started = Instant::now();
+            let reaped = active.wait_closed(Duration::from_secs(2));
+            let wait_ms = wait_started.elapsed().as_millis();
+            let lifecycle: Vec<_> = lifecycle_receiver.try_iter().collect();
+            println!(
+                "PTY close cycle {cycle}/12: reaped={reaped} close_ms={close_ms} wait_ms={wait_ms} total_ms={} lifecycle={lifecycle:?}",
+                cycle_started.elapsed().as_millis()
+            );
+            if !reaped {
+                return Err(format!("Repeated close failed to reap worker in cycle {cycle}/12; close_ms={close_ms} wait_ms={wait_ms} lifecycle={lifecycle:?}"));
             }
         }
         println!("PASS 12 real PTY open/write/close cycles with withheld ACKs and worker reaping");

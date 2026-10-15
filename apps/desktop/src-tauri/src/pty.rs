@@ -82,6 +82,16 @@ pub enum PtyEvent {
 
 pub type EventSink = Arc<dyn Fn(PtyEvent) -> Result<(), String> + Send + Sync>;
 
+// Explicit probe-only diagnostics. Never include terminal data or command text.
+macro_rules! cleanup_trace {
+    ($id:expr, $stage:expr) => {
+        #[cfg(feature = "dev-tools")]
+        if std::env::var("P0_PTY_CLEANUP_TRACE").as_deref() == Ok("1") {
+            eprintln!("PTY cleanup session={} stage={}", $id, $stage);
+        }
+    };
+}
+
 #[derive(Default)]
 struct Flow {
     sent: u64,
@@ -569,6 +579,9 @@ fn launch_workers(
         })
     };
     thread::spawn(move || {
+        #[cfg(feature = "dev-tools")]
+        let trace_id = read_id.clone();
+        cleanup_trace!(&read_id, "reader_loop.begin");
         if let Err(message) = reader_loop(
             &session,
             reader.as_mut(),
@@ -579,6 +592,7 @@ fn launch_workers(
         ) {
             terminal_error(&sink, &read_id, message);
         }
+        cleanup_trace!(&read_id, "reader_loop.end");
         #[cfg(unix)]
         let status = cleanup_child(&session, child.as_mut(), &sink, &read_id);
         // Reader errors (ACK timeout, sink failure) end the tree too; after a
@@ -592,7 +606,9 @@ fn launch_workers(
             // stuck on a full pipe.
             drain(reader.as_mut());
         }
+        cleanup_trace!(&read_id, "reader_drop.begin");
         drop(reader);
+        cleanup_trace!(&read_id, "reader_drop.end");
         #[cfg(windows)]
         let status = match waiter.join() {
             Ok(Ok(status)) => Some(status),
@@ -606,8 +622,14 @@ fn launch_workers(
             }
         };
         #[cfg(all(feature = "pty-readiness", unix))]
-        drop(readiness);
+        {
+            cleanup_trace!(&read_id, "readiness_drop.begin");
+            drop(readiness);
+            cleanup_trace!(&read_id, "readiness_drop.end");
+        }
+        cleanup_trace!(&read_id, "writer_join.begin");
         let writer_reaped = writer_worker.join().is_ok();
+        cleanup_trace!(&read_id, "writer_join.end");
         if !writer_reaped {
             terminal_error(
                 &sink,
@@ -616,6 +638,7 @@ fn launch_workers(
             );
         }
         let reaped = status.is_some() && writer_reaped;
+        cleanup_trace!(&read_id, "exit_event.begin");
         terminal_event(
             &sink,
             PtyEvent::Exit {
@@ -629,6 +652,10 @@ fn launch_workers(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = reaped;
         session.done.1.notify_all();
+        cleanup_trace!(
+            &trace_id,
+            if reaped { "done.reaped" } else { "done.failed" }
+        );
     });
 }
 
@@ -862,22 +889,34 @@ fn cleanup_child(
     read_id: &str,
 ) -> Option<portable_pty::ExitStatus> {
     // Try reaping a natural exit first, avoiding a late signal to a recycled PID.
-    match child.try_wait() {
+    cleanup_trace!(read_id, "child_try_wait.begin");
+    let status = child.try_wait();
+    cleanup_trace!(read_id, "child_try_wait.end");
+    match status {
         Ok(Some(status)) => {
             session.flow_state().close();
+            cleanup_trace!(read_id, "natural_master_drop.begin");
             session
                 .master
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take();
+            cleanup_trace!(read_id, "natural_master_drop.end");
             Some(status)
         }
         _ => {
+            cleanup_trace!(read_id, "session_close.begin");
             session.close();
+            cleanup_trace!(read_id, "session_close.end");
+            cleanup_trace!(read_id, "child_kill.begin");
             if let Err(error) = child.kill() {
                 terminal_error(sink, read_id, format!("PTY termination failed: {error}"));
             }
-            match child.wait() {
+            cleanup_trace!(read_id, "child_kill.end");
+            cleanup_trace!(read_id, "child_wait.begin");
+            let result = child.wait();
+            cleanup_trace!(read_id, "child_wait.end");
+            match result {
                 Ok(status) => Some(status),
                 Err(error) => {
                     terminal_error(sink, read_id, format!("PTY reaping failed: {error}"));
