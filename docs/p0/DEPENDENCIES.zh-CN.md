@@ -1,17 +1,18 @@
 # 依赖与许可证清单
 
-日期：2026-10-11；2026-10-12 增加开发依赖 `zmodem2`。依据为仓库锁文件（`apps/desktop/src-tauri/Cargo.lock`、`apps/desktop/package-lock.json`）中的声明许可证，涵盖所有目标平台的条件依赖。本页是 P0 出口要求的清单与风险判断，不是法律意见；发行前仍需生成并随包附带第三方许可证文本。
+日期：2026-10-11；2026-10-12 增加开发依赖 `zmodem2`，2026-10-15 增加串口探针开发依赖 `serialport`。依据为仓库锁文件（`apps/desktop/src-tauri/Cargo.lock`、`apps/desktop/package-lock.json`）中的声明许可证，涵盖所有目标平台的条件依赖。本页是 P0 出口要求的清单与风险判断，不是法律意见；发行前仍需生成并随包附带第三方许可证文本。
 
 ## 结论
 
-- **没有 GPL/AGPL/SSPL/BUSL 依赖，也没有缺失许可证声明的包。**
-- Rust 侧 528 个 crate（含仅用于测试的开发依赖），绝大多数为 MIT / Apache-2.0 双许可。需要注意的只有两类：
-  - **MPL-2.0（文件级 copyleft）**：`cssparser`、`cssparser-macros`、`selectors`、`dtoa-short`（Tauri/WebView 工具链的 CSS 解析）与 `option-ext`。不修改源文件时可随 Apache-2.0 项目分发；若修改这些文件，需公开修改后的文件。
+- **没有必须选择 GPL/AGPL/SSPL/BUSL 的依赖，也没有缺失许可证声明的包。** `unescaper` 提供 `MIT OR GPL-3.0-only`，本项目选择 MIT。
+- Rust 侧 533 个 crate（含仅用于测试的开发依赖），绝大多数为 MIT / Apache-2.0 双许可。需要注意的只有两类：
+  - **MPL-2.0（文件级 copyleft）**：`cssparser`、`cssparser-macros`、`selectors`、`dtoa-short`（Tauri/WebView 工具链的 CSS 解析）、`option-ext` 与串口探针开发依赖 `serialport`。不修改源文件时可随 Apache-2.0 项目分发；若修改这些文件，需公开修改后的文件。
   - **LGPL-2.1-or-later 仅作为可选项**：`r-efi` 为 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`，按 MIT/Apache-2.0 使用。
 - 其余非 MIT/Apache 许可均为宽松许可：Unicode-3.0（ICU4X 数据与 `unicode-ident`）、Zlib、BSD-2/3-Clause、ISC、0BSD、Unlicense、CC0、`Apache-2.0 WITH LLVM-exception`。`ring` 为 `Apache-2.0 AND ISC`。
 - 前端运行时只打包 4 个 npm 包：`@xterm/xterm`、`@xterm/addon-fit`、`@xterm/addon-unicode11`（MIT）与 `@tauri-apps/api`（Apache-2.0 OR MIT）。
 - 开发依赖中的 `lightningcss`（MPL-2.0，Vite 构建期 CSS 工具）不进入发行产物。
 - Rust 开发依赖 `zmodem2 =0.7.3`（MIT OR Apache-2.0）只被 `tests/zmodem_lrzsz.rs` 的 ZMODEM 评估测试使用，不进入库、应用或发行包。它的依赖 `bitflags`/`hex`/`thiserror` 原本就在锁文件中，引入后锁文件只多了它一项。评估结论是不作为产品依赖采用，见 [MODEM](MODEM.zh-CN.md#zmodem2-评估2026-10-12)。
+- Rust 开发依赖 `serialport =4.10.1`（MPL-2.0）只被 `tests/serial_virtual_pair.rs` 使用，不接入产品库或发行包，未修改上游源文件。禁用默认特性，不引入 `libudev`；锁文件新增 `serialport`、`io-kit-sys 0.4.1`（MIT / Apache-2.0）、`mach2 0.4.3`（BSD-2-Clause OR MIT OR Apache-2.0）、`nix 0.26.4`（MIT）和 `unescaper 0.1.10`（MIT OR GPL-3.0-only，选择 MIT）共 5 项。声明已通过 `cargo metadata --locked` 与下载包 `LICENSE.txt` 核对；探针范围见 [TRANSPORTS](TRANSPORTS.zh-CN.md#串口c04)。
 - 互操作测试使用的 lrzsz（GPL）是测试机上安装的外部程序，只作为独立进程运行；没有链接或复制它的代码，也不随应用分发。
 - 原生 WebView 冒烟测试（[NATIVE_WEBVIEW_SMOKE](NATIVE_WEBVIEW_SMOKE.zh-CN.md)）只在 CI runner 上安装三个外部工具，均作为独立进程运行，不进入锁文件、应用或发行包：`tauri-driver =2.0.6`（Apache-2.0 OR MIT，`cargo install --locked`）；Linux 的 apt `webkit2gtk-driver`（WebKit 的 LGPL/BSD 许可，版本与已安装的 `libwebkit2gtk-4.1-0` 相同）；Windows 的 msedgedriver（Microsoft 软件许可条款，按 WebView2 Runtime 版本下载，不再分发）。测试客户端只用 Node 内置 `fetch`，没有新增 npm 依赖。
 - `@xterm/addon-image 0.9.0`（MIT）只作为开发依赖，供隔离的 SIXEL 原型与其 Playwright 测试使用，生产入口没有引用它，`vite build` 产物中不含该插件。它的发布包内联了两个 MIT 库编译出的 WebAssembly：`sixel`（jerch/node-sixel）和 `xterm-wasm-parts`，没有运行时依赖。评估过程见[终端内核技术调整建议](TERMINAL_CORE_ADR.zh-CN.md)。
@@ -32,6 +33,7 @@
 | @xterm/addon-image（开发依赖） | 0.9.0 | MIT | 仅 SIXEL 隔离原型；与 xterm 6.0.0 同一提交 `f447274` 发布 |
 | @tauri-apps/api | 2.12.3 | Apache-2.0 OR MIT | 前端 IPC |
 | zmodem2（Rust 开发依赖） | =0.7.3 | MIT OR Apache-2.0 | 仅 ZMODEM 评估测试；不进入产品 |
+| serialport（Rust 开发依赖） | =4.10.1 | MPL-2.0 | 仅 Unix 虚拟串口 API 探针；不进入产品 |
 
 ## 系统组件（不随应用分发）
 
