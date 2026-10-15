@@ -79,7 +79,7 @@ $("#app").innerHTML = `
 </header>
 <div class="app-body">
   <aside class="sidebar"><div class="sidebar-top"><span>会话</span><button id="sidebar-add" class="icon-button" aria-label="新建演示会话">${icon("plus")}</button></div><label class="session-search">${icon("search")}<input id="session-search" aria-label="筛选会话" placeholder="筛选会话"/></label><div class="section-label">已打开 <span id="session-count"></span></div><div id="session-list"></div><div class="sidebar-bottom"><label>${icon("settings")}外观<select id="theme" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><button id="compact-toggle">紧凑布局 <span>关</span></button></div></aside>
-  <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button type="button" id="forward-open" hidden>端口转发</button><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div id="file-demo"><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")} /home/demo/project</div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性。</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">以上为模拟数据，不读取本机或服务器文件。</p><button type="button" id="sftp-connect" class="ssh-verification-entry">${icon("shield")}只读连接 SFTP · 仅桌面</button></div><div id="sftp-view" hidden></div></aside></div><div class="terminal-status"><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列 <span class="badge" id="transfer-count">0</span></span><span id="transfer-summary">暂无任务 · 模拟交互 ${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
+  <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button type="button" id="local-reopen" aria-label="重新打开本地终端" hidden>重新打开</button><button type="button" id="forward-open" hidden>端口转发</button><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div id="file-demo"><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")} /home/demo/project</div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性。</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">以上为模拟数据，不读取本机或服务器文件。</p><button type="button" id="sftp-connect" class="ssh-verification-entry">${icon("shield")}只读连接 SFTP · 仅桌面</button></div><div id="sftp-view" hidden></div></aside></div><div class="terminal-status"><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列 <span class="badge" id="transfer-count">0</span></span><span id="transfer-summary">暂无任务 · 模拟交互 ${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
 </div>
 <dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程。</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接。<br/>真实 SSH 请使用下方独立入口；只读 SFTP 在文件面板中连接。</span></div><button type="button" id="ssh-terminal-open" class="ssh-verification-entry">打开真实 SSH 终端 · 仅桌面</button><button type="button" id="ssh-verification-open" class="ssh-verification-entry">打开真实 SSH 验证 · 仅桌面</button><button type="button" id="net-terminal-open" class="ssh-verification-entry">打开 Telnet / Raw TCP 终端 · 仅桌面</button><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
 <dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">HOST VERIFICATION · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
@@ -164,6 +164,7 @@ const statusElements = {
   sample: $("#sample-run") as HTMLButtonElement,
   stress: $("#stress-run") as HTMLButtonElement,
   forward: $("#forward-open") as HTMLButtonElement,
+  reopen: $("#local-reopen") as HTMLButtonElement,
 };
 let statusTimer: number | undefined;
 function scheduleStatusUpdate() {
@@ -184,7 +185,7 @@ function updateStatus() {
   const detail = s
     ? s.mode === "demo"
       ? "演示环境 / 不执行系统命令"
-      : s.mode === "pty" ? "本机 shell / 输入将实际执行"
+      : s.mode === "pty" ? s.ended ? "本机 shell 已结束 / 不再发送输入" : "本机 shell / 输入将实际执行"
       : s.mode === "ssh" ? "远端 SSH / 输入将实际执行" : `远端 ${modeName(s)} / 输入将实际发送`
     : "";
   const clipboard = s?.vt.clipboardWrite ? " · OSC 52 可写剪贴板" : "";
@@ -194,6 +195,8 @@ function updateStatus() {
   const disabled = !s || s.mode !== "demo";
   if (statusElements.sample.disabled !== disabled) statusElements.sample.disabled = disabled;
   if (statusElements.stress.disabled !== disabled) statusElements.stress.disabled = disabled;
+  statusElements.reopen.hidden = s?.mode !== "pty" || !s.ended;
+  statusElements.reopen.disabled = !s || !s.ended || s.closing || s.disposed;
   const forwardHidden = s?.mode !== "ssh";
   if (statusElements.forward.hidden !== forwardHidden) statusElements.forward.hidden = forwardHidden;
   const forwardDisabled = !s || !forwardable(s);
@@ -565,17 +568,24 @@ async function openPty(s: Session) {
     s.ptyId = id;
     flushEarlyInput(s);
     s.status = "本机 shell 已启动";
-    await invoke("pty_resize", {
+    updateStatus();
+    // A resize failure is recoverable; it must not turn a live or exited shell
+    // into a failed launch, including when exit arrives while resize is pending.
+    void invoke("pty_resize", {
       id,
       cols: s.terminal.cols,
       rows: s.terminal.rows,
+    }).catch((error) => {
+      if (!s.ended && !s.disposed && !s.closing) backendError(s, error);
     });
-    updateStatus();
   } catch (error) {
+    if (s.disposed || s.ended) return;
+    s.ended = true;
     s.early = [];
     s.earlyBytes = 0;
-    if (s.disposed) return;
-    backendError(s, error);
+    s.input.clear();
+    s.status = `启动失败：${String(error)}`;
+    updateStatus();
     s.terminal.write("\r\n本地 PTY 启动失败。请查看底部状态。\r\n");
   }
 }
@@ -771,6 +781,14 @@ $("#local-open").onclick = () => {
     return;
   }
   createSession(`Local ${nextKey}`, "pty");
+};
+$("#local-reopen").onclick = () => {
+  const s = active();
+  if (!native || !s || s.mode !== "pty" || !s.ended || s.closing || s.disposed) return;
+  // Keep the old terminal for inspection. A new Session owns fresh queues and
+  // becomes active synchronously, so a second click cannot reopen it again.
+  createSession(`Local ${nextKey}`, "pty");
+  updateStatus();
 };
 $("#split-toggle").onclick = () => {
   if (!split && sessions.size < 2) createSession(`Demo ${nextKey}`, "demo");

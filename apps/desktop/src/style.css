@@ -335,7 +335,7 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 [data-theme="dark"] #ssh-kbdint-error { color: #e7aaaa; }
 
 /* SSH port forward sheet for one connected SSH tab (desktop only). */
-#forward-open[hidden] { display: none; }
+#forward-open[hidden], #local-reopen[hidden] { display: none; }
 #port-forward-dialog { width: min(640px, calc(100% - 32px)); }
 #port-forward-dialog [hidden] { display: none; }
 #port-forward-dialog fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
