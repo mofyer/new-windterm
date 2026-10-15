@@ -107,8 +107,9 @@ C14关闭问题所需最小实验：建立隔离KDC/sshd、客户端测试票据
 
 第一段验证冻结后的结构：
 
-- 161 个唯一 ID；
+- 164 个唯一 ID；
 - 原始 117 个 ID 与名称不变（名称按 2026-10-11 的值做 SHA-256 比对），第二轮 13 项同样比对；
+- 161 → 164：冻结后按用户批准补入 WL-1–WL-3，对应 T35–T37，只有静态证据，行为尚未验证；
 - 130 → 161：新增的 31 个 ID 与能力名称和[冻结提议 (b)](BASELINE_FREEZE_PROPOSAL.zh-CN.md#b-36-项静态候选)中“纳入”的行一致，没有删除任何 ID；
 - 不纳入与暂缓的编号（G43、C23、C28、G54、G55）不作为 ID 出现，候选序号 1–36 全部有去向；
 - 两份 Markdown 台账的名称、阶段、验收要点与验证路径和 baseline.json 一致，新增行状态为“未实现”；
@@ -130,9 +131,15 @@ added = ({'C22'} | {f'C{n}' for n in range(24, 28)} | {f'T{n}' for n in range(30
          | {'G41', 'G42'} | {f'G{n}' for n in range(44, 54)} | {f'S{n}' for n in range(14, 18)})
 held = {'C23', 'C28', 'G43', 'G54', 'G55'}
 origin = lambda o: {f['id'] for f in features if f['scope_origin'] == o}
-assert len(ids) == len(set(ids)) == 161 and len(added) == 31
+post = {'T35', 'T36', 'T37'}
+assert len(ids) == len(set(ids)) == 164 and len(added) == 31
 assert origin('initial_117') == initial and origin('p0_round_2') == round2 and origin('baseline_freeze_2026_10_12') == added
-assert set(ids) == initial | round2 | added and not set(ids) & held
+assert origin('post_freeze_2026_10_12') == post
+post_record = data['post_freeze_additions']
+assert set(post_record['added_ids']) == post and post_record['id_count_before'] == 161 and post_record['id_count_after'] == 164
+assert post_record['status_changes'] == 0 and post_record['approved_on'] == '2026-10-12'
+assert {m['candidate']: m['id'] for m in post_record['candidate_id_map']} == {'WL-1': 'T35', 'WL-2': 'T36', 'WL-3': 'T37'}
+assert set(ids) == initial | round2 | added | post and not set(ids) & held
 assert set(freeze['reserved_ids_never_reused']) == held and set(freeze['added_ids']) == added
 assert {c['proposed_id'] for c in freeze['deferred_candidates']} == {'C23', 'C28', 'G54', 'G55'}
 assert {c['proposed_id'] for c in freeze['excluded_candidates']} == {'G43'}
@@ -152,22 +159,23 @@ fp = (root / 'docs/FEATURE_PARITY.zh-CN.md').read_text()
 bl = (root / 'docs/p0/BASELINE.zh-CN.md').read_text()
 for text in (fp, bl):
     rows = re.findall(r'^\| ([CTFGSQ]\d\d) \| ([^|]+?) \|', text, re.M)
-    assert len(rows) == 161 and dict(rows) == {f['id']: f['capability'] for f in features}
+    assert len(rows) == 164 and dict(rows) == {f['id']: f['capability'] for f in features}
 fp_rows = {m[1]: m.groups()[1:] for m in re.finditer(r'^\| ([CTFGSQ]\d\d) \| [^|]+? \| ([^|]+?) \| ([^|]+?) \| ([^|]+?) \|', fp, re.M)}
 bl_rows = {m[1]: m[2] for m in re.finditer(r'^\| ([CTFGSQ]\d\d) \| [^|]+? \| [^|]+? \| ([^|]+?) \|', bl, re.M)}
 for f in features:
     assert fp_rows[f['id']][:2] == (f['phase'], f['acceptance']) and f['verification_path'].endswith(f['acceptance']), f['id']
     assert bl_rows[f['id']] == f"{f['verification_path']} **未测原因：**{f['not_tested_reason']}", f['id']
-assert all(fp_rows[i][2] == '未实现' for i in added)
-r2, r3 = [byid[i] for i in round2], [byid[i] for i in added]
+assert all(fp_rows[i][2] == '未实现' for i in added | post)
+r2, r3, r4 = [byid[i] for i in round2], [byid[i] for i in added], [byid[i] for i in post]
 assert sum(f['scope_classification'] == 'entry_observed' for f in r2) == 11
 assert sum(f['scope_classification'] == 'static_candidate' for f in r2) == 2
-assert all(f['scope_classification'] == 'static_candidate' and f['upstream_ui'] == 'not_tested' for f in r3)
+assert all(f['scope_classification'] == 'static_candidate' and f['upstream_ui'] == 'not_tested' for f in r3 + r4)
+assert all(f['platform_scope'] == 'windows' and f['p0_evidence_group'] == 'static_only' for f in r4)
 assert all(f['upstream_behavior'] == 'not_tested' and f['parity'] == 'not_verified' and f['implementation_status'] == 'not_delivered'
-           and f['evidence'] and f['verification_path'] and f['not_tested_reason'] for f in r2 + r3)
+           and f['evidence'] and f['verification_path'] and f['not_tested_reason'] for f in r2 + r3 + r4)
 assert {f.get('parity_counting') for f in features} <= set(freeze['parity_counting_meaning']) - {'absent'} | {None}
 assert data['scope_frozen'] is True and freeze['frozen_on'] == '2026-10-12' and freeze['id_count_after'] == 161
-print('PASS: 161 unique IDs; 117 original IDs and names preserved; 130 -> 161 (+31 freeze IDs, names as in proposal (b));'
+print('PASS: 164 unique IDs; 117 original IDs and names preserved; 130 -> 161 (+31 freeze IDs) plus T35-T37 post-freeze additions;'
       ' 5 held candidate IDs absent; scope frozen on 2026-10-12; no added behavior pass')
 PY
 ```
@@ -178,7 +186,7 @@ PY
 - 所有证据链接指向的文件和标题锚点存在；
 - 分组与 `p0_evidence_level` 自洽，`evidence_refresh` 中的计数和冻结提议 (d) 节的分系列计数可以复算；
 - 冻结提议有决定记录，(e) 节 E1–E12 每行都有决定列；
-- `scope_frozen` 为 `true`，31 个候选已分配 ID，5 个没有。
+- `scope_frozen` 为 `true`，冻结时 31 个候选已分配 ID，5 个没有；冻结后 T35–T37 另有批准记录。
 
 ```sh
 python3 - <<'PY'
@@ -286,7 +294,7 @@ ROW = re.compile(r'^\| ([CTFGSQ]\d\d) \| ([^|]+?) \| ([^|]+?) \| ([^|]+?) \| ([^
 old = {m[1]: m.groups()[1:] for m in ROW.finditer(show('docs/FEATURE_PARITY.zh-CN.md'))}
 new = {m[1]: m.groups()[1:] for m in ROW.finditer(Path('docs/FEATURE_PARITY.zh-CN.md').read_text())}
 REWORDED = {'G13', 'F08', 'F09', 'Q06', 'C14', 'G02', 'S11', 'G17', 'G33', 'F21', 'T14', 'T12', 'G12'}
-assert len(old) == 130 and len(new) == 161 and set(old) < set(new)
+assert len(old) == 130 and len(new) == 164 and set(old) < set(new)
 for i, (name, phase, acceptance, status) in old.items():
     assert new[i][0] == name and new[i][1] == phase and new[i][3] == status, i
     assert (new[i][2] != acceptance) == (i in REWORDED), i

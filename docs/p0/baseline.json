@@ -3,7 +3,7 @@
   "checked_on": "2026-10-11",
   "upstream_commit": "a8336c1d1e3dd1a981500dae8ef9eb42066de95f",
   "target_release": "2.7.0",
-  "scope": "161 tracked IDs: 117 preserved, 13 round-2 additions and 31 baseline-freeze additions; feature baseline frozen on 2026-10-12; behavior parity not verified",
+  "scope": "164 tracked IDs: 117 preserved, 13 round-2 additions, 31 baseline-freeze additions and 3 post-freeze additions (T35-T37, user-approved 2026-10-12); feature baseline frozen on 2026-10-12; behavior parity not verified",
   "features": [
     {
       "id": "C01",
@@ -5463,14 +5463,114 @@
       "scope_classification": "static_candidate",
       "implementation_status": "not_delivered",
       "static_candidate_no": 23
+    },
+    {
+      "id": "T35",
+      "capability": "WSL 发行版作为本地 Shell 会话（枚举、启动、当前目录检测）",
+      "phase": "P0→P1",
+      "acceptance": "仅 Windows：盘点上游如何枚举已安装的 WSL 发行版（静态线索为 wsl.exe --list --quiet）并作为本地 shell 会话类型列出；按发行版启动会话，核对终端字节流、尺寸变化与关闭生命周期；当前目录检测（静态线索为经 wsl.exe 读取 /proc/<pid>/cwd，与 F22 联合验收）；未安装 WSL、没有发行版、发行版未运行或启动失败时有明确反馈；发行版名称、路径与输出作为不可信数据；WSL 本地 sysmon 辅助程序按 S12 的平台范围验收；WSL1 与 WSL2、各 Windows 版本的差异以实机为准",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "UPSTREAM_STATIC_REVIEW_WINLINUX 候选 WL-1：WBIN “wsl.exe”“--list”“--quiet”“~ -d %1”，wsl.exe sh -c 读取 /proc/%1/cwd，\\\\wsl$\\%1；WIN/terminal/schemes/wsl/；WIN/terminal/applets/sysmon/wsl/",
+          "result": "发布包菜单、动作、默认配置或字符串存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md#平台专属候选提议未分配-id",
+          "result": "支持（Windows/Linux 静态复核候选 WL-1，冻结后经用户批准新增）；静态证据不等于行为已验证"
+        }
+      ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "P0 本地 PTY 在 macOS 与 Linux 上运行，Windows 只验证了 cmd.exe（计入 T01–T03），没有 WSL 发行版枚举或启动，不计为运行证据",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#冻结后新增2026-10-12-用户批准",
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "Windows 实机或 CI 虚拟机中的测试用 WSL 发行版（无秘密账户），记录枚举结果、会话字节流与当前目录检测；非 Windows 平台记为不适用。 步骤：仅 Windows：盘点上游如何枚举已安装的 WSL 发行版（静态线索为 wsl.exe --list --quiet）并作为本地 shell 会话类型列出；按发行版启动会话，核对终端字节流、尺寸变化与关闭生命周期；当前目录检测（静态线索为经 wsl.exe 读取 /proc/<pid>/cwd，与 F22 联合验收）；未安装 WSL、没有发行版、发行版未运行或启动失败时有明确反馈；发行版名称、路径与输出作为不可信数据；WSL 本地 sysmon 辅助程序按 S12 的平台范围验收；WSL1 与 WSL2、各 Windows 版本的差异以实机为准",
+      "not_tested_reason": "仅有 wsl.exe 相关字符串、方案目录与 sysmon 目录；未在 Windows 实机观察 WSL 枚举、启动与当前目录检测。",
+      "scope_origin": "post_freeze_2026_10_12",
+      "scope_classification": "static_candidate",
+      "implementation_status": "not_delivered",
+      "winlinux_candidate": "WL-1",
+      "platform_scope": "windows"
+    },
+    {
+      "id": "T36",
+      "capability": "Git Bash 与 Cygwin 本地 Shell 自动发现",
+      "phase": "P0→P1",
+      "acceptance": "仅 Windows：盘点上游发现 Git for Windows 与 Cygwin 的方式（静态线索为 GitForWindows 与 Cygwin setup 的注册表项、InstallPath 与 rootdir）、会话名称与启动参数（Git Bash 带 --login -i）；已安装、未安装、路径缺失或注册表项指向不存在目录时有明确反馈且不创建无效会话；安装信息只读发现，不修改注册表；会话启动、终端字节流与关闭生命周期核对；与 S14 的本机 shell 列表导入分别验收；是否还有其它 shell 的发现来源以实机为准",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "UPSTREAM_STATIC_REVIEW_WINLINUX 候选 WL-2：WBIN HKEY_LOCAL_MACHINE\\SOFTWARE\\GitForWindows、“InstallPath”、“gitbash”、“--login -i”；HKEY_LOCAL_MACHINE\\SOFTWARE\\Cygwin\\setup、“rootdir”、“/bin”、“bash.exe”、“cygwin”",
+          "result": "发布包菜单、动作、默认配置或字符串存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md#平台专属候选提议未分配-id",
+          "result": "支持（Windows/Linux 静态复核候选 WL-2，冻结后经用户批准新增）；静态证据不等于行为已验证"
+        }
+      ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "P0 本地 PTY 没有 Git Bash 或 Cygwin 的发现与启动，Windows 只验证了 cmd.exe（计入 T03），不计为运行证据",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#冻结后新增2026-10-12-用户批准",
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "Windows 测试环境，分别在已安装与未安装 Git for Windows、Cygwin 的隔离环境中记录发现结果与会话启动；只读读取注册表，不修改。 步骤：仅 Windows：盘点上游发现 Git for Windows 与 Cygwin 的方式（静态线索为 GitForWindows 与 Cygwin setup 的注册表项、InstallPath 与 rootdir）、会话名称与启动参数（Git Bash 带 --login -i）；已安装、未安装、路径缺失或注册表项指向不存在目录时有明确反馈且不创建无效会话；安装信息只读发现，不修改注册表；会话启动、终端字节流与关闭生命周期核对；与 S14 的本机 shell 列表导入分别验收；是否还有其它 shell 的发现来源以实机为准",
+      "not_tested_reason": "仅有注册表键名与启动参数字符串；未在安装了 Git for Windows 或 Cygwin 的 Windows 实机观察发现与启动。",
+      "scope_origin": "post_freeze_2026_10_12",
+      "scope_classification": "static_candidate",
+      "implementation_status": "not_delivered",
+      "winlinux_candidate": "WL-2",
+      "platform_scope": "windows"
+    },
+    {
+      "id": "T37",
+      "capability": "cmd 会话注入 Clink 行编辑",
+      "phase": "P0→P1",
+      "acceptance": "仅 Windows：盘点上游 cmd 会话（含管理员会话）注入 Clink 的行为：注入方式（静态线索为随包 clink_x64.exe inject）、行编辑、历史与补全增强的实际表现，以及与 T03、T05 的 cmd 会话和 G02 补全的关系；注入失败、Clink 缺失或被禁用时 cmd 会话仍可用并有明确反馈。本 ID 只记录上游能力，不构成捆绑 Clink 的承诺：Clink 为 GPLv3 组件，实现前必须先完成 GPLv3 许可证与分发评估（捆绑、改为用户自行安装的可选集成或不提供），评估通过并经用户批准前不得实现、捆绑或再分发 Clink；P0 原型的 cmd 会话不带 Clink 且关闭 AutoRun，保持不变",
+      "evidence": [
+        {
+          "type": "bundle_static_resource",
+          "source": "UPSTREAM_STATIC_REVIEW_WINLINUX 候选 WL-3：WV/clink/（1.3.15，GPLv3）；WBIN “${AppDir}/vendors/clink/clink_x64.exe” inject（两条，推断分别用于普通与管理员会话）",
+          "result": "发布包菜单、动作、默认配置或字符串存在；不是运行行为证明"
+        },
+        {
+          "type": "upstream_static_review",
+          "source": "docs/p0/UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md#平台专属候选提议未分配-id",
+          "result": "支持（Windows/Linux 静态复核候选 WL-3，冻结后经用户批准新增）；静态证据不等于行为已验证"
+        }
+      ],
+      "static_review_conclusion": "supported",
+      "p0_evidence_group": "static_only",
+      "p0_evidence_note": "P0 的 Windows cmd 会话是 cmd.exe /D /Q /K，不带 Clink，也关闭了 AutoRun（计入 T03），不计为运行证据",
+      "freeze_decision_ref": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#冻结后新增2026-10-12-用户批准",
+      "upstream_ui": "not_tested",
+      "upstream_protocol": "not_tested",
+      "upstream_behavior": "not_tested",
+      "parity": "not_verified",
+      "verification_path": "Windows 测试环境中的上游 2.7.0 隔离副本，对照普通与管理员 cmd 会话的行编辑、历史与补全表现；许可证与分发评估单独记录，评估前不捆绑 Clink。 步骤：仅 Windows：盘点上游 cmd 会话（含管理员会话）注入 Clink 的行为：注入方式（静态线索为随包 clink_x64.exe inject）、行编辑、历史与补全增强的实际表现，以及与 T03、T05 的 cmd 会话和 G02 补全的关系；注入失败、Clink 缺失或被禁用时 cmd 会话仍可用并有明确反馈。本 ID 只记录上游能力，不构成捆绑 Clink 的承诺：Clink 为 GPLv3 组件，实现前必须先完成 GPLv3 许可证与分发评估（捆绑、改为用户自行安装的可选集成或不提供），评估通过并经用户批准前不得实现、捆绑或再分发 Clink；P0 原型的 cmd 会话不带 Clink 且关闭 AutoRun，保持不变",
+      "not_tested_reason": "仅有随包 Clink 目录与注入命令行字符串；未在 Windows 实机观察注入后的 cmd 行为，也未做 GPLv3 许可证与分发评估。",
+      "scope_origin": "post_freeze_2026_10_12",
+      "scope_classification": "static_candidate",
+      "implementation_status": "not_delivered",
+      "winlinux_candidate": "WL-3",
+      "platform_scope": "windows"
     }
   ],
   "scope_frozen": true,
   "initial_feature_count": 117,
-  "added_feature_count": 44,
+  "added_feature_count": 47,
   "added_feature_breakdown": {
     "p0_round_2": 13,
-    "baseline_freeze_2026_10_12": 31
+    "baseline_freeze_2026_10_12": 31,
+    "post_freeze_2026_10_12": 3
   },
   "round_2_summary": {
     "added_ids": [
@@ -5872,7 +5972,7 @@
     "purpose": "Evidence index only: links each ID to the upstream static review and to current P0 prototype/probe records; status fields are unchanged. The 31 baseline-freeze additions were indexed the same way on 2026-10-12.",
     "static_review": "docs/p0/UPSTREAM_STATIC_REVIEW.zh-CN.md",
     "static_review_counts": {
-      "supported": 132,
+      "supported": 135,
       "partial": 23,
       "contradicting": 3,
       "contradicting_weak": 1,
@@ -5880,7 +5980,7 @@
     },
     "p0_evidence_counts": {
       "prototype_or_probe": 67,
-      "static_only": 93,
+      "static_only": 96,
       "neither": 1
     },
     "p0_evidence_group_meaning": {
@@ -5958,11 +6058,65 @@
       "S15",
       "S16",
       "S17",
-      "Q06"
+      "Q06",
+      "T35",
+      "T36",
+      "T37"
     ],
     "static_candidates_total": 36,
     "static_candidates_outside_ids": 5,
     "candidate_ids_assigned": 31,
-    "freeze_additions_static_conclusion": "The 31 baseline-freeze additions take 'supported' from the static review candidate table: the inclusion criterion (an explicit menu, action, config or string in the release bundle) matches the 'supported' definition. This is static evidence only."
+    "freeze_additions_static_conclusion": "The 31 baseline-freeze additions take 'supported' from the static review candidate table: the inclusion criterion (an explicit menu, action, config or string in the release bundle) matches the 'supported' definition. This is static evidence only.",
+    "post_freeze_additions_note": "T35-T37 (user-approved 2026-10-12) are indexed like the 31 freeze additions: supported by the Windows/Linux static review candidate table, static_only."
+  },
+  "post_freeze_additions": {
+    "approved_on": "2026-10-12",
+    "approved_by": "user (project owner)",
+    "decision_record": "docs/p0/BASELINE_FREEZE_PROPOSAL.zh-CN.md#冻结后新增2026-10-12-用户批准",
+    "rule": "Change rule 1: a newly found upstream capability enters only as a new ID, with evidence and user approval.",
+    "source": "docs/p0/UPSTREAM_STATIC_REVIEW_WINLINUX.zh-CN.md#平台专属候选提议未分配-id",
+    "id_count_before": 161,
+    "id_count_after": 164,
+    "status_changes": 0,
+    "added_ids": [
+      "T35",
+      "T36",
+      "T37"
+    ],
+    "candidate_id_map": [
+      {
+        "candidate": "WL-1",
+        "id": "T35"
+      },
+      {
+        "candidate": "WL-2",
+        "id": "T36"
+      },
+      {
+        "candidate": "WL-3",
+        "id": "T37"
+      }
+    ],
+    "not_added_candidates": [
+      "WL-4",
+      "WL-5",
+      "WL-6",
+      "WL-7",
+      "WL-8",
+      "WL-9"
+    ],
+    "reserved_ids_never_reused": [
+      "C23",
+      "C28",
+      "G43",
+      "G54",
+      "G55"
+    ],
+    "constraints": [
+      {
+        "id": "T37",
+        "summary": "Records the upstream Clink-injection capability only; it is not a commitment to bundle Clink. Clink is GPLv3, so a GPLv3 licence and distribution review is required before any implementation, bundling or redistribution."
+      }
+    ]
   }
 }

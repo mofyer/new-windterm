@@ -234,6 +234,8 @@ C23 仍是暂缓候选，本文**不做决定**，只记录证据。
 | WL-8 | 系统文件管理器/系统终端集成 | Windows `explorer.exe`；Linux `dbus-send … FileManager1`；macOS AppleScript Finder/Terminal；`ACT:881` “Open Log &Folder” | S05、F13 | 不单列；低优先 |
 | WL-9 | 列选择剪贴板格式互通 | `MSDEVColumnSelect`、`text/x-rectangular-marker`、Scintilla `rectangular` | G52 | 不单列；并入 G52 的跨应用粘贴验收 |
 
+**2026-10-12 处理结果**：用户批准把 WL-1、WL-2、WL-3 以新 ID 补入三处台账，分别为 T35、T36、T37（见[冻结后新增记录](BASELINE_FREEZE_PROPOSAL.zh-CN.md#冻结后新增2026-10-12-用户批准)）。WL-3 原建议为“暂缓”，现仅作为上游能力记录，不承诺捆绑 Clink，实现前须先做 GPLv3 许可证与分发评估。WL-4–WL-9 仍不单列。上表“建议”列保留静态复核时的原文，不代表当前处理。
+
 **反向差异**（macOS 有、Windows/Linux 没有）只有平台集成层面的几项：AppleScript 的 Finder 与 Terminal 集成，macOS libssh 的 GSSAPI/Kerberos 链接，以及 “Command+Click” 提示。默认资源中没有只属于 macOS 的菜单、动作、键位或设置。
 
 ## 对冻结台账措辞条件的影响
