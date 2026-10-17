@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { isCwdOutput } from './scenarios.mjs';
+import { isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -125,4 +125,22 @@ test('cwd evidence accepts an exact physical shell path, not prompts, commands o
   // supplies the canonical path itself instead of relaxing this assertion.
   assert.ok(!isCwdOutput(String.raw`C:\Users\RUNNER~1\Temp\p1 中文-ab12`,
     String.raw`C:\Users\runneradmin\Temp\p1 中文-ab12`, 'win32'));
+});
+
+
+test('shell evidence requires expanded version output and rejects echoed commands and prompts', () => {
+  assert.ok(isShellVersionOutput('P1_SHELL=3.2.57(1)-release', 'bash'));
+  assert.ok(isShellVersionOutput('P1_SHELL=5.2.21(1)-release', 'bash'));
+  assert.ok(isShellVersionOutput('P1_SHELL=5.1.20348.2849', 'powershell'));
+  assert.ok(isShellVersionOutput('P1_SHELL=7.4.6', 'powershell'));
+  for (const shell of ['bash', 'powershell']) {
+    for (const row of [
+      'P1_SHELL=', 'P1_SHELL=$BASH_VERSION',
+      "printf 'P1_SHELL=%s\\n' \"$BASH_VERSION\"",
+      "'P1_SHELL=' + $PSVersionTable.PSVersion.ToString()",
+      'P0 /tmp $ P1_SHELL=5.2.21', 'PS C:\\Temp> P1_SHELL=5.1.20348.2849',
+      'P1_SHELL=5.2.21 suffix', 'prefix P1_SHELL=5.2.21',
+    ]) assert.ok(!isShellVersionOutput(row, shell), `${shell}: ${row}`);
+  }
+  assert.ok(!isShellVersionOutput('P1_SHELL=5.1.20348.2849', 'cmd'));
 });

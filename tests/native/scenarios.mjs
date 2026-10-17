@@ -218,8 +218,24 @@ export function isCwdOutput(row, expected, platform) {
   return row === expected;
 }
 
-/** 5. The configured directory reaches the real shell and survives reopening. */
+/** Version expansion must be a complete output row, not a typed command or prompt. */
+export function isShellVersionOutput(row, shell) {
+  if (shell === 'powershell') return /^P1_SHELL=\d+\.\d+\.\d+(?:\.\d+)?$/.test(row);
+  if (shell === 'bash') return /^P1_SHELL=\d+\.\d+\.\d+(?:\(\d+\))?(?:-release)?$/.test(row);
+  return false;
+}
+
+/** 5. The configured directory reaches the default shell and survives reopening. */
 export async function localTerminalCwd(ctx) {
+  return localStartup(ctx, null);
+}
+
+/** 6. Explicit shell selection executes that shell before and after reopening. */
+export async function localTerminalShell(ctx) {
+  return localStartup(ctx, ctx.platform === 'win32' ? 'powershell' : 'bash');
+}
+
+async function localStartup(ctx, shell) {
   const { session } = ctx;
   const before = await tabCount(session);
   // Keep this short so the complete path fits a terminal row on hosted Windows.
@@ -227,7 +243,28 @@ export async function localTerminalCwd(ctx) {
   const directory = await mkdtemp(join(tmpdir(), 'p1 中文-'));
   const oldTab = `#tabs .tab:nth-child(${before + 1}) [role="tab"]`;
   const newTab = `#tabs .tab:nth-child(${before + 2}) [role="tab"]`;
-  const query = ctx.platform === 'win32' ? 'cd' : 'pwd -P';
+  const query = shell === 'powershell' ? '(Get-Location).Path' : ctx.platform === 'win32' ? 'cd' : 'pwd -P';
+  const versionQuery = shell === 'powershell'
+    ? "'P1_SHELL=' + $PSVersionTable.PSVersion.ToString()"
+    : `printf 'P1_SHELL=%s\\n' "$BASH_VERSION"`;
+  const artifact = shell ? '06-local-terminal-shell' : '05-local-terminal-cwd';
+  const identities = [];
+  let selected;
+  async function queryCwd() {
+    if (shell === 'powershell') {
+      await typeInTerminal(ctx, `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8${Keys.ENTER}`);
+    } else if (ctx.platform === 'win32') {
+      // Change only the fixture shell's legacy code page, not the user's system.
+      await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
+    }
+    if (shell) {
+      await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`);
+      const identity = await waitForRow(ctx, row => isShellVersionOutput(row, shell), `actual ${shell} version expansion`);
+      identities.push(identity.row);
+    }
+    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
+    return waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual shell cwd output');
+  }
   let expected;
   let filled;
   let phase = 'open';
@@ -239,44 +276,53 @@ export async function localTerminalCwd(ctx) {
     // Windows TEMP may contain RUNNER~1, while realpath resolves the long name.
     // Send the same physical spelling we assert; do not accept a partial path.
     filled = await fill(ctx, '#local-cwd-input', expected);
+    await waitFor(() => inPage(session, (value) => {
+      const select = document.querySelector('#local-shell-select');
+      const option = select && [...select.options].find(option => option.value === value);
+      return !!option && !option.disabled && !select.disabled;
+    }, shell ?? ''), { description: `available ${shell ?? 'default'} shell option` });
+    selected = await inPage(session, (value) => {
+      const select = document.querySelector('#local-shell-select');
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return { value: select.value, label: select.selectedOptions[0]?.textContent };
+    }, shell ?? '');
+    if (selected.value !== (shell ?? '')) throw new Error('shell selection did not stick');
     await clickCss(session, '#local-start');
     await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'custom cwd local tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'custom cwd PTY startup');
     phase = 'initial cwd query';
-    // cmd.exe's legacy code page can lose Chinese cwd characters. Change only
-    // this test shell; ConPTY transports the resulting console text as UTF-8.
-    if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
-    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
-    const initial = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual initial shell cwd output');
+    const initial = await queryCwd();
     await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
     await waitForSessionState(ctx, '已退出 · code 7', 'custom cwd shell exit');
     await clickCss(session, '#local-reopen');
     await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'reopened custom cwd tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'reopened custom cwd PTY startup');
     phase = 'reopened cwd query';
-    if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
-    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
-    const reopened = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual reopened shell cwd output');
-    await ctx.writeText('05-local-terminal-cwd.txt', rowsText({ initial: initial.rows, reopened: reopened.rows }));
-    await ctx.screenshot('05-local-terminal-cwd');
+    const reopened = await queryCwd();
+    if (shell && identities[0] !== identities[1]) throw new Error('reopened shell version changed');
+    await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
+    await waitForSessionState(ctx, '已退出 · code 7', 'reopened custom startup shell exit');
+    await ctx.writeText(`${artifact}.txt`, rowsText({ initial: initial.rows, reopened: reopened.rows }));
+    await ctx.screenshot(artifact);
     await clickCss(session, newTab);
     await closeActiveTab(ctx, before + 1);
     await clickCss(session, oldTab);
     await closeActiveTab(ctx, before);
-    return { directory, expected, filled, query, initialCwd: initial.row, reopenedCwd: reopened.row,
+    return { directory, expected, filled, shell, selected, identities, query, initialCwd: initial.row, reopenedCwd: reopened.row,
       remainingTabs: await tabCount(session) };
   } catch (error) {
     // The runner captures after this function returns, when finally has already
     // closed the terminal. Preserve the actual failing shell before cleanup.
     try {
-      await ctx.writeText('05-local-terminal-cwd-failure.json', `${JSON.stringify({
-        directory, expected, filled, query, phase, error: String(error?.stack ?? error),
+      await ctx.writeText(`${artifact}-failure.json`, `${JSON.stringify({
+        directory, expected, filled, shell, selected, identities, query, phase, error: String(error?.stack ?? error),
         status: await statusLine(session), rows: await terminalRows(session),
       }, null, 2)}\n`);
     } catch (captureError) {
       ctx.log(`cwd failure text unavailable: ${captureError.message}`);
     }
-    await ctx.screenshot('05-local-terminal-cwd-failure')
+    await ctx.screenshot(`${artifact}-failure`)
       .catch(captureError => ctx.log(`cwd failure screenshot unavailable: ${captureError.message}`));
     throw error;
   } finally {
@@ -349,4 +395,5 @@ export const SCENARIOS = Object.freeze([
   { name: 'ssh-terminal', run: sshTerminal },
   { name: 'local-terminal-reopen', run: localTerminalReopen },
   { name: 'local-terminal-cwd', run: localTerminalCwd },
+  { name: 'local-terminal-shell', run: localTerminalShell },
 ]);

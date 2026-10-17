@@ -1,5 +1,7 @@
 //! Real local PTY smoke/stress probe; never connects to a remote host.
-use new_windterm_desktop::pty::{PtyEvent, Session, Sessions, OUTPUT_BUDGET};
+use new_windterm_desktop::pty::{
+    local_shells, LocalLaunchOptions, PtyEvent, Session, Sessions, OUTPUT_BUDGET,
+};
 use std::{
     sync::{
         mpsc::{sync_channel, Receiver},
@@ -65,7 +67,7 @@ fn receive_until_with_timeout(
 
 // Uses the same API as pty_open; the path is never part of a shell command.
 // This binary is the Unix smoke lane. Native WebView scenarios cover cmd.exe.
-fn probe_custom_cwd() -> Result<(), String> {
+fn probe_custom_cwd(shell: Option<&str>) -> Result<(), String> {
     let directory = std::env::temp_dir().join(format!("p1 cwd 中文-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).map_err(|error| error.to_string())?;
     let sessions = Sessions::default();
@@ -77,11 +79,14 @@ fn probe_custom_cwd() -> Result<(), String> {
         let mut previous_id = None;
         for attempt in 1..=2 {
             let (sender, receiver) = sync_channel(128);
-            let id = sessions.open_with_cwd(
+            let id = sessions.open_with_options(
                 "cwd-probe",
                 132,
                 24,
-                Some(cwd),
+                LocalLaunchOptions {
+                    cwd: Some(cwd),
+                    shell,
+                },
                 Arc::new(move |event| sender.try_send(event).map_err(|e| e.to_string())),
             )?;
             if previous_id.as_ref() == Some(&id) {
@@ -91,6 +96,32 @@ fn probe_custom_cwd() -> Result<(), String> {
             receive_until(&receiver, &session, b"P0 ")?;
             session.write(b"stty -echo; printf '\\033[?2004l\\nCWD_%s\\n' READY\n".to_vec())?;
             receive_until(&receiver, &session, b"CWD_READY")?;
+            if let Some(shell) = shell {
+                // These are fixed shell-specific variable expansions, never path input.
+                let query = match shell {
+                    "bash" => b"printf '\\nSHELL_VERSION=%s\\n' \"$BASH_VERSION\"; printf 'SHELL_%s\\n' END\n".as_slice(),
+                    "zsh" => b"printf '\\nSHELL_VERSION=%s\\n' \"$ZSH_VERSION\"; printf 'SHELL_%s\\n' END\n".as_slice(),
+                    _ => return Err(format!("Unsupported Unix probe shell {shell}")),
+                };
+                session.write(query.to_vec())?;
+                let output = receive_until(&receiver, &session, b"SHELL_END")?;
+                let text = String::from_utf8_lossy(&output);
+                let version = text
+                    .lines()
+                    .find_map(|line| line.trim_end_matches('\r').strip_prefix("SHELL_VERSION="))
+                    .filter(|version| {
+                        version.split('.').take(2).count() == 2
+                            && version.split('.').take(2).all(|part| {
+                                !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())
+                            })
+                    })
+                    .ok_or_else(|| {
+                        format!("Expected actual {shell} version expansion; output={text:?}")
+                    })?;
+                println!(
+                    "PASS explicit shell {shell} attempt {attempt}/2: actual version={version:?}"
+                );
+            }
             session
                 .write(b"printf '\\nCWD_%s\\n' BEGIN; pwd -P; printf 'CWD_%s\\n' END\n".to_vec())?;
             let output = receive_until(&receiver, &session, b"CWD_END")?;
@@ -122,7 +153,7 @@ fn probe_custom_cwd() -> Result<(), String> {
             }
             sessions.close("cwd-probe", &id)?;
             previous_id = Some(id);
-            println!("PASS custom cwd attempt {attempt}/2: actual pwd -P={expected:?}; exit 7, worker reaped");
+            println!("PASS custom cwd shell={} attempt {attempt}/2: actual pwd -P={expected:?}; exit 7, worker reaped", shell.unwrap_or("default"));
         }
         Ok(())
     })();
@@ -283,7 +314,21 @@ fn main() {
         std::env::consts::OS,
         std::env::consts::ARCH
     );
-    if let Err(error) = run().and_then(|()| probe_custom_cwd()) {
+    let result = run()
+        .and_then(|()| probe_custom_cwd(None))
+        .and_then(|()| probe_custom_cwd(Some("bash")))
+        .and_then(|()| {
+            if local_shells()
+                .iter()
+                .any(|shell| shell.id == "zsh" && shell.available)
+            {
+                probe_custom_cwd(Some("zsh"))
+            } else {
+                println!("SKIP explicit zsh probe: zsh is unavailable on this host");
+                Ok(())
+            }
+        });
+    if let Err(error) = result {
         eprintln!("FAIL PTY probe: {error}");
         std::process::exit(1);
     }
