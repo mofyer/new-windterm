@@ -200,3 +200,55 @@ Windows 原生作业 `117451925058` 的原四个场景通过，第五场景在�
 2026-10-18，用户明确回复「合并 main」后，协调者重新 fetch 并核对分支关系，确认 [CI 39052866884](https://github.com/mofyer/new-windterm/actions/runs/39052866884) 对 `db335d3a4f838fab783315a05f0f06f5f0566c46` 成功，通过 `git merge --ff-only p1/integration` 将 main 从 `bdcbb3e` 快进至 `cf700c2396fca4bf40b5fc161b2ff15b53930b8f`，并成功推送 origin main。
 
 `db335d3` 至 `cf700c2` 仅修改交接、计划与验收记录三份文档，本次后续提交也仅记录合并事实；不重复运行代码门禁或触发代码 CI。`p1/integration` 将同步本次合并记录，最终提交与远端分支一致性在推送后现场核对，具体 SHA 以远端 refs 为准。本批只交付启动目录切片，T34 整项、P1 整阶段及 164 项完整功能对齐均未完成；首轮失败证据和平台限制继续保留。
+
+## 2026-10-18：第三批 Shell 发现、选择与缺失反馈
+
+从已合并的 `8823be4` 开始，在 `p1/shell-backend`、`p1/shell-ui`、`p1/shell-native` 隔离工作树并行推进，再分别独立审查。实现与本机集成门禁已完成，已推送 `68808de` 并触发本批 CI；main 仍为 `8823be4`，本批尚未取得 main 合并授权，不能沿用第二批 CI 代表本批通过。
+
+### 实现范围
+
+- 前端 `b7bb69b`（来源 `76046be`）：在既有本地启动选项中加入 Shell 列表、发现状态与不可用原因。默认本地终端按钮仍使用原默认 Shell。每会话保留 `shell`/`cwd`，退出或失败后重新打开继承原选项，修改启动选项只创建新会话；浏览器演示禁用真实启动。
+- 后端 `bb9a261`（来源 `39bea30`）：新增 `local_shell.rs`，以 `pty_shells` 返回固定 ID、名称、路径及不可用原因；`pty_open` 接收可选 Shell ID，通过 `LocalLaunchOptions` / `Sessions::open_with_options` 传入。只选择受支持 ID，不把用户输入当作可执行路径或 shell 命令；打开/重开时重新检查，保留原 cwd、窗口归属、代际、容量和回收约束。
+- 原生验收 `dbe43eb`（来源 `d3cc992`）：Unix 探针新增 Bash/Zsh 身份、目录及重开回收；第六原生 WebView 场景验证 Linux Bash / Windows PowerShell 的真实版本、目录和两次 exit 7，清理前保存失败现场。`68808de` 随后仅修复 Windows 条件分支的 Clippy `needless_return`。
+- Unix 候选为 Bash/Zsh/PowerShell 7，Windows 候选为 Command Prompt/Windows PowerShell/PowerShell 7。发现只覆盖代码列出的常见安装位置；没有遍历 PATH 或覆盖所有安装方式。
+- 显式 Bash 使用 `--noprofile --norc -i`，Zsh 使用 `-f -i`，PowerShell 使用 `-NoLogo -NoProfile`，cmd 使用 `/D /Q /K`。默认 Shell 的 argv、环境和目录行为不变。Shell 身份与实际目录由独立输出验证，不仅看提示符或命令回显。
+
+### 本机集成门禁
+
+前端相关工作树测试 72 项通过，独立 code-reviewer 另跑 12 项 Shell 浏览器契约；Rust 独立审查修复了一项公有 API 注释问题后 APPROVE。以下是合并到 `p1/integration` 后的本机门禁。
+
+| 检查 | 当前结果 | 边界 |
+| --- | --- | --- |
+| 前端 TypeScript / Vite build | 通过 | 构建，不代表原生成功 |
+| 全套浏览器回归 | 396 passed / 0 failed | IPC stub，不代表 Rust 或原生成功 |
+| 独立 Rust / 前端与原生 JS 审查 | APPROVE，0 个未解决阻塞 | Windows 单行 lint 修复亦经独立复核 |
+| Rust all-targets / all-features | 228 passed / 0 failed / 33 ignored | 19 suites；忽略测试不能视为通过 |
+| fmt / Clippy（all-targets / all-features） | 通过 | Windows lint 修复后又检查格式和 macOS Clippy |
+| Windows 目标类型检查 / Clippy | 修正后通过 | 不在本机执行 Windows 测试 |
+| 真实 OpenSSH 客户端及夹具 | 7 + 4 passed，0 failed / 0 skipped | 独立临时服务与文件，按夹具规则清理 |
+| Native helper | 17 passed / 0 failed | helper 测试，不等于原生 WebView 场景执行 |
+| macOS 默认/readiness 真实 PTY 探针 | 两种后端均通过 | 既有 12 次关闭、2 MiB、UTF-8、Ctrl-C、两次 cwd 验证，以及显式 Bash/Zsh 初开和重开 |
+
+macOS 显式 Bash/Zsh 探针分别读回 `3.2.57(1)-release` 与 `5.9`；每种 Shell 均验证初次与重开后的版本、实际 cwd、exit 7 与 worker 回收。默认/readiness 的 2 MiB 探针分别为 8.16/0.41 秒，仅作为既定 60 秒预算内诊断，不代表 GUI 性能达标。原始日志保存于 `.artifacts/p1/batch3/`：`rust.log`、`playwright.log`、`openssh*.log`、`native-helpers.log`、`pty-default.log`、`pty-readiness.log` 等。
+
+首轮 Windows 本机类型检查因 `local_absolute_path` 的 Windows 条件分支含多余 `return`，被 Clippy `-D warnings` 阻断；去掉 `return` 与分号后语义不变，独立 Rust reviewer 复核通过，`wincheck-rerun.log` 记录修正后通过。第一次独立工作树构建因缺少 `dist` 失败，复制已构建前端产物后重验通过，没有修改 Tauri 配置绕过检查。
+
+### macOS 原生窗口单轮验收
+
+协调者构建 debug `.app`，二进制 SHA-256 为 `d40382403a94f4d81ff467b383999bdf22a5cf4e7af985a2bce47e07412478e4`。通过 CUA 操作实际 WKWebView，Shell 列表中 Bash/Zsh 可用，未安装的 PowerShell 7 被标为不可用并显示原因。选择 Bash 和 `/tmp/p1-shell-ui-YdhD4E/中文 project` 后，Local 2 独立输出行显示 `P1_SHELL=3.2.57(1)-release` 与 `/private/tmp/p1-shell-ui-YdhD4E/中文 project`；exit 7 后重新打开生成 Local 3，同样读回 Bash 版本及实际目录，再次 exit 7。
+
+原生窗口置前后观察完整输出；中间即时 AX 快照曾只包含部分输出，不将后台自动化快照延迟当作完整显示性能结论。证据为 `mac-shell-options.png`、`mac-shell-{initial,reopen}.{png,txt}` 与 `mac-shell-exit.txt`。本轮应用和临时目录已清理，未更改输入法或用户 Shell 设置。该验收不覆盖完整 IME/读屏/长期输出，也未运行本机 PowerShell。
+
+独立 verifier 已看图并核对实际二进制哈希、Local 2/3 的独立版本/目录输出和 Local 3 code 7。列表展开时 Zsh 可用、Local 2 code 7 及点击重开的过程来自协调者 CUA 操作记录，没有另存这些中间步骤截图；不将两张终端截图单独表述为完整过渡证明。真实 PTY 两轮退出和 worker 回收另有完整日志。
+
+### 第三批跨平台 CI
+
+已触发 [CI 39060515987](https://github.com/mofyer/new-windterm/actions/runs/39060515987)，精确提交 `68808dea7e54943a0c2eb2c069418d795f58db10`。当前进行中，Windows/Linux 本批新增 Shell 原生场景待实际结果，独立代理分别检查 Windows 与 Unix/GSSAPI 日志和工件。
+
+### 保留的边界与待办
+
+- Zsh 的 `-f` 不能跳过系统 `zshenv`；PowerShell 的 `-NoProfile` 只控制 profile 加载，不表示禁用历史记录，参见 [PowerShell 启动参数](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh?view=powershell-7.5)。
+- Windows 的启动目录继续受产品既有本地盘符规则约束。这是本批实现边界，不是 PowerShell 自身不支持 UNC 的结论。
+- 目录和可执行文件在最后检查与实际启动之间仍可被外部删除、替换或改变目标；第二批记录的 cwd TOCTOU 限制继续成立，未以额外检查宣称消除竞态。
+- 用户任意命令/路径、启动参数编辑、env/locale 配置、持久化、WSL、Git Bash/Cygwin 和 Clink 均未在本批交付。完整 T34、相关 Shell 功能项、P1 和 164 项功能对齐不因本切片而更新为完成。
+- 后续补齐本批跨平台 CI 与独立验收；全部证据完成后再请求本批 main 合并确认。
