@@ -99,7 +99,7 @@ fn local_absolute_path(path: &Path) -> bool {
     #[cfg(windows)]
     {
         use std::path::{Component, Prefix};
-        return matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)));
+        matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)))
     }
     #[cfg(not(windows))]
     true
