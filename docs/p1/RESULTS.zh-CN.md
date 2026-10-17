@@ -131,3 +131,46 @@ macOS 与 Linux desktop 已通过。macOS 默认/readiness 均为 12/12 周期�
 2026-10-15，独立代码审查与最终证据复核均 PASS 后，按用户「先定位并修复回收问题，再合并」的条件授权执行 `git merge --ff-only p1/integration`。main 已从 `a35582f` 快进至 `165fceb` 并成功推送远端。最终被测代码为 `645ed38`，`165fceb` 与本次合并记录仅更新文档，未修改代码；不重复触发代码 CI。`p1/integration` 同步合并记录，具体最新 SHA 以远端 refs 为准。
 
 本批本地终端生命周期、重新打开及 Unix 回收修复已交付；P1 整阶段尚未完成。下一切片为 T34 启动目录，后续批次仍须单独取得 main 合并批准。
+
+## 2026-10-18：第二批 T34 启动目录
+
+从 `bdcbb3e` 开始，在 `p1/cwd-backend`、`p1/cwd-ui`、`p1/cwd-native` 三个隔离 worktree 并行实现，集成到 `p1/integration`。本批只覆盖 T34 的启动目录部分，不改变冻结台账中的整项状态，也不代表 P1 或完整功能对齐通过。
+
+- `fe258ba`（来源 `8140c64`）：保留默认本地终端按钮，新增启动目录选项；空输入传 `null`，合法路径原样传递。每个会话保存启动目录，重新打开继承原配置，结束态可修改目录后新建；浏览器演示禁用真实启动。
+- `304dc3e`（来源 `b631c7f`）：`pty_open` 增加可选 cwd，保留原 Sessions API，新增 `open_with_cwd` / `open_at_generation_with_cwd`。按平台校验绝对路径、存在且为目录，通过 `CommandBuilder::cwd` 传递，不经过 shell、不修改父进程 cwd，也不展开变量或 `~`。保留原代际/容量约束和回收顺序、关闭期限。
+- `8c3e5d3`（来源 `26a5838`）：Unix 真实 PTY 探针新增两次独立会话的指定目录、`pwd -P`、exit 7 和 worker 回收；原生第五场景 `local-terminal-cwd` 验证含中文/空格目录实际读回、退出及重开。Windows 测试 shell 先执行固定 `chcp 65001` 再用无参数 `cd` 读目录，不将路径拼入命令。
+
+独立 code-reviewer 审查界面及原生 JS，独立 rust-reviewer 审查 Rust/探针，两者均 APPROVE、无阻塞。界面审查额外执行键盘 Enter/Escape、焦点返回与单次 IPC 冒烟。Rust 新测试先在旧行为下得到 3 项失败，再在实现后通过；完整测试结果如下。
+
+### 本机集成门禁
+
+| 门禁 | 结果 | 范围 |
+| --- | --- | --- |
+| 前端 TypeScript / Vite build | 通过 | 构建，不是原生运行 |
+| 浏览器全套 | 384 passed / 0 failed，2.3 分钟 | 含 20 项本地终端 IPC 契约；仍为 stub |
+| Rust fmt / Clippy all targets、all features | 通过 | 锁定依赖，保留测试并发 2 |
+| Rust all targets、all features | 219 passed / 0 failed / 33 ignored | 未把 ignored 算成通过 |
+| Windows wincheck | 通过 | 类型检查，实际运行待 CI |
+| 原生 helper | 16 passed / 0 failed / 0 skipped | 输出匹配拒绝提示符、回显与不完整路径 |
+| 真实 OpenSSH | 11 passed / 0 failed / 0 skipped | Rust 客户端 7 项与夹具自检 4 项，两份日志分别留存 |
+| macOS 默认 / readiness 真实 PTY | 两种后端均通过 | 各两次指定目录实际读回、exit 7、worker 回收；既有 2 MiB、UTF-8、Ctrl-C、12 次关闭回归保留并通过 |
+| macOS WKWebView 单轮原生操作 | 通过 | 启动目录弹窗、真实 `pwd -P`、exit 7、重新打开后实际目录；见下文 |
+
+本机日志保留在 ignored `.artifacts/p1/batch2/`，包括集成日志、后端红绿回归及独立审查的 Rust 门禁日志。不能把这些本地文件当作已上传的 CI 工件。
+
+### 已知范围与后续门禁
+
+- Windows 当前使用 cmd.exe，明确拒绝 UNC、设备/verbatim 输入、盘符相对/根相对路径和会被 Win32 归一化的尾空格/尾点组件；这不是完整 Windows Shell 支持。
+- portable-pty 0.9.0 会在 cwd 失效时回退到 HOME/USERPROFILE。本批初检并在 spawn 前再次校验；外部进程在最后检查与库内检查之间删除、重命名或改变符号链接目标仍有竞态。没有更改 HOME、固定目录句柄或修改上游库，不能宣称彻底消除此窗口。
+- macOS 本批完成下述有限 WKWebView GUI 验收；Linux/Windows 原生第五场景及平台专属路径测试以本批 CI 为准。完整输入法/读屏、Shell 配置与发行仍未验收。
+- 本批尚未合并 main，第一批条件授权不延伸到本批。完整门禁与独立验收通过后再请求合并确认。
+
+### macOS 原生单轮操作与本批 CI
+
+协调者在 `8c3e5d3`（工作区仅文档差异）执行 `npm run tauri build -- --debug --bundles app`，通过 CUA 操作实际 WKWebView。二进制 SHA-256 为 `abe59398f09931aff5c71e5b66d3e449898039018144223d467e40d1c0de78f1`，构建日志为 `.artifacts/p1/batch2/native-build.log`。
+
+先通过“本地终端启动选项”输入临时目录；CUA `typeText` 未输入中文，读回表单实际是不存在的 `/tmp/p1-cwd-ui-pIaGgF/ project`，应用明确显示不存在错误。点击“修改启动目录”，使用 `paste` 后表单准确显示 `/tmp/p1-cwd-ui-pIaGgF/中文 project`，新建 Local 3 成功。执行固定 `pwd -P`，截图显示独立结果行 `/private/tmp/p1-cwd-ui-pIaGgF/中文 project`。exit 7 后点击“重新打开”，Local 4 再次读回同一路径，并以 code 7 退出。首次缺字属于自动化输入记录，不据此宣称中文输入法验收成功或失败。
+
+两次完整输出截图与 AX 文本保存为 `.artifacts/p1/batch2/mac-cwd-{first,reopen}.{png,txt}`，最终退出记录为 `mac-cwd-exit.txt`。操作只涉及本轮创建的终端、临时目录和本轮启动的应用；结束后已退出应用并删除该临时目录。未改变输入法配置。截图/日志为本机证据，不含在提交中。
+
+跨平台 [CI 39051867574](https://github.com/mofyer/new-windterm/actions/runs/39051867574) 已触发，验证精确代码提交 `8c3e5d383a02a77cb5ef3ee8abd45df248d1db0d`；当前运行中，结果与原生第五场景需结束后独立核对。
