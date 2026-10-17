@@ -227,16 +227,22 @@ export async function localTerminalCwd(ctx) {
   const directory = await mkdtemp(join(tmpdir(), 'p1 中文-'));
   const oldTab = `#tabs .tab:nth-child(${before + 1}) [role="tab"]`;
   const newTab = `#tabs .tab:nth-child(${before + 2}) [role="tab"]`;
+  const query = ctx.platform === 'win32' ? 'cd' : 'pwd -P';
+  let expected;
+  let filled;
+  let phase = 'open';
   try {
-    const expected = await realpath(directory);
+    expected = await realpath(directory);
     await clickCss(session, '#local-options-open');
     await waitFor(() => inPage(session, () => document.querySelector('#local-dialog')?.open === true),
       { description: 'local startup options dialog' });
-    const filled = await fill(ctx, '#local-cwd-input', directory);
+    // Windows TEMP may contain RUNNER~1, while realpath resolves the long name.
+    // Send the same physical spelling we assert; do not accept a partial path.
+    filled = await fill(ctx, '#local-cwd-input', expected);
     await clickCss(session, '#local-start');
     await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'custom cwd local tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'custom cwd PTY startup');
-    const query = ctx.platform === 'win32' ? 'cd' : 'pwd -P';
+    phase = 'initial cwd query';
     // cmd.exe's legacy code page can lose Chinese cwd characters. Change only
     // this test shell; ConPTY transports the resulting console text as UTF-8.
     if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
@@ -247,6 +253,7 @@ export async function localTerminalCwd(ctx) {
     await clickCss(session, '#local-reopen');
     await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'reopened custom cwd tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'reopened custom cwd PTY startup');
+    phase = 'reopened cwd query';
     if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
     await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
     const reopened = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual reopened shell cwd output');
@@ -258,6 +265,20 @@ export async function localTerminalCwd(ctx) {
     await closeActiveTab(ctx, before);
     return { directory, expected, filled, query, initialCwd: initial.row, reopenedCwd: reopened.row,
       remainingTabs: await tabCount(session) };
+  } catch (error) {
+    // The runner captures after this function returns, when finally has already
+    // closed the terminal. Preserve the actual failing shell before cleanup.
+    try {
+      await ctx.writeText('05-local-terminal-cwd-failure.json', `${JSON.stringify({
+        directory, expected, filled, query, phase, error: String(error?.stack ?? error),
+        status: await statusLine(session), rows: await terminalRows(session),
+      }, null, 2)}\n`);
+    } catch (captureError) {
+      ctx.log(`cwd failure text unavailable: ${captureError.message}`);
+    }
+    await ctx.screenshot('05-local-terminal-cwd-failure')
+      .catch(captureError => ctx.log(`cwd failure screenshot unavailable: ${captureError.message}`));
+    throw error;
   } finally {
     // Close only tabs created by this scenario, even when a cwd assertion fails.
     // Windows can briefly keep cwd open while the backend worker is reaping.

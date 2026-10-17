@@ -121,4 +121,8 @@ test('cwd evidence accepts an exact physical shell path, not prompts, commands o
   assert.ok(!isCwdOutput(`P0 ${windows}> cd`, windows, 'win32'));
   assert.ok(!isCwdOutput(`cd ${windows}`, windows, 'win32'));
   assert.ok(!isCwdOutput(`${windows}\\other`, windows, 'win32'));
+  // A short-name alias is not textual proof of the canonical cwd. The scenario
+  // supplies the canonical path itself instead of relaxing this assertion.
+  assert.ok(!isCwdOutput(String.raw`C:\Users\RUNNER~1\Temp\p1 中文-ab12`,
+    String.raw`C:\Users\runneradmin\Temp\p1 中文-ab12`, 'win32'));
 });
