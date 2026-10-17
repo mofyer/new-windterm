@@ -380,17 +380,19 @@ async fn pty_open(
     on_event: Channel<PtyEvent>,
     cols: u16,
     rows: u16,
+    cwd: Option<String>,
 ) -> Result<Opened, String> {
     let sessions = sessions.inner().clone();
     let owner = window.label().to_owned();
     let generation = sessions.generation(&owner)?;
     tauri::async_runtime::spawn_blocking(move || {
         sessions
-            .open_at_generation(
+            .open_at_generation_with_cwd(
                 &owner,
                 generation,
                 cols,
                 rows,
+                cwd.as_deref(),
                 Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
             )
             .map(|id| Opened { id })

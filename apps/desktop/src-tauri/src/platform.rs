@@ -148,6 +148,66 @@ pub(crate) fn local_command() -> Result<CommandBuilder, String> {
     Err(UNSUPPORTED.into())
 }
 
+/// An explicit cwd is passed to the process builder, never to a shell command.
+pub(crate) fn command_with_cwd(cwd: Option<&str>) -> Result<CommandBuilder, String> {
+    if let Some(cwd) = cwd {
+        validate_cwd(cwd)?;
+    }
+    let mut command = local_command()?;
+    if let Some(cwd) = cwd {
+        command.cwd(cwd);
+    }
+    Ok(command)
+}
+
+/// Keep the caller's spelling, including whitespace and symlinks. Validate again
+/// immediately before spawn: portable-pty 0.9.0 otherwise silently falls back
+/// when its cwd is missing. An external rename after that check remains a
+/// library-level TOCTOU window; this check does not pin the directory.
+pub(crate) fn validate_cwd(cwd: &str) -> Result<(), String> {
+    if cwd.is_empty() || cwd.contains('\0') {
+        return Err("PTY startup directory must be a non-empty path without NUL".into());
+    }
+    let path = std::path::Path::new(cwd);
+    if !path.is_absolute() {
+        return Err(
+            "PTY startup directory must be an absolute path; ~ and variables are not expanded"
+                .into(),
+        );
+    }
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        if !matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)))
+        {
+            return Err("PTY startup directory for cmd.exe must use a drive-absolute path; UNC and device paths are unsupported".into());
+        }
+        if path.components().any(|component| {
+            matches!(component, Component::Normal(name) if name.to_str().is_some_and(|name| name.ends_with([' ', '.'])))
+        }) {
+            return Err("PTY startup directory for cmd.exe cannot contain components ending in a space or dot".into());
+        }
+        // Windows canonicalization may produce a verbatim disk prefix even for
+        // ordinary input. Inspect the target, but never pass that spelling to cmd.
+        let target = path
+            .canonicalize()
+            .map_err(|e| format!("Cannot access PTY startup directory: {e}"))?;
+        if !matches!(target.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
+        {
+            return Err(
+                "PTY startup directory for cmd.exe cannot resolve to a UNC or device path".into(),
+            );
+        }
+    }
+    let metadata = path
+        .metadata()
+        .map_err(|e| format!("Cannot access PTY startup directory: {e}"))?;
+    if !metadata.is_dir() {
+        return Err("PTY startup directory is not a directory".into());
+    }
+    Ok(())
+}
+
 // Unix PTY EIO is an EOF convention; raw Windows error 5 has a different meaning.
 #[cfg(unix)]
 pub(crate) fn is_pty_eof(error: &std::io::Error) -> bool {
@@ -258,6 +318,131 @@ impl Readiness {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct CwdFixture(std::path::PathBuf);
+
+    impl CwdFixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("p1-cwd-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for CwdFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn explicit_cwd_rejects_empty_relative_missing_and_regular_files() {
+        for path in ["", " ", ".", "../tmp", "~/tmp", "$HOME", "%TEMP%"] {
+            assert!(command_with_cwd(Some(path)).is_err(), "accepted {path:?}");
+        }
+        let fixture = CwdFixture::new();
+        let missing = fixture.0.join("missing");
+        assert!(command_with_cwd(Some(missing.to_str().unwrap())).is_err());
+        let file = fixture.0.join("regular-file");
+        std::fs::write(&file, b"not a directory").unwrap();
+        assert!(command_with_cwd(Some(file.to_str().unwrap())).is_err());
+        let nul = format!("{}\0suffix", fixture.0.display());
+        assert!(command_with_cwd(Some(&nul)).is_err());
+    }
+
+    #[test]
+    fn explicit_cwd_preserves_spaces_unicode_and_parent_process_directory() {
+        let fixture = CwdFixture::new();
+        // A literal '$' and spaces must remain path characters, not shell syntax.
+        #[cfg(unix)]
+        let directory = fixture.0.join(" 中文 $literal space ");
+        #[cfg(not(unix))]
+        let directory = fixture.0.join("中文 $literal space");
+        std::fs::create_dir(&directory).unwrap();
+        let before = std::env::current_dir().unwrap();
+        let command = command_with_cwd(Some(directory.to_str().unwrap())).unwrap();
+        assert_eq!(
+            command.get_cwd().map(std::path::Path::new),
+            Some(directory.as_path())
+        );
+        assert_eq!(std::env::current_dir().unwrap(), before);
+        let default = local_command().unwrap();
+        assert_eq!(command.get_argv(), default.get_argv());
+        assert_eq!(command.get_env("HOME"), default.get_env("HOME"));
+    }
+
+    #[test]
+    fn absent_cwd_preserves_platform_default() {
+        assert_eq!(
+            command_with_cwd(None).unwrap().get_cwd(),
+            local_command().unwrap().get_cwd()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_cwd_accepts_directory_symlink_without_expanding_its_spelling() {
+        let fixture = CwdFixture::new();
+        let target = fixture.0.join("target");
+        let link = fixture.0.join("link");
+        std::fs::create_dir(&target).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let command = command_with_cwd(Some(link.to_str().unwrap())).unwrap();
+        assert_eq!(
+            command.get_cwd().map(std::path::Path::new),
+            Some(link.as_path())
+        );
+        std::fs::remove_dir(target).unwrap();
+        assert!(command_with_cwd(Some(link.to_str().unwrap())).is_err());
+    }
+
+    #[test]
+    fn explicit_cwd_recheck_rejects_directory_removed_after_command_preparation() {
+        let fixture = CwdFixture::new();
+        let cwd = fixture.0.to_str().unwrap();
+        let command = command_with_cwd(Some(cwd)).unwrap();
+        assert_eq!(
+            command.get_cwd().map(std::path::Path::new),
+            Some(fixture.0.as_path())
+        );
+        std::fs::remove_dir(&fixture.0).unwrap();
+        assert!(validate_cwd(cwd).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn explicit_cwd_rejects_windows_drive_relative_unc_and_device_paths() {
+        for (path, expected) in [
+            (r"C:relative", "absolute path"),
+            (r"\relative", "absolute path"),
+            (r"\\server\share", "UNC and device paths are unsupported"),
+            (
+                r"\\?\UNC\server\share",
+                "UNC and device paths are unsupported",
+            ),
+            (r"\\?\C:\", "UNC and device paths are unsupported"),
+            (r"\\.\pipe\terminal", "UNC and device paths are unsupported"),
+            (r"C:\directory ", "ending in a space or dot"),
+            (r"C:\directory.", "ending in a space or dot"),
+        ] {
+            let error = command_with_cwd(Some(path)).unwrap_err();
+            assert!(error.contains(expected), "{path}: {error}");
+        }
+    }
+
+    #[test]
+    fn explicit_cwd_accepts_absolute_dot_and_parent_navigation() {
+        let fixture = CwdFixture::new();
+        let child = fixture.0.join("child");
+        std::fs::create_dir(&child).unwrap();
+        for path in [fixture.0.join("."), child.join("..")] {
+            let command = command_with_cwd(Some(path.to_str().unwrap())).unwrap();
+            assert_eq!(
+                command.get_cwd().map(std::path::Path::new),
+                Some(path.as_path())
+            );
+        }
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

@@ -413,8 +413,19 @@ impl Sessions {
         rows: u16,
         sink: EventSink,
     ) -> Result<String, String> {
+        self.open_with_cwd(owner, cols, rows, None, sink)
+    }
+
+    pub fn open_with_cwd(
+        &self,
+        owner: &str,
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        sink: EventSink,
+    ) -> Result<String, String> {
         let generation = self.generation(owner)?;
-        self.open_at_generation(owner, generation, cols, rows, sink)
+        self.open_at_generation_with_cwd(owner, generation, cols, rows, cwd, sink)
     }
 
     pub fn generation(&self, owner: &str) -> Result<u64, String> {
@@ -450,6 +461,18 @@ impl Sessions {
         rows: u16,
         sink: EventSink,
     ) -> Result<String, String> {
+        self.open_at_generation_with_cwd(owner, generation, cols, rows, None, sink)
+    }
+
+    pub fn open_at_generation_with_cwd(
+        &self,
+        owner: &str,
+        generation: u64,
+        cols: u16,
+        rows: u16,
+        cwd: Option<&str>,
+        sink: EventSink,
+    ) -> Result<String, String> {
         let mut registry = self
             .registry
             .lock()
@@ -474,7 +497,7 @@ impl Sessions {
         }
         let size = checked_size(cols, rows)?;
         let id = uuid::Uuid::new_v4().to_string();
-        let session = spawn_local_session(owner, size, &id, sink)?;
+        let session = spawn_local_session(owner, size, &id, cwd, sink)?;
         sessions.insert(id.clone(), session);
         Ok(id)
     }
@@ -484,12 +507,13 @@ fn spawn_local_session(
     owner: &str,
     size: PtySize,
     id: &str,
+    cwd: Option<&str>,
     sink: EventSink,
 ) -> Result<Arc<Session>, String> {
     platform::ensure_supported()?;
     #[cfg(windows)]
     platform::windows::restore_ctrl_c_processing();
-    let command = platform::local_command()?;
+    let command = platform::command_with_cwd(cwd)?;
     let pair = native_pty_system()
         .openpty(size)
         .map_err(|e| e.to_string())?;
@@ -498,6 +522,9 @@ fn spawn_local_session(
     let (readiness, cancel_readiness) = platform::Readiness::new(pair.master.as_ref())?;
     let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    if let Some(cwd) = cwd {
+        platform::validate_cwd(cwd)?;
+    }
     let child = pair
         .slave
         .spawn_command(command)
@@ -978,6 +1005,44 @@ fn checked_size(cols: u16, rows: u16) -> Result<PtySize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejected_cwd_does_not_register_a_session_or_emit_output() {
+        let sessions = Sessions::default();
+        for _ in 0..MAX_SESSIONS + 1 {
+            assert!(sessions
+                .open_with_cwd(
+                    "main",
+                    80,
+                    24,
+                    Some(""),
+                    Arc::new(|_| panic!("invalid cwd emitted an event"))
+                )
+                .is_err());
+        }
+        assert!(sessions.registry.lock().unwrap().sessions.is_empty());
+    }
+
+    #[test]
+    fn explicit_cwd_cannot_bypass_owner_generation() {
+        let sessions = Sessions::default();
+        let generation = sessions.generation("main").unwrap();
+        sessions.reload_owner("main");
+        let directory = std::env::temp_dir();
+        assert_eq!(
+            sessions
+                .open_at_generation_with_cwd(
+                    "main",
+                    generation,
+                    80,
+                    24,
+                    directory.to_str(),
+                    Arc::new(|_| Ok(()))
+                )
+                .unwrap_err(),
+            "PTY request belongs to an unloaded document"
+        );
+    }
 
     #[test]
     fn full_input_queue_is_retryable_and_a_closed_one_is_final() {
