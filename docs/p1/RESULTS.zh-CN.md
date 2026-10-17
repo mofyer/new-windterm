@@ -173,10 +173,24 @@ macOS 与 Linux desktop 已通过。macOS 默认/readiness 均为 12/12 周期�
 
 两次完整输出截图与 AX 文本保存为 `.artifacts/p1/batch2/mac-cwd-{first,reopen}.{png,txt}`，最终退出记录为 `mac-cwd-exit.txt`。操作只涉及本轮创建的终端、临时目录和本轮启动的应用；结束后已退出应用并删除该临时目录。未改变输入法配置。截图/日志为本机证据，不含在提交中。
 
-跨平台 [CI 39051867574](https://github.com/mofyer/new-windterm/actions/runs/39051867574) 已触发，验证精确代码提交 `8c3e5d383a02a77cb5ef3ee8abd45df248d1db0d`；当前运行中，结果与原生第五场景需结束后独立核对。
+首轮跨平台 [CI 39051867574](https://github.com/mofyer/new-windterm/actions/runs/39051867574) 验证精确代码提交 `8c3e5d383a02a77cb5ef3ee8abd45df248d1db0d`；结果及后续修正如下。
 
 ### 第二批首轮 CI：Windows 原生 cwd 失败
 
 Windows 原生作业 `117451925058` 的原四个场景通过，第五场景在首次实际 cwd 输出等待 30 秒后失败；不能算新增 Windows 功能验收通过。失败已进入“本机 shell 已启动”，没有直接收到目录校验拒绝。原脚本 `finally` 在外层截图前关闭新标签，导致失败工件只剩演示标签，无法从旧现场精确区分路径拼写、代码页或产品行为。
 
 脚本修正使用 `realpath(directory)` 同时作为输入与精确比较目标，排除 Windows `RUNNER~1` 这类短名与长名的拼写差异；仍拒绝短长路径混判，没有放宽完整行断言或超时。新增 `catch` 在清理前保存 expected、实际填值、阶段、状态、终端输出及截图。独立审查 APPROVE，helper 16/16 通过；这里只能证明测试输入与取证改善，不能断言已追溯历史超时根因。是否通过以修正后的原生 CI 为准。
+
+首轮最终 6/7 作业成功，整体失败。macOS Rust 219/0/33、Linux 218/0/33、Windows 2022 与 2025 各 212/0/7（依次为 passed/failed/ignored）；Windows 专属路径校验已实际执行。Linux 原生 5/5，Unix 两个平台的默认/readiness 均完成指定目录两次读回与 12 次回收。Linux lrzsz 实跑 11 项、X11/agent 各 1 项；GSSAPI 3 单测、4 认证及 3 次健康复验通过。Windows 独立 ConPTY 诊断各 2 项通过，2022 仍有系统既有句柄增长基线，2025 稳定。macOS 默认 2 MiB 探针 31.40 秒、readiness 0.48 秒，均在既定 60 秒预算内；仅诊断，不作性能达标声明。首轮日志及工件已本机留存 `.artifacts/p1/batch2/ci-first/`。
+
+测试修正集成为 `44f8816`（来源 `ea46cb0`），根目录 helper 16/16 复验通过；只改原生测试，不修改产品/Rust/前端，因此保留已完成的对应本机门禁。待首轮完全结束后触发第二轮 [CI 39052866884](https://github.com/mofyer/new-windterm/actions/runs/39052866884)，精确提交 `db335d3a4f838fab783315a05f0f06f5f0566c46`（在修正后补失败记录），最终 7/7 作业成功。
+
+第二轮 Linux、Windows 原生均 5/5 通过。Windows 工件明确记录临时路径为 `C:\Users\RUNNER~1\AppData\Local\Temp\p1 中文-n79gDJ`，实际传入的规范路径与初开/重开两次独立 `cd` 输出均为 `C:\Users\runneradmin\AppData\Local\Temp\p1 中文-n79gDJ`，关闭后剩 1 个初始标签。没有用提示符、命令回显或放宽比较来判定通过。该证据证明统一夹具路径拼写后当前功能通过，首轮失败时具体输出仍无法追溯。
+
+### 第二批最终验收：通过，等待 main 合并批准
+
+独立 verifier 核对第二轮精确 SHA、七个作业及行级工件后给出 **PASS / APPROVE，0 个技术阻塞**。macOS Rust 219/0/33，Linux 218/0/33，Windows 2022/2025 各 212/0/7；Windows 专属路径规则测试实际通过，独立 ConPTY 诊断各 2/0/0。Linux lrzsz 11、X11/agent 各 1、GSSAPI 3 单测/4 认证/3 健康复验均通过；Linux/Windows 原生各 5/5。Unix 四组默认/readiness 探针全部读回指定目录两次并完成 12 次关闭回归；macOS 单轮 WKWebView 证据已独立看图复核。
+
+第二轮 macOS 默认 2 MiB 为 33.57 秒、readiness 0.64 秒，保留为预算内诊断，不替代 P1 性能专项。Windows 2022 的既有 ConPTY 系统句柄增长与 portable-pty 最后校验后的目录竞态仍按上文保留；不宣称完整 Windows、T34、P1 或产品发行通过。第二轮工件本机归档到 `.artifacts/p1/batch2/ci-second/`。
+
+本批实现、独立审查、本机门禁、三端有限原生验证及跨平台 CI 均完成。`main` 仍为 `bdcbb3e`，尚未取得本批合并授权；已推送的集成代码及本记录供用户确认，后续仅补文档不重复触发代码 CI。下一切片按计划推进 Shell 发现/选择及缺失反馈，启动参数/env/locale 分批验收。

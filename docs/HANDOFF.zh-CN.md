@@ -20,7 +20,7 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-18，P0 已关闭，P1 第二批执行中）
+## 当前仓库状态（2026-10-18，P0 已关闭，P1 第二批待合并确认）
 
 P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。第一批修复本地终端失败/退出状态及显式重新打开，配套浏览器竞态和原生场景；后续启动目录等按切片推进。当前计划与新代码证据见 [P1 计划](p1/PLAN.zh-CN.md) 和 [P1 执行记录](p1/RESULTS.zh-CN.md)。下列 P0 记录保留作历史依据，P0 不再重开；P1 新批次合并 main 仍需用户确认。
 
@@ -30,7 +30,7 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 ### 分支
 
-- **集成分支 `p1/integration`**：第二批启动目录产品代码 `8c3e5d3` 已推送，本机 Rust 219、浏览器 384、真实 OpenSSH 11 项通过；macOS 原生单轮启动/重开实际目录通过。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39051867574) 正在运行，最终结果以 [P1 执行记录](p1/RESULTS.zh-CN.md) 为准；main 仍为第一批 `bdcbb3e`。
+- **集成分支 `p1/integration`**：第二批启动目录产品代码 `8c3e5d3`，原生测试修正 `44f8816`；[第二轮 CI](https://github.com/mofyer/new-windterm/actions/runs/39052866884) 验证 `db335d3`，7/7 通过，Linux/Windows 原生均 5/5。本机 Rust 219、浏览器 384、真实 OpenSSH 11 项通过；macOS 原生单轮启动/重开实际目录通过。首轮 Windows 场景超时及证据缺失、后续路径拼写修正均保留于 [P1 执行记录](p1/RESULTS.zh-CN.md)。main 仍为第一批 `bdcbb3e`，本批等待单独合并批准。
 - **远端 `main`**：P1 第一批已于 2026-10-15 快进合并并推送至 `165fceb`，随后仅补合并记录；被测代码仍为 `645ed38`。接手时用远端 refs 核对最新文档提交，`p1/integration` 同步到合并记录提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
