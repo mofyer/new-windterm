@@ -1,23 +1,31 @@
-// This function is serialized into the fixture WebView. Keep it self-contained.
-// It observes only the two explicitly armed, empty-environment shell fixtures.
+// Serialized into the fixture WebView; keep this function self-contained.
+// Tauri 2's invoke/global properties are immutable. Observe its custom-protocol
+// transport and only the callback IDs belonging to two explicitly armed shells.
 export function installTerminalTrace(shell, cwd) {
+  'use strict';
   const key = '__P1_NATIVE_SHELL_TRACE__';
   if (window[key]) throw new Error('shell trace already installed');
   const internals = window.__TAURI_INTERNALS__;
-  if (typeof internals?.invoke !== 'function') throw new Error('Tauri invoke unavailable');
-  const original = internals.invoke;
+  const callbacks = internals?.callbacks;
+  if (!(callbacks instanceof Map) || typeof internals.convertFileSrc !== 'function'
+    || typeof window.fetch !== 'function') throw new Error('Tauri trace transport unavailable');
+  const originalFetch = window.fetch;
+  const urls = new Map(['pty_open', 'pty_write', 'pty_ack', 'pty_resize']
+    .map(command => [internals.convertFileSrc(command, 'ipc'), command]));
+  const ipcPrefix = internals.convertFileSrc('', 'ipc');
   const records = [];
   const targets = [];
+  const installed = new Map();
+  const reasons = new Set();
   const encoder = new TextEncoder();
   const limit = 64 * 1024;
-  // Reserve space for the bounded envelope and final truncation counters.
-  let used = 512;
+  let used = 1024; // Reserve the bounded metadata envelope.
   let dropped = 0;
   let armed = false;
   let stopped = false;
   let call = 0;
   const start = performance.now();
-  const safe = fn => { try { return fn(); } catch { /* Observation must not affect IPC. */ } };
+  const safe = fn => { try { return fn(); } catch { if (!stopped) reasons.add('observer-error'); } };
   const record = (target, detail) => safe(() => {
     if (stopped) return;
     const item = { slot: target.slot, ms: performance.now() - start, ...detail };
@@ -28,7 +36,6 @@ export function installTerminalTrace(shell, cwd) {
   });
   const bytes = data => {
     if (!Array.isArray(data) && !(data instanceof Uint8Array)) return {};
-    // Do not allocate an unbounded copy even if an unexpected event is received.
     const count = Math.min(data.length, 4096);
     let hex = '';
     for (let i = 0; i < count; i++) {
@@ -39,47 +46,55 @@ export function installTerminalTrace(shell, cwd) {
     return { byteLength: data.length, hex, bytesTruncated: data.length > count };
   };
   const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 128;
-  const observe = (result, target, detail, resolved) => {
-    // Return the original promise unchanged. Neither rejection values nor open
-    // parameters enter the trace. Both observer handlers are non-throwing.
-    safe(() => result.then(
-      value => safe(() => { if (stopped) return; resolved?.(value); record(target, { ...detail, state: 'fulfilled' }); }),
-      () => record(target, { ...detail, state: 'rejected' }),
-    ));
-    return result;
-  };
-  function invoke(command, args) {
+  const callbackId = value => typeof value === 'string' && /^\d{1,10}$/.test(value)
+    && Number(value) <= 4294967295 ? Number(value) : null;
+  function wrap(id, observe) {
+    const original = callbacks.get(id);
+    if (id === null || typeof original !== 'function' || installed.has(id)) {
+      reasons.add('callback-unavailable');
+      return false;
+    }
+    function wrapper(...args) {
+      if (!stopped) safe(() => observe(...args));
+      try { return original.apply(this, args); }
+      finally { if (callbacks.get(id) !== wrapper) installed.delete(id); }
+    }
+    callbacks.set(id, wrapper);
+    if (callbacks.get(id) !== wrapper) { reasons.add('callback-install-failed'); return false; }
+    installed.set(id, { original, wrapper });
+    return true;
+  }
+  function capture(command, init) {
+    // Read only callback routing IDs. Never retain headers, invoke keys or whole
+    // payloads. An armed request must still match the fixed fixture exactly.
+    if (typeof init?.body !== 'string' || init.body.length > 131072) return null;
+    const args = JSON.parse(init.body);
     let target;
     if (armed && command === 'pty_open') {
       armed = false;
-      if (targets.length < 2 && args?.shell === shell && args.cwd === cwd
-        && (!args.env || (Array.isArray(args.env) && args.env.length === 0))
-        && (!args.locale || (args.locale.mode === 'default' && args.locale.variables?.length === 0))
-        && typeof args.onEvent?.onmessage === 'function') {
-        const channel = args.onEvent;
-        target = { slot: targets.length + 1, channel, handler: channel.onmessage,
-          pane: document.querySelector('.terminal-pane.focused-pane:not([hidden])'), id: null };
-        target.wrapper = function (event) {
-          safe(() => {
-            if (!target.rejected && validId(event?.id)) {
-              // Channel provenance scopes early events before pty_open resolves.
-              if (target.id === null) target.id = event.id;
-              if (target.id !== event.id) { record(target, { event: 'foreign-session-rejected' }); return; }
-              if (event.kind === 'data') record(target, { event: 'data',
-                sequence: Number.isSafeInteger(event.sequence) ? event.sequence : null, ...bytes(event.data) });
-              else if (event.kind === 'exit') record(target, { event: 'exit', code: Number.isSafeInteger(event.code) ? event.code : null });
-              else if (event.kind === 'error') record(target, { event: 'error' });
-            }
-          });
-          return target.handler.apply(this, arguments);
-        };
-        channel.onmessage = target.wrapper;
-        targets.push(target);
+      if (targets.length >= 2 || args?.shell !== shell || args.cwd !== cwd
+        || (args.env && (!Array.isArray(args.env) || args.env.length !== 0))
+        || (args.locale && (args.locale.mode !== 'default' || args.locale.variables?.length !== 0))
+        || typeof args.onEvent !== 'string' || !/^__CHANNEL__:\d{1,10}$/.test(args.onEvent)) {
+        reasons.add('fixture-open-not-matched');
+        return null;
       }
-    } else if (['pty_write', 'pty_ack', 'pty_resize'].includes(command)) {
-      target = targets.find(item => !item.rejected && item.id !== null && item.id === args?.id);
-    }
-    if (!target) return original.apply(this, arguments);
+      target = { slot: targets.length + 1, id: null, rejected: false,
+        pane: document.querySelector('.terminal-pane.focused-pane:not([hidden])') };
+      targets.push(target);
+      wrap(callbackId(args.onEvent.slice('__CHANNEL__:'.length)), raw => {
+        const event = raw?.message;
+        if (target.rejected || !validId(event?.id)) return;
+        if (target.id === null) target.id = event.id;
+        if (target.id !== event.id) { record(target, { event: 'foreign-session-rejected' }); return; }
+        const index = Number.isSafeInteger(raw.index) ? raw.index : null;
+        if (event.kind === 'data') record(target, { event: 'data', index,
+          sequence: Number.isSafeInteger(event.sequence) ? event.sequence : null, ...bytes(event.data) });
+        else if (event.kind === 'exit') record(target, { event: 'exit', index, code: Number.isSafeInteger(event.code) ? event.code : null });
+        else if (event.kind === 'error') record(target, { event: 'error', index });
+      });
+    } else if (command !== 'pty_open') target = targets.find(item => !item.rejected && item.id !== null && item.id === args?.id);
+    if (!target) return null;
     const detail = { command, call: ++call };
     if (command === 'pty_write') Object.assign(detail, bytes(args.data));
     if (command === 'pty_ack') detail.sequence = Number.isSafeInteger(args.sequence) ? args.sequence : null;
@@ -88,20 +103,36 @@ export function installTerminalTrace(shell, cwd) {
       detail.rows = Number.isSafeInteger(args.rows) ? args.rows : null;
     }
     record(target, { ...detail, state: 'begin' });
+    wrap(callbackId(init.headers?.get('Tauri-Callback')), value => {
+      if (command === 'pty_open') {
+        if (!validId(value?.id) || (target.id !== null && target.id !== value.id)) {
+          for (let i = records.length - 1; i >= 0; i--) if (records[i].slot === target.slot) records.splice(i, 1);
+          target.id = null;
+          target.rejected = true;
+          reasons.add('open-session-mismatch');
+          record(target, { event: 'open-session-mismatch' });
+        } else target.id = value.id;
+      }
+      record(target, { command, call: detail.call, state: 'fulfilled' });
+    });
+    wrap(callbackId(init.headers?.get('Tauri-Error')), () => record(target, { command, call: detail.call, state: 'rejected' }));
+    return target;
+  }
+  function fetch(input, init) {
+    const command = urls.get(input);
+    if (command) safe(() => capture(command, init));
+    const isIpc = typeof input === 'string' && input.startsWith(ipcPrefix);
     try {
-      return observe(original.apply(this, arguments), target, { command, call: detail.call },
-        command === 'pty_open' ? value => {
-          if (!validId(value?.id) || (target.id !== null && target.id !== value.id)) {
-            // Do not retain provisional bytes if the open result disproves their
-            // ownership. Do not expose either unexpected session identifier.
-            for (let i = records.length - 1; i >= 0; i--) if (records[i].slot === target.slot) records.splice(i, 1);
-            target.id = null;
-            target.rejected = true;
-            record(target, { event: 'open-session-mismatch' });
-          } else target.id = value.id;
-        } : undefined);
+      const result = originalFetch.apply(this, arguments);
+      // Keep the original fetch Promise; no response cloning/consumption.
+      // Any IPC transport failure can switch Tauri globally to postMessage,
+      // including a non-target command. Record only that fact, never its data.
+      if (isIpc) safe(() => result.then(undefined, () => {
+        if (!stopped) reasons.add('fetch-rejected-possible-fallback');
+      }));
+      return result;
     } catch (error) {
-      record(target, { command, call: detail.call, state: 'threw' });
+      if (isIpc && !stopped) reasons.add('fetch-threw');
       throw error;
     }
   }
@@ -111,17 +142,27 @@ export function installTerminalTrace(shell, cwd) {
     if (target) record(target, { event: 'keydown-enter', repeat: !!event.repeat,
       ctrl: !!event.ctrlKey, alt: !!event.altKey, shift: !!event.shiftKey, meta: !!event.metaKey });
   };
-  internals.invoke = invoke;
+  window.fetch = fetch;
+  if (window.fetch !== fetch) throw new Error('shell trace fetch installation failed');
   document.addEventListener('keydown', enter, true);
   window[key] = {
     arm() { if (!stopped && targets.length < 2) armed = true; },
     stop() {
       stopped = true;
-      if (internals.invoke === invoke) internals.invoke = original;
-      for (const target of targets) if (target.channel.onmessage === target.wrapper) target.channel.onmessage = target.handler;
+      if (window.fetch === fetch) window.fetch = originalFetch;
+      for (const [id, { original, wrapper }] of installed) {
+        if (callbacks.has(id) && callbacks.get(id) === wrapper) callbacks.set(id, original);
+      }
       document.removeEventListener('keydown', enter, true);
       delete window[key];
-      return { schema: 1, limitBytes: limit, truncated: dropped > 0, droppedRecords: dropped, records };
+      for (const target of targets) {
+        if (!records.some(item => item.slot === target.slot && item.event === 'data')) reasons.add('missing-slot-data');
+        if (!records.some(item => item.slot === target.slot && item.command === 'pty_open' && item.state === 'fulfilled')) reasons.add('missing-open-settlement');
+      }
+      if (targets.length !== 2) reasons.add('missing-two-fixture-slots');
+      return { schema: 1, transport: 'custom-protocol-callback', limitBytes: limit,
+        truncated: dropped > 0, droppedRecords: dropped, incomplete: reasons.size > 0,
+        incompleteReasons: [...reasons], records };
     },
   };
 }

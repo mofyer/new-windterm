@@ -432,6 +432,7 @@ async function localStartup(ctx, shell) {
   let filled;
   let phase = 'open';
   let tracing = false;
+  let succeeded = false;
   try {
     expected = await realpath(directory);
     if (shell) {
@@ -490,8 +491,10 @@ async function localStartup(ctx, shell) {
     await closeActiveTab(ctx, before + 1);
     await clickCss(session, oldTab);
     await closeActiveTab(ctx, before);
+    const remainingTabs = await tabCount(session);
+    succeeded = true;
     return { directory, expected, filled, shell, selected, identities, query, initialCwd: initial.row, reopenedCwd: reopened.row,
-      remainingTabs: await tabCount(session) };
+      remainingTabs };
   } catch (error) {
     // The runner captures after this function returns, when finally has already
     // closed the terminal. Preserve the actual failing shell before cleanup.
@@ -511,6 +514,9 @@ async function localStartup(ctx, shell) {
       if (tracing) {
         const trace = await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.stop());
         await ctx.writeText(`${artifact}-trace.json`, `${JSON.stringify(trace)}\n`);
+        if (succeeded && (trace.incomplete || trace.truncated)) {
+          throw new Error('shell diagnostic trace is incomplete or truncated; inspect its trace artifact');
+        }
       }
     } finally {
       // Close only tabs created by this scenario, even when a cwd assertion fails.

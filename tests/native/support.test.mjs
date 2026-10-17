@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
 import test from 'node:test';
-import './terminal-trace.test.mjs';
+import { createTraceRuntime } from './terminal-trace.test.mjs';
 import { environmentQueries, fill, isCwdOutput, isShellVersionOutput, localTerminalShell } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
@@ -27,7 +27,7 @@ const BANNER = [
 
 test('shell scenario writes distinct prefixed success/failure and trace artifacts without changing commands', async () => {
   const allPaths = new Set();
-  for (const failure of [false, true]) {
+  for (const { failure, missingTrace = false } of [{ failure: false }, { failure: true }, { failure: false, missingTrace: true }]) {
     for (const artifactPrefix of ['', 'diag-shell-01-', 'diag-shell-02-']) {
       let tabs = 1;
       let state = '';
@@ -62,13 +62,18 @@ test('shell scenario writes distinct prefixed success/failure and trace artifact
           throw new Error(`unexpected selector: ${css}`);
         },
       };
-      const window = { __TAURI_INTERNALS__: { invoke: (_command, args) => {
+      const runtime = createTraceRuntime((_command, args, { deliver }) => {
         opens.push(args);
         const id = `fixture-${opens.length}`;
-        args.onEvent.onmessage({ id, kind: 'data', sequence: 1, data: [27, 91, 54, 110] });
-        return Promise.resolve({ id });
-      } } };
-      const realm = createContext({ window, document, TextEncoder, performance, Event: class {} });
+        deliver(Number(args.onEvent.slice('__CHANNEL__:'.length)), { index: 0,
+          message: { id, kind: 'data', sequence: 1, data: [27, 91, 54, 110] } });
+        return { id };
+      });
+      const { window } = runtime;
+      // Negative case: install in a detached world while the fixture invokes
+      // the real transport. Functional success must not approve an empty trace.
+      const tracedWindow = missingTrace ? Object.create(window) : window;
+      const realm = createContext({ window: tracedWindow, document, TextEncoder, performance, Map, Event: class {} });
       const session = {
         execute: async (script, args) => { realm.args = args; return runInContext(`(function () { ${script} }).apply(null, args)`, realm); },
         findElement: async css => css,
@@ -79,7 +84,7 @@ test('shell scenario writes distinct prefixed success/failure and trace artifact
             if (css === '#local-start') savedLaunch = { cwd: input.value, shell: select.value,
               env: env.map(item => ({ ...item })), locale: { mode: locale.value,
                 variables: locale.value === 'custom' ? [{ name: 'LANG', value: 'C.UTF-8' }] : [] } };
-            await window.__TAURI_INTERNALS__.invoke('pty_open', { ...savedLaunch, onEvent: { onmessage() {} } });
+            await window.__TAURI_INTERNALS__.invoke('pty_open', { ...savedLaunch, onEvent: runtime.channel(() => {}).value });
             tabs++; state = '本机 shell 已启动';
           }
           if (css.includes('.tab-close')) tabs--;
@@ -99,13 +104,14 @@ test('shell scenario writes distinct prefixed success/failure and trace artifact
         screenshot: async name => { written.push(`${name}.png`); },
       };
       if (failure) await assert.rejects(localTerminalShell(ctx), /fixture cwd input failed/);
+      else if (missingTrace) await assert.rejects(localTerminalShell(ctx), /trace is incomplete/);
       else await localTerminalShell(ctx);
       const base = `${artifactPrefix}06-local-terminal-shell`;
       assert.deepEqual(written, failure
         ? [`${base}-failure.json`, `${base}-failure.png`, `${base}-trace.json`]
         : [`${base}.txt`, `${base}.png`, `${base}-trace.json`]);
       for (const path of written) {
-        const qualified = `${failure ? 'failure' : 'success'}/${path}`;
+        const qualified = `${missingTrace ? 'missing-trace' : failure ? 'failure' : 'success'}/${path}`;
         assert.ok(!allPaths.has(qualified), `artifact overwritten: ${qualified}`);
         allPaths.add(qualified);
       }
@@ -118,10 +124,11 @@ test('shell scenario writes distinct prefixed success/failure and trace artifact
         assert.deepEqual(launch.locale, { mode: 'default', variables: [] });
       }
       assert.deepEqual(trace.records.filter(item => item.command === 'pty_open' && item.state === 'begin')
-        .map(item => item.slot), failure ? [1] : [1, 2]);
-      assert.equal(trace.records.filter(item => item.event === 'data' && item.hex === '1b5b366e').length, opens.length);
+        .map(item => item.slot), missingTrace ? [] : failure ? [1] : [1, 2]);
+      assert.equal(trace.records.filter(item => item.event === 'data' && item.hex === '1b5b366e').length, missingTrace ? 0 : opens.length);
+      assert.equal(trace.incomplete, failure || missingTrace);
       assert.equal(tabs, 1);
-      assert.equal(window.__P1_NATIVE_SHELL_TRACE__, undefined);
+      assert.equal(tracedWindow.__P1_NATIVE_SHELL_TRACE__, undefined);
     }
   }
 });

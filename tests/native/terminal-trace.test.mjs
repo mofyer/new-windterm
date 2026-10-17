@@ -3,167 +3,208 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { installTerminalTrace } from './terminal-trace.mjs';
 
-function fixture(implementation = () => Promise.resolve({ id: 'fixture-id' })) {
-  const calls = [];
+// Mirrors the immutable descriptors and callback registration/response contract
+// in tauri 2.12.3 scripts/core.js and ipc-protocol.js, not a writable invoke stub.
+export function createTraceRuntime(onRequest = () => ({ id: 'fixture-id' })) {
+  const callbacks = new Map();
+  let next = 0;
+  const register = (fn, once = false) => {
+    const id = ++next;
+    callbacks.set(id, function (...args) { if (once) callbacks.delete(id); return fn.apply(this, args); });
+    return id;
+  };
+  const internals = {};
+  const window = {};
+  const requests = [];
+  const convertFileSrc = command => `http://ipc.localhost/${command}`;
+  const deliver = (id, raw) => callbacks.get(id)?.(raw);
+  window.fetch = function (url, init) {
+    requests.push({ receiver: this, args: [...arguments] });
+    return Promise.resolve(onRequest(url.slice(url.lastIndexOf('/') + 1), JSON.parse(init.body), { callbacks, deliver }))
+      .then(value => ({ headers: new Headers({ 'Tauri-Response': 'ok', 'content-type': 'application/json' }), json: async () => value }));
+  };
+  function invoke(command, payload = {}) {
+    return new Promise((resolve, reject) => {
+      const callback = register(value => { resolve(value); callbacks.delete(error); }, true);
+      const error = register(value => { reject(value); callbacks.delete(callback); }, true);
+      const init = { method: 'POST', body: JSON.stringify(payload), headers: new Headers({
+        'Content-Type': 'application/json', 'Tauri-Callback': String(callback),
+        'Tauri-Error': String(error), 'Tauri-Invoke-Key': 'PRIVATE_INVOKE_KEY',
+      }) };
+      window.fetch(convertFileSrc(command), init)
+        .then(response => response.json().then(value => [response.headers.get('Tauri-Response') === 'ok' ? callback : error, value]))
+        .then(([id, value]) => deliver(id, value), value => deliver(error, value));
+    });
+  }
+  for (const [name, value] of Object.entries({ callbacks, convertFileSrc, invoke })) Object.defineProperty(internals, name, { value });
+  Object.defineProperty(window, '__TAURI_INTERNALS__', { value: internals });
+  const channel = handler => {
+    const result = { onmessage: handler };
+    const id = register(function (raw) { if ('end' in raw) { callbacks.delete(id); return; } return result.onmessage.call(this, raw.message); });
+    result.toJSON = () => `__CHANNEL__:${id}`;
+    return { value: result, id };
+  };
+  return { window, internals, callbacks, register, deliver, requests, channel };
+}
+
+function fixture(onRequest) {
+  const runtime = createTraceRuntime(onRequest);
   const listeners = new Map();
   const textarea = {};
   const pane = { contains: target => target === textarea };
-  const original = function (...args) { calls.push({ receiver: this, args }); return implementation(...args); };
-  const internals = { invoke: original };
-  const window = { __TAURI_INTERNALS__: internals };
+  const originalFetch = runtime.window.fetch;
   runInNewContext(`(${installTerminalTrace})('powershell', '/fixture');`, {
-    window, TextEncoder, Uint8Array, performance,
+    window: runtime.window, TextEncoder, Uint8Array, performance, Map,
     document: {
       querySelector: () => pane,
       addEventListener: (name, fn) => listeners.set(name, fn),
       removeEventListener: (name, fn) => { assert.equal(listeners.get(name), fn); listeners.delete(name); },
     },
   });
-  const controller = window.__P1_NATIVE_SHELL_TRACE__;
-  const channel = handler => {
-    // Model the API's prototype getter/setter, not a plain data property.
-    let current = handler;
-    return Object.create({ get onmessage() { return current; }, set onmessage(value) { current = value; } });
-  };
-  const open = (onEvent, extra = {}) => {
+  const controller = runtime.window.__P1_NATIVE_SHELL_TRACE__;
+  const open = (channel, extra = {}) => {
     controller.arm();
-    return internals.invoke('pty_open', { shell: 'powershell', cwd: '/fixture', onEvent, ...extra });
+    return runtime.internals.invoke('pty_open', { shell: 'powershell', cwd: '/fixture', onEvent: channel.value, ...extra });
   };
-  return { calls, listeners, textarea, internals, original, controller, channel, open, window };
+  return { ...runtime, listeners, textarea, originalFetch, controller, open };
 }
 
-test('terminal trace preserves invoke arguments, receivers, promise identity and callback semantics', async () => {
-  let resolveOpen;
-  const promise = new Promise(resolve => { resolveOpen = resolve; });
-  const f = fixture(() => promise);
-  let seen;
-  const handler = function (...args) { seen = { receiver: this, args }; return 'callback-result'; };
-  const channel = f.channel(handler);
-  assert.equal(f.open(channel), promise);
-  assert.equal(f.calls[0].receiver, f.internals);
-  const event = { kind: 'data', id: 'fixture-id', sequence: 1, data: [27, 91, 54, 110] };
-  const receiver = {};
-  assert.equal(channel.onmessage.call(receiver, event, 42), 'callback-result');
-  assert.equal(seen.receiver, receiver);
-  assert.deepEqual(seen.args, [event, 42]);
-  // ACK before open resolution is scoped through the bound Channel.
-  assert.equal(f.internals.invoke('pty_ack', { id: 'fixture-id', sequence: 1 }), promise);
-  resolveOpen({ id: 'fixture-id' });
-  await promise;
+function cprRequest(args, { deliver }) {
+  deliver(Number(args.onEvent.slice(12)), { index: 0, message: { kind: 'data', id: 'fixture-id', sequence: 1, data: [27, 91, 54, 110] } });
+  return { id: 'fixture-id' };
+}
+
+test('trace works with real immutable Tauri descriptors and serialized early Channel envelopes', async () => {
+  const f = fixture((command, args, runtime) => command === 'pty_open' ? cprRequest(args, runtime) : null);
+  const channel = f.channel(() => 'callback-result');
+  const original = f.callbacks.get(channel.id);
+  assert.equal(Object.getOwnPropertyDescriptor(f.internals, 'invoke').writable, false);
+  assert.equal(Object.getOwnPropertyDescriptor(f.window, '__TAURI_INTERNALS__').configurable, false);
+  await f.open(channel);
+  await f.internals.invoke('pty_ack', { id: 'fixture-id', sequence: 1 });
+  await f.internals.invoke('pty_write', { id: 'fixture-id', data: [13] });
   const trace = f.controller.stop();
-  assert.ok(trace.records.some(item => item.event === 'data' && item.hex === '1b5b366e'));
+  assert.ok(trace.records.some(item => item.event === 'data' && item.hex === '1b5b366e' && item.index === 0));
   assert.ok(trace.records.some(item => item.command === 'pty_ack' && item.state === 'fulfilled'));
-  assert.equal(f.internals.invoke, f.original);
-  assert.equal(channel.onmessage, handler);
+  assert.equal(f.callbacks.get(channel.id), original);
+  assert.equal(f.window.fetch, f.originalFetch);
   assert.equal(f.listeners.size, 0);
-  assert.equal(f.window.__P1_NATIVE_SHELL_TRACE__, undefined);
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE_INVOKE_KEY|Tauri-Invoke-Key|\/fixture/);
 });
 
-test('terminal trace preserves sync throws, rejection objects and throwing channel handlers without logging messages', async () => {
-  const failure = new Error('PRIVATE_REJECTION');
-  const rejected = Promise.reject(failure);
-  const f = fixture(command => { if (command === 'pty_resize') throw failure; return rejected; });
-  const channel = f.channel(() => { throw failure; });
-  const result = f.open(channel);
-  assert.equal(result, rejected);
-  assert.throws(() => channel.onmessage({ id: 'fixture-id', kind: 'error', message: 'PRIVATE_EVENT' }), error => error === failure);
-  assert.throws(() => f.internals.invoke('pty_resize', { id: 'fixture-id', cols: 80, rows: 24 }), error => error === failure);
-  await assert.rejects(result, error => error === failure);
-  const trace = f.controller.stop();
-  assert.ok(trace.records.some(item => item.state === 'rejected'));
-  assert.ok(trace.records.some(item => item.state === 'threw'));
-  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
-});
-
-test('terminal trace excludes unrelated sessions, open arguments, unarmed and nonempty environment launches', async () => {
+test('fetch wrapper preserves original promise, receiver, parameters and rejection object; marks fallback incomplete', async () => {
   const f = fixture();
-  const target = f.channel(() => {});
-  await f.open(target);
-  const foreign = f.channel(() => {});
-  const foreignHandler = foreign.onmessage;
-  await f.internals.invoke('pty_open', { onEvent: foreign, env: [{ name: 'SECRET', value: 'PRIVATE_VALUE' }] });
-  assert.equal(foreign.onmessage, foreignHandler);
-  await f.internals.invoke('pty_write', { id: 'other-session', data: Array.from(new TextEncoder().encode('PRIVATE_WRITE')) });
-  target.onmessage({ id: 'other-session', kind: 'data', data: Array.from(new TextEncoder().encode('PRIVATE_DATA')) });
-  await f.open(foreign, { env: [{ name: 'SECRET', value: 'PRIVATE_ENV' }] });
-  await f.open(foreign, { locale: { mode: 'custom', variables: [] } });
-  assert.equal(foreign.onmessage, foreignHandler);
+  const channel = f.channel(() => {});
+  const failure = new Error('PRIVATE_FETCH_ERROR');
+  const rejected = Promise.reject(failure);
+  // Separate instance installs over an immutable-compatible runtime with a
+  // controlled fetch promise, so the exact returned reference can be checked.
+  const runtime = createTraceRuntime();
+  const args = { shell: 'powershell', cwd: '/fixture', onEvent: runtime.channel(() => {}).value };
+  const receiver = {};
+  let seen;
+  runtime.window.fetch = function (...values) { seen = { receiver: this, values }; return rejected; };
+  const listeners = new Map();
+  runInNewContext(`(${installTerminalTrace})('powershell', '/fixture')`, { window: runtime.window, Map, TextEncoder, performance,
+    document: { querySelector: () => null, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener() {} } });
+  runtime.window.__P1_NATIVE_SHELL_TRACE__.arm();
+  const init = { body: JSON.stringify(args), headers: new Headers({ 'Tauri-Callback': String(runtime.register(() => {})), 'Tauri-Error': String(runtime.register(() => {})) }) };
+  const result = runtime.window.fetch.call(receiver, runtime.internals.convertFileSrc('pty_open'), init);
+  assert.equal(result, rejected);
+  assert.equal(seen.receiver, receiver);
+  assert.equal(seen.values[1], init);
+  await assert.rejects(result, error => error === failure);
+  const trace = runtime.window.__P1_NATIVE_SHELL_TRACE__.stop();
+  assert.ok(trace.incompleteReasons.includes('fetch-rejected-possible-fallback'));
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE_FETCH_ERROR/);
+  await f.open(channel);
+  f.controller.stop();
+});
+
+test('callback wrappers preserve this, arguments, return values, throws and deletion without resurrection', async () => {
+  const f = fixture();
+  const channel = f.channel(() => {});
+  let seen;
+  const failure = new Error('PRIVATE_CALLBACK_ERROR');
+  f.callbacks.set(channel.id, function (...args) { seen = { receiver: this, args }; if (args[1] === 'throw') throw failure; return 'value'; });
+  await f.open(channel);
+  const wrapper = f.callbacks.get(channel.id);
+  const receiver = {};
+  const raw = { index: 0, message: { id: 'fixture-id', kind: 'data', sequence: 1, data: [65] } };
+  assert.equal(wrapper.call(receiver, raw, 42), 'value');
+  assert.equal(seen.receiver, receiver);
+  assert.deepEqual(seen.args, [raw, 42]);
+  assert.throws(() => wrapper.call(receiver, raw, 'throw'), error => error === failure);
+  f.callbacks.delete(channel.id);
   const trace = f.controller.stop();
-  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|SECRET|other-session|fixture-id|\/fixture/);
+  assert.equal(f.callbacks.has(channel.id), false);
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE_CALLBACK_ERROR/);
+});
+
+test('trace excludes unarmed, foreign and custom-environment launches without recording payloads', async () => {
+  const f = fixture();
+  const channel = f.channel(() => {});
+  await f.open(channel);
+  await f.internals.invoke('pty_write', { id: 'foreign-id', data: [...Buffer.from('PRIVATE_WRITE')] });
+  f.deliver(channel.id, { index: 0, message: { id: 'foreign-id', kind: 'data', data: [...Buffer.from('PRIVATE_DATA')] } });
+  const other = f.channel(() => {});
+  const original = f.callbacks.get(other.id);
+  await f.open(other, { env: [{ name: 'SECRET', value: 'PRIVATE_ENV' }] });
+  await f.open(other, { locale: { mode: 'custom', variables: [] } });
+  await f.internals.invoke('pty_open', { onEvent: other.value });
+  assert.equal(f.callbacks.get(other.id), original);
+  const trace = f.controller.stop();
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|SECRET|foreign-id|fixture-id/);
   assert.equal(trace.records.filter(item => item.command === 'pty_open' && item.state === 'begin').length, 1);
 });
 
-test('terminal trace removes provisional bytes when open resolves to another session and rejects subsequent contamination', async () => {
-  let resolve;
-  const promise = new Promise(done => { resolve = done; });
-  const f = fixture(() => promise);
+test('mismatched open IDs purge provisional bytes and prevent later session contamination', async () => {
+  const f = fixture((_command, args, runtime) => { cprRequest(args, runtime); return { id: 'another-id' }; });
   const channel = f.channel(() => {});
-  f.open(channel);
-  channel.onmessage({ id: 'unexpected', kind: 'data', sequence: 1, data: [65] });
-  resolve({ id: 'actual' });
-  await promise;
-  channel.onmessage({ id: 'actual', kind: 'data', sequence: 2, data: [66] });
-  await f.internals.invoke('pty_write', { id: 'actual', data: [67] });
+  await f.open(channel);
+  f.deliver(channel.id, { index: 1, message: { id: 'another-id', kind: 'data', sequence: 2, data: [66] } });
   const trace = f.controller.stop();
-  assert.ok(trace.records.some(item => item.event === 'open-session-mismatch'));
+  assert.ok(trace.incompleteReasons.includes('open-session-mismatch'));
   assert.ok(!trace.records.some(item => item.hex));
 });
 
-test('terminal trace records only Enter on fixture panes and captures write/ack/resize begin and settle', async () => {
-  const f = fixture();
-  await f.open(f.channel(() => {}));
-  f.listeners.get('keydown')({ key: 'Enter', target: f.textarea });
-  f.listeners.get('keydown')({ key: 'PRIVATE_TYPED_CHARACTER', target: f.textarea });
-  f.listeners.get('keydown')({ key: 'Enter', target: {} });
-  await f.internals.invoke('pty_write', { id: 'fixture-id', data: [13] });
-  await f.internals.invoke('pty_ack', { id: 'fixture-id', sequence: 4 });
-  await f.internals.invoke('pty_resize', { id: 'fixture-id', cols: 100, rows: 30 });
-  const trace = f.controller.stop();
-  assert.equal(trace.records.filter(item => item.event === 'keydown-enter').length, 1);
-  for (const command of ['pty_write', 'pty_ack', 'pty_resize']) {
-    assert.equal(trace.records.filter(item => item.command === command).length, 2);
-  }
-  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE/);
-});
-
-test('terminal trace caps serialized output at 64 KiB, marks truncated bytes and restores both channels', async () => {
+test('two fixture slots capture Enter only, enforce 64 KiB and flag truncation', async () => {
   let id = 0;
-  const f = fixture(() => Promise.resolve({ id: `id-${++id}` }));
-  const handler = () => {};
-  const first = f.channel(handler);
-  const second = f.channel(handler);
+  const f = fixture(() => ({ id: `id-${++id}` }));
+  const first = f.channel(() => {});
+  const second = f.channel(() => {});
   await f.open(first);
   await f.open(second);
-  const third = f.channel(handler);
-  await f.open(third);
-  assert.equal(third.onmessage, handler);
-  for (let sequence = 1; sequence <= 100; sequence++) {
-    first.onmessage({ kind: 'data', id: 'id-1', sequence, data: Array(8192).fill(65) });
-  }
-  second.onmessage({ kind: 'exit', id: 'id-2', code: 7 });
+  f.listeners.get('keydown')({ key: 'Enter', target: f.textarea });
+  f.listeners.get('keydown')({ key: 'PRIVATE_CHARACTER', target: f.textarea });
+  f.listeners.get('keydown')({ key: 'Enter', target: {} });
+  for (let index = 0; index < 100; index++) f.deliver(first.id, {
+    index, message: { id: 'id-1', kind: 'data', sequence: index + 1, data: Array(8192).fill(65) },
+  });
+  f.deliver(second.id, { index: 0, message: { id: 'id-2', kind: 'data', sequence: 1, data: [66] } });
   const trace = f.controller.stop();
+  assert.equal(trace.records.filter(item => item.event === 'keydown-enter').length, 1);
   assert.ok(trace.truncated);
-  assert.ok(trace.droppedRecords > 0);
-  assert.ok(trace.records.some(item => item.bytesTruncated));
   assert.ok(Buffer.byteLength(`${JSON.stringify(trace)}\n`) <= 65536);
-  assert.equal(first.onmessage, handler);
-  assert.equal(second.onmessage, handler);
 });
 
-test('terminal trace stop does not overwrite later handlers or record pending settlements', async () => {
-  let resolve;
-  const promise = new Promise(done => { resolve = done; });
-  const f = fixture(() => promise);
-  const channel = f.channel(() => {});
-  f.open(channel);
-  const replacement = () => {};
-  channel.onmessage = replacement;
-  f.internals.invoke = replacement;
+test('unreplaceable fetch fails installation immediately; empty trace is explicitly incomplete', () => {
+  const runtime = createTraceRuntime();
+  Object.defineProperty(runtime.window, 'fetch', { writable: false });
+  assert.throws(() => runInNewContext(`(${installTerminalTrace})('powershell', '/fixture')`, {
+    window: runtime.window, TextEncoder, performance, Map,
+  }), /read only|installation failed/);
+  const f = fixture();
   const trace = f.controller.stop();
-  const snapshot = JSON.stringify(trace);
-  resolve({ id: 'fixture-id' });
-  await promise;
-  assert.equal(JSON.stringify(trace), snapshot);
-  assert.equal(channel.onmessage, replacement);
-  assert.equal(f.internals.invoke, replacement);
+  assert.equal(trace.incomplete, true);
+  assert.ok(trace.incompleteReasons.includes('missing-two-fixture-slots'));
+});
+
+test('unrelated IPC transport rejection flags global fallback without capturing its payload or error', async () => {
+  const f = fixture(command => command === 'private-command' ? Promise.reject(new Error('PRIVATE_ERROR')) : ({ id: 'fixture-id' }));
+  await f.open(f.channel(() => {}));
+  await assert.rejects(f.internals.invoke('private-command', { password: 'PRIVATE_VALUE' }), /PRIVATE_ERROR/);
+  const trace = f.controller.stop();
+  assert.ok(trace.incompleteReasons.includes('fetch-rejected-possible-fallback'));
+  assert.doesNotMatch(JSON.stringify(trace), /private-command|PRIVATE|password/);
 });
