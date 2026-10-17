@@ -63,6 +63,74 @@ fn receive_until_with_timeout(
     ))
 }
 
+// Uses the same API as pty_open; the path is never part of a shell command.
+// This binary is the Unix smoke lane. Native WebView scenarios cover cmd.exe.
+fn probe_custom_cwd() -> Result<(), String> {
+    let directory = std::env::temp_dir().join(format!("p1 cwd 中文-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).map_err(|error| error.to_string())?;
+    let sessions = Sessions::default();
+    let result = (|| {
+        // macOS /var and /tmp can be symlinks; pwd -P returns their physical paths.
+        let expected = std::fs::canonicalize(&directory).map_err(|error| error.to_string())?;
+        let cwd = directory.to_str().ok_or("Probe cwd is not UTF-8")?;
+        let expected = expected.to_str().ok_or("Physical probe cwd is not UTF-8")?;
+        let mut previous_id = None;
+        for attempt in 1..=2 {
+            let (sender, receiver) = sync_channel(128);
+            let id = sessions.open_with_cwd(
+                "cwd-probe",
+                132,
+                24,
+                Some(cwd),
+                Arc::new(move |event| sender.try_send(event).map_err(|e| e.to_string())),
+            )?;
+            if previous_id.as_ref() == Some(&id) {
+                return Err("Custom cwd reopen reused the old PTY session".into());
+            }
+            let session = sessions.get("cwd-probe", &id)?;
+            receive_until(&receiver, &session, b"P0 ")?;
+            session.write(b"stty -echo; printf '\\033[?2004l\\nCWD_%s\\n' READY\n".to_vec())?;
+            receive_until(&receiver, &session, b"CWD_READY")?;
+            session
+                .write(b"printf '\\nCWD_%s\\n' BEGIN; pwd -P; printf 'CWD_%s\\n' END\n".to_vec())?;
+            let output = receive_until(&receiver, &session, b"CWD_END")?;
+            if !String::from_utf8_lossy(&output)
+                .lines()
+                .any(|line| line.trim_end_matches('\r') == expected)
+            {
+                return Err(format!(
+                    "Custom cwd attempt {attempt}: shell pwd -P did not equal {expected:?}; output={:?}",
+                    String::from_utf8_lossy(&output)
+                ));
+            }
+            session.write(b"exit 7\n".to_vec())?;
+            loop {
+                match receiver
+                    .recv_timeout(Duration::from_secs(5))
+                    .map_err(|error| error.to_string())?
+                {
+                    PtyEvent::Data { sequence, .. } => session.ack(sequence)?,
+                    PtyEvent::Exit { code: Some(7), .. } => break,
+                    PtyEvent::Exit { code, .. } => {
+                        return Err(format!("Custom cwd unexpected exit {code:?}"));
+                    }
+                    PtyEvent::Error { message, .. } => return Err(message),
+                }
+            }
+            if !session.wait_closed(Duration::from_secs(2)) {
+                return Err("Custom cwd PTY worker did not reap".into());
+            }
+            sessions.close("cwd-probe", &id)?;
+            previous_id = Some(id);
+            println!("PASS custom cwd attempt {attempt}/2: actual pwd -P={expected:?}; exit 7, worker reaped");
+        }
+        Ok(())
+    })();
+    sessions.shutdown();
+    let cleanup = std::fs::remove_dir(&directory).map_err(|error| error.to_string());
+    result.and(cleanup)
+}
+
 fn run() -> Result<(), String> {
     let sessions = Sessions::default();
     let (sender, receiver) = sync_channel(128);
@@ -215,7 +283,7 @@ fn main() {
         std::env::consts::OS,
         std::env::consts::ARCH
     );
-    if let Err(error) = run() {
+    if let Err(error) = run().and_then(|()| probe_custom_cwd()) {
         eprintln!("FAIL PTY probe: {error}");
         std::process::exit(1);
     }

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { isCwdOutput } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -103,4 +104,21 @@ test('run.mjs skips on macOS with the documented message and exit 0', { skip: pr
   const result = spawnSync(process.execPath, [run], { encoding: 'utf8', timeout: 30_000 });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, 'skipped: tauri-driver does not support macOS\n');
+});
+
+
+test('cwd evidence accepts an exact physical shell path, not prompts, commands or partial paths', () => {
+  const unix = '/private/tmp/p1 中文-ab12';
+  assert.ok(isCwdOutput(unix, unix, 'darwin'));
+  assert.ok(!isCwdOutput('/tmp/p1 中文-ab12', unix, 'darwin'));
+  assert.ok(!isCwdOutput(`P0 ${unix} % pwd -P`, unix, 'darwin'));
+  assert.ok(!isCwdOutput(`cd ${unix}`, unix, 'linux'));
+  assert.ok(!isCwdOutput(`${unix}/other`, unix, 'linux'));
+  assert.ok(!isCwdOutput('/private/tmp/p1', unix, 'linux'));
+  const windows = String.raw`C:\Users\runner\Temp\p1 中文-ab12`;
+  assert.ok(isCwdOutput(windows, windows, 'win32'));
+  assert.ok(isCwdOutput(windows.toLowerCase(), windows, 'win32'));
+  assert.ok(!isCwdOutput(`P0 ${windows}> cd`, windows, 'win32'));
+  assert.ok(!isCwdOutput(`cd ${windows}`, windows, 'win32'));
+  assert.ok(!isCwdOutput(`${windows}\\other`, windows, 'win32'));
 });

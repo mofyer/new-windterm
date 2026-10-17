@@ -2,6 +2,9 @@
 // frontend, real Tauri IPC through the bundled ACL/capabilities) and returns
 // evidence, or throws with what it saw.
 import { randomBytes } from 'node:crypto';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, win32 } from 'node:path';
 import { Keys, WebDriverError, waitFor } from './webdriver.mjs';
 
 const PANE = '.terminal-pane.focused-pane:not([hidden])';
@@ -206,6 +209,69 @@ export async function localTerminalReopen(ctx) {
     preservedState: preservedState.state, remainingTabs: await tabCount(session) };
 }
 
+/** Only a complete shell output row proves cwd; prompts and echoed commands do not. */
+export function isCwdOutput(row, expected, platform) {
+  if (platform === 'win32') {
+    // cmd.exe may preserve a different drive/path letter case than fs.realpath.
+    return win32.normalize(row).toLowerCase() === win32.normalize(expected).toLowerCase();
+  }
+  return row === expected;
+}
+
+/** 5. The configured directory reaches the real shell and survives reopening. */
+export async function localTerminalCwd(ctx) {
+  const { session } = ctx;
+  const before = await tabCount(session);
+  // Keep this short so the complete path fits a terminal row on hosted Windows.
+  // All paths go through the form/IPC; none is interpolated into shell input.
+  const directory = await mkdtemp(join(tmpdir(), 'p1 中文-'));
+  const oldTab = `#tabs .tab:nth-child(${before + 1}) [role="tab"]`;
+  const newTab = `#tabs .tab:nth-child(${before + 2}) [role="tab"]`;
+  try {
+    const expected = await realpath(directory);
+    await clickCss(session, '#local-options-open');
+    await waitFor(() => inPage(session, () => document.querySelector('#local-dialog')?.open === true),
+      { description: 'local startup options dialog' });
+    const filled = await fill(ctx, '#local-cwd-input', directory);
+    await clickCss(session, '#local-start');
+    await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'custom cwd local tab' });
+    await waitForSessionState(ctx, '本机 shell 已启动', 'custom cwd PTY startup');
+    const query = ctx.platform === 'win32' ? 'cd' : 'pwd -P';
+    // cmd.exe's legacy code page can lose Chinese cwd characters. Change only
+    // this test shell; ConPTY transports the resulting console text as UTF-8.
+    if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
+    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
+    const initial = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual initial shell cwd output');
+    await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
+    await waitForSessionState(ctx, '已退出 · code 7', 'custom cwd shell exit');
+    await clickCss(session, '#local-reopen');
+    await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'reopened custom cwd tab' });
+    await waitForSessionState(ctx, '本机 shell 已启动', 'reopened custom cwd PTY startup');
+    if (ctx.platform === 'win32') await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
+    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
+    const reopened = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual reopened shell cwd output');
+    await ctx.writeText('05-local-terminal-cwd.txt', rowsText({ initial: initial.rows, reopened: reopened.rows }));
+    await ctx.screenshot('05-local-terminal-cwd');
+    await clickCss(session, newTab);
+    await closeActiveTab(ctx, before + 1);
+    await clickCss(session, oldTab);
+    await closeActiveTab(ctx, before);
+    return { directory, expected, filled, query, initialCwd: initial.row, reopenedCwd: reopened.row,
+      remainingTabs: await tabCount(session) };
+  } finally {
+    // Close only tabs created by this scenario, even when a cwd assertion fails.
+    // Windows can briefly keep cwd open while the backend worker is reaping.
+    try {
+      while ((await tabCount(session)) > before) {
+        await clickCss(session, '#tabs .tab:last-child [role="tab"]');
+        await closeActiveTab(ctx, (await tabCount(session)) - 1);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  }
+}
+
 /** 3. SSH terminal to the loopback russh fixture: real probe, fingerprint check, shell channel round trip. */
 export async function sshTerminal(ctx) {
   const fixture = ctx.fixture?.info;
@@ -261,4 +327,5 @@ export const SCENARIOS = Object.freeze([
   { name: 'local-terminal', run: localTerminal },
   { name: 'ssh-terminal', run: sshTerminal },
   { name: 'local-terminal-reopen', run: localTerminalReopen },
+  { name: 'local-terminal-cwd', run: localTerminalCwd },
 ]);
