@@ -149,11 +149,22 @@ pub(crate) fn local_command() -> Result<CommandBuilder, String> {
 }
 
 /// An explicit cwd is passed to the process builder, never to a shell command.
+#[cfg(test)]
 pub(crate) fn command_with_cwd(cwd: Option<&str>) -> Result<CommandBuilder, String> {
+    command_with_options(crate::pty::LocalLaunchOptions { cwd, shell: None })
+}
+
+pub(crate) fn command_with_options(
+    options: crate::pty::LocalLaunchOptions<'_>,
+) -> Result<CommandBuilder, String> {
+    let cwd = options.cwd;
     if let Some(cwd) = cwd {
         validate_cwd(cwd)?;
     }
-    let mut command = local_command()?;
+    let mut command = match options.shell {
+        Some(id) => crate::local_shell::command(id)?,
+        None => local_command()?,
+    };
     if let Some(cwd) = cwd {
         command.cwd(cwd);
     }
@@ -180,12 +191,12 @@ pub(crate) fn validate_cwd(cwd: &str) -> Result<(), String> {
         use std::path::{Component, Prefix};
         if !matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)))
         {
-            return Err("PTY startup directory for cmd.exe must use a drive-absolute path; UNC and device paths are unsupported".into());
+            return Err("PTY startup directory on Windows must use a drive-absolute path; UNC and device paths are unsupported".into());
         }
         if path.components().any(|component| {
             matches!(component, Component::Normal(name) if name.to_str().is_some_and(|name| name.ends_with([' ', '.'])))
         }) {
-            return Err("PTY startup directory for cmd.exe cannot contain components ending in a space or dot".into());
+            return Err("PTY startup directory on Windows cannot contain components ending in a space or dot".into());
         }
         // Windows canonicalization may produce a verbatim disk prefix even for
         // ordinary input. Inspect the target, but never pass that spelling to cmd.
@@ -195,7 +206,7 @@ pub(crate) fn validate_cwd(cwd: &str) -> Result<(), String> {
         if !matches!(target.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
         {
             return Err(
-                "PTY startup directory for cmd.exe cannot resolve to a UNC or device path".into(),
+                "PTY startup directory on Windows cannot resolve to a UNC or device path".into(),
             );
         }
     }
@@ -369,6 +380,51 @@ mod tests {
         let default = local_command().unwrap();
         assert_eq!(command.get_argv(), default.get_argv());
         assert_eq!(command.get_env("HOME"), default.get_env("HOME"));
+    }
+
+    #[test]
+    fn absent_shell_preserves_default_argv_environment_and_cwd() {
+        let command = command_with_options(crate::pty::LocalLaunchOptions::default()).unwrap();
+        let original = local_command().unwrap();
+        assert_eq!(command.get_argv(), original.get_argv());
+        assert_eq!(command.get_cwd(), original.get_cwd());
+        for name in [
+            "PATH",
+            "HOME",
+            "USERPROFILE",
+            "SystemRoot",
+            "ComSpec",
+            "LANG",
+            "LC_CTYPE",
+            "LC_ALL",
+            "PS1",
+            "PROMPT",
+            "HISTFILE",
+            "ZDOTDIR",
+        ] {
+            assert_eq!(
+                command.get_env(name),
+                original.get_env(name),
+                "changed {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_shell_does_not_relax_cwd_validation() {
+        for shell in crate::pty::local_shells()
+            .into_iter()
+            .filter(|shell| shell.available)
+        {
+            for cwd in ["", ".", "~/tmp"] {
+                assert!(command_with_options(crate::pty::LocalLaunchOptions {
+                    cwd: Some(cwd),
+                    shell: Some(&shell.id),
+                })
+                .unwrap_err()
+                .contains("startup directory"));
+            }
+        }
     }
 
     #[test]

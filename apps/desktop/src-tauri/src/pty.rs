@@ -1,5 +1,7 @@
 //! P0 local PTY transport. No terminal decoding or remote/file APIs live here.
+pub use crate::local_shell::{local_shells, LocalShell};
 use crate::platform;
+
 use portable_pty::{native_pty_system, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -42,6 +44,13 @@ struct Diagnostics {
 #[cfg(feature = "pty-diagnostics")]
 fn elapsed_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().min(u64::MAX as u128) as u64
+}
+
+/// Per-session launch choices; None preserves the original platform default.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalLaunchOptions<'a> {
+    pub cwd: Option<&'a str>,
+    pub shell: Option<&'a str>,
 }
 
 pub const CHUNK_BYTES: usize = 4096;
@@ -424,8 +433,30 @@ impl Sessions {
         cwd: Option<&str>,
         sink: EventSink,
     ) -> Result<String, String> {
+        self.open_with_options(
+            owner,
+            cols,
+            rows,
+            LocalLaunchOptions { cwd, shell: None },
+            sink,
+        )
+    }
+
+    /// Open a session owned by `owner` using its current document generation.
+    /// `None` choices preserve platform defaults. Explicit shell IDs are fixed per
+    /// platform and re-discovered on every open/reopen; no executable inode is pinned.
+    /// Launch arguments and environment follow controlled policy, not wholesale
+    /// parent-environment inheritance. Closing owners cannot open new sessions.
+    pub fn open_with_options(
+        &self,
+        owner: &str,
+        cols: u16,
+        rows: u16,
+        options: LocalLaunchOptions<'_>,
+        sink: EventSink,
+    ) -> Result<String, String> {
         let generation = self.generation(owner)?;
-        self.open_at_generation_with_cwd(owner, generation, cols, rows, cwd, sink)
+        self.open_at_generation_with_options(owner, generation, cols, rows, options, sink)
     }
 
     pub fn generation(&self, owner: &str) -> Result<u64, String> {
@@ -473,6 +504,30 @@ impl Sessions {
         cwd: Option<&str>,
         sink: EventSink,
     ) -> Result<String, String> {
+        self.open_at_generation_with_options(
+            owner,
+            generation,
+            cols,
+            rows,
+            LocalLaunchOptions { cwd, shell: None },
+            sink,
+        )
+    }
+
+    /// Open for the captured owner/document generation; reject stale generations,
+    /// closing owners and application shutdown before creating a session.
+    /// `None` preserves defaults; explicit platform shell IDs are re-discovered on
+    /// every open/reopen without pinning an inode. Arguments and environment follow
+    /// controlled platform policy rather than inheriting the full parent environment.
+    pub fn open_at_generation_with_options(
+        &self,
+        owner: &str,
+        generation: u64,
+        cols: u16,
+        rows: u16,
+        options: LocalLaunchOptions<'_>,
+        sink: EventSink,
+    ) -> Result<String, String> {
         let mut registry = self
             .registry
             .lock()
@@ -497,7 +552,7 @@ impl Sessions {
         }
         let size = checked_size(cols, rows)?;
         let id = uuid::Uuid::new_v4().to_string();
-        let session = spawn_local_session(owner, size, &id, cwd, sink)?;
+        let session = spawn_local_session(owner, size, &id, options, sink)?;
         sessions.insert(id.clone(), session);
         Ok(id)
     }
@@ -507,13 +562,13 @@ fn spawn_local_session(
     owner: &str,
     size: PtySize,
     id: &str,
-    cwd: Option<&str>,
+    options: LocalLaunchOptions<'_>,
     sink: EventSink,
 ) -> Result<Arc<Session>, String> {
     platform::ensure_supported()?;
     #[cfg(windows)]
     platform::windows::restore_ctrl_c_processing();
-    let command = platform::command_with_cwd(cwd)?;
+    let command = platform::command_with_options(options)?;
     let pair = native_pty_system()
         .openpty(size)
         .map_err(|e| e.to_string())?;
@@ -522,7 +577,7 @@ fn spawn_local_session(
     let (readiness, cancel_readiness) = platform::Readiness::new(pair.master.as_ref())?;
     let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-    if let Some(cwd) = cwd {
+    if let Some(cwd) = options.cwd {
         platform::validate_cwd(cwd)?;
     }
     let child = pair
@@ -1005,6 +1060,66 @@ fn checked_size(cols: u16, rows: u16) -> Result<PtySize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejected_shell_does_not_register_a_session_or_emit_output() {
+        let sessions = Sessions::default();
+        for _ in 0..MAX_SESSIONS + 1 {
+            for shell in ["", "not-a-supported-shell", "/bin/bash"] {
+                assert!(sessions
+                    .open_with_options(
+                        "main",
+                        80,
+                        24,
+                        LocalLaunchOptions {
+                            cwd: None,
+                            shell: Some(shell)
+                        },
+                        Arc::new(|_| panic!("invalid shell emitted an event"))
+                    )
+                    .is_err());
+            }
+        }
+        assert!(sessions.registry.lock().unwrap().sessions.is_empty());
+    }
+
+    #[test]
+    fn explicit_shell_cannot_bypass_owner_generation_or_shutdown() {
+        let sessions = Sessions::default();
+        let generation = sessions.generation("main").unwrap();
+        sessions.reload_owner("main");
+        let options = LocalLaunchOptions {
+            cwd: None,
+            shell: Some("invalid"),
+        };
+        assert_eq!(
+            sessions
+                .open_at_generation_with_options(
+                    "main",
+                    generation,
+                    80,
+                    24,
+                    options,
+                    Arc::new(|_| Ok(()))
+                )
+                .unwrap_err(),
+            "PTY request belongs to an unloaded document"
+        );
+        sessions.close_owner("main");
+        assert_eq!(
+            sessions
+                .open_with_options("main", 80, 24, options, Arc::new(|_| Ok(())))
+                .unwrap_err(),
+            "PTY window or application is closing"
+        );
+        sessions.shutdown();
+        assert_eq!(
+            sessions
+                .open_with_options("other", 80, 24, options, Arc::new(|_| Ok(())))
+                .unwrap_err(),
+            "PTY window or application is closing"
+        );
+    }
 
     #[test]
     fn rejected_cwd_does_not_register_a_session_or_emit_output() {

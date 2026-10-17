@@ -1,4 +1,5 @@
 mod known_hosts;
+mod local_shell;
 pub mod modem;
 pub mod net_terminal;
 mod platform;
@@ -374,6 +375,11 @@ fn ssh_forward_list(
 }
 
 #[tauri::command]
+fn pty_shells() -> Vec<pty::LocalShell> {
+    pty::local_shells()
+}
+
+#[tauri::command]
 async fn pty_open(
     window: WebviewWindow,
     sessions: State<'_, Arc<Sessions>>,
@@ -381,18 +387,22 @@ async fn pty_open(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    shell: Option<String>,
 ) -> Result<Opened, String> {
     let sessions = sessions.inner().clone();
     let owner = window.label().to_owned();
     let generation = sessions.generation(&owner)?;
     tauri::async_runtime::spawn_blocking(move || {
         sessions
-            .open_at_generation_with_cwd(
+            .open_at_generation_with_options(
                 &owner,
                 generation,
                 cols,
                 rows,
-                cwd.as_deref(),
+                pty::LocalLaunchOptions {
+                    cwd: cwd.as_deref(),
+                    shell: shell.as_deref(),
+                },
                 Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
             )
             .map(|id| Opened { id })
@@ -522,6 +532,7 @@ pub fn run() {
             ssh_forward_add,
             ssh_forward_remove,
             ssh_forward_list,
+            pty_shells,
             pty_open,
             pty_write,
             pty_resize,
