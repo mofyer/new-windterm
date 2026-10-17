@@ -5,7 +5,7 @@ import { authPromptsFor, createSshVerification, type SshTerminalRequest } from "
 import { createSftpPanel } from "./sftp-panel";
 import { createNetTerminalDialog, netLabel, type NetTerminalRequest } from "./net-terminal";
 import { createPortForwardSheet } from "./port-forward";
-import { createLocalLaunchOptions } from "./local-launch";
+import { createLocalLaunchOptions, snapshotLaunchOptions, type LaunchOptions } from "./local-launch";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
 import { Utf8Boundary } from "./utf8-boundary";
@@ -27,10 +27,8 @@ type Session = {
   key: number;
   name: string;
   mode: Mode;
-  /** Immutable local launch directory; null retains the platform default. */
-  cwd: string | null;
-  /** Immutable explicit shell ID; null retains the platform default. */
-  shell: string | null;
+  /** Deep immutable local launch configuration, held in memory only. */
+  launch: LaunchOptions;
   /** Telnet or Raw TCP, for "net" sessions. */
   netKind?: string;
   terminal: Terminal;
@@ -86,7 +84,7 @@ $("#app").innerHTML = `
   <aside class="sidebar"><div class="sidebar-top"><span>会话</span><button id="sidebar-add" class="icon-button" aria-label="新建演示会话">${icon("plus")}</button></div><label class="session-search">${icon("search")}<input id="session-search" aria-label="筛选会话" placeholder="筛选会话"/></label><div class="section-label">已打开 <span id="session-count"></span></div><div id="session-list"></div><div class="sidebar-bottom"><label>${icon("settings")}外观<select id="theme" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><button id="compact-toggle">紧凑布局 <span>关</span></button></div></aside>
   <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button type="button" id="local-reopen" aria-label="重新打开本地终端" hidden>重新打开</button><button type="button" id="local-edit-cwd" hidden>修改启动选项</button><button type="button" id="forward-open" hidden>端口转发</button><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div id="file-demo"><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")} /home/demo/project</div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性。</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">以上为模拟数据，不读取本机或服务器文件。</p><button type="button" id="sftp-connect" class="ssh-verification-entry">${icon("shield")}只读连接 SFTP · 仅桌面</button></div><div id="sftp-view" hidden></div></aside></div><div class="terminal-status"><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列 <span class="badge" id="transfer-count">0</span></span><span id="transfer-summary">暂无任务 · 模拟交互 ${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
 </div>
-<dialog id="local-dialog" aria-labelledby="local-title"><form id="local-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("folder")}</div><h2 id="local-title">本地终端启动选项</h2></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><label for="local-shell-select">Shell<select id="local-shell-select" aria-describedby="local-shell-status local-shell-missing"><option value="">默认 Shell</option></select></label><p id="local-shell-status" role="status" aria-live="polite"></p><ul id="local-shell-missing"></ul><label for="local-cwd-input">启动目录<input id="local-cwd-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="local-cwd-hint" placeholder="留空使用默认目录"/></label><p id="local-cwd-hint">请输入当前系统的绝对目录路径；留空使用默认目录。路径按原样使用，不展开 ~、环境变量或命令。</p><p id="local-runtime-hint">在新的标签中启动本机 shell，不更改已有会话。</p><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button id="local-start" type="submit" class="primary">打开终端</button></div></form></dialog>
+<dialog id="local-dialog" aria-labelledby="local-title"><form id="local-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("folder")}</div><h2 id="local-title">本地终端启动选项</h2></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><label for="local-shell-select">Shell<select id="local-shell-select" aria-describedby="local-shell-status local-shell-missing"><option value="">默认 Shell</option></select></label><p id="local-shell-status" role="status" aria-live="polite"></p><ul id="local-shell-missing"></ul><label for="local-cwd-input">启动目录<input id="local-cwd-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="local-cwd-hint" placeholder="留空使用默认目录"/></label><p id="local-cwd-hint">请输入当前系统的绝对目录路径；留空使用默认目录。路径按原样使用，不展开 ~、环境变量或命令。</p><section class="local-config-section" aria-labelledby="local-env-title"><div class="local-config-heading"><h3 id="local-env-title">环境变量</h3><button type="button" id="local-env-add">添加变量</button></div><p>名称和值分开填写，值按原样传入，不展开变量或命令。PATH 可覆盖；启动脚本、加载器及运行时保留变量由后端拒绝。</p><div id="local-env-rows" class="local-variable-rows"></div></section><section class="local-config-section" aria-labelledby="local-locale-title"><h3 id="local-locale-title">Locale</h3><label for="local-locale-mode">语言环境<select id="local-locale-mode"><option value="default">平台默认</option><option value="custom">自定义变量</option></select></label><div id="local-locale-custom" hidden><p>自定义会先清除默认 LANG / LC_*；不添加变量即保持未设置。LC_ALL 优先于 LANG，不能与其他 LC_* 同时设置。Windows 仅传递变量，不切换代码页或界面语言。</p><button type="button" id="local-locale-add">添加 Locale 变量</button><div id="local-locale-rows" class="local-variable-rows"></div></div></section><p id="local-runtime-hint">配置只用于当前会话，不保存到磁盘；重新打开沿用初始配置。在新的标签中启动本机 shell，不更改已有会话。</p><p id="local-options-error" role="alert" tabindex="-1"></p><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button id="local-start" type="submit" class="primary">打开终端</button></div></form></dialog>
 <dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程。</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接。<br/>真实 SSH 请使用下方独立入口；只读 SFTP 在文件面板中连接。</span></div><button type="button" id="ssh-terminal-open" class="ssh-verification-entry">打开真实 SSH 终端 · 仅桌面</button><button type="button" id="ssh-verification-open" class="ssh-verification-entry">打开真实 SSH 验证 · 仅桌面</button><button type="button" id="net-terminal-open" class="ssh-verification-entry">打开 Telnet / Raw TCP 终端 · 仅桌面</button><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
 <dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">HOST VERIFICATION · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
 <dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="你想执行什么操作？"/><kbd>ESC</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
@@ -412,7 +410,7 @@ function backendError(s: Session, error: unknown) {
   s.status = `错误：${String(error)}`;
   updateStatus();
 }
-function createSession(name: string, mode: Mode, cwd: string | null = null, shell: string | null = null): Session | undefined {
+function createSession(name: string, mode: Mode, options?: LaunchOptions): Session | undefined {
   if (sessions.size >= 8) {
     toast("P0 最多同时打开 8 个会话。");
     return;
@@ -433,8 +431,7 @@ function createSession(name: string, mode: Mode, cwd: string | null = null, shel
     key: nextKey++,
     name,
     mode,
-    cwd,
-    shell,
+    launch: snapshotLaunchOptions(options),
     terminal,
     vt,
     fit,
@@ -567,8 +564,7 @@ async function openPty(s: Session) {
   const onEvent = terminalChannel(s);
   try {
     const { id } = await invoke<{ id: string }>("pty_open", {
-      cwd: s.cwd,
-      shell: s.shell,
+      ...s.launch,
       onEvent,
       cols: s.terminal.cols,
       rows: s.terminal.rows,
@@ -798,20 +794,20 @@ $("#local-open").onclick = () => {
 const localOptions = createLocalLaunchOptions(
   $("#local-dialog") as HTMLDialogElement,
   native,
-  ({ cwd, shell }) => !!createSession(`Local ${nextKey}`, "pty", cwd, shell),
+  (options) => !!createSession(`Local ${nextKey}`, "pty", options),
 );
 $("#local-options-open").onclick = () => localOptions.open();
 $("#local-edit-cwd").onclick = () => {
   const s = active();
   if (!s || s.mode !== "pty" || !s.ended || s.closing || s.disposed) return;
-  localOptions.open({ cwd: s.cwd, shell: s.shell });
+  localOptions.open(s.launch);
 };
 $("#local-reopen").onclick = () => {
   const s = active();
   if (!native || !s || s.mode !== "pty" || !s.ended || s.closing || s.disposed) return;
   // Keep the old terminal for inspection. A new Session owns fresh queues and
   // becomes active synchronously, so a second click cannot reopen it again.
-  createSession(`Local ${nextKey}`, "pty", s.cwd, s.shell);
+  createSession(`Local ${nextKey}`, "pty", s.launch);
   updateStatus();
 };
 $("#split-toggle").onclick = () => {
