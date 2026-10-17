@@ -20,17 +20,17 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-18，P0 已关闭，P1 第三批实施中）
+## 当前仓库状态（2026-10-18，P0 已关闭，P1 第三批待合并确认）
 
 P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。第一批修复本地终端失败/退出状态及显式重新打开，配套浏览器竞态和原生场景；第二批已交付启动目录配置，后续继续按切片推进。当前计划与新代码证据见 [P1 计划](p1/PLAN.zh-CN.md) 和 [P1 执行记录](p1/RESULTS.zh-CN.md)。下列 P0 记录保留作历史依据，P0 不再重开；P1 新批次合并 main 仍需用户确认。
 
 第一批最新被测提交 `645ed38` 的第四轮 CI 7/7 通过，本机浏览器 376、Rust 211、真实 OpenSSH 11 项通过。`P1-PTY-CLOSE-001` 已通过确定性红绿回归与真实 A/B 定位并修复同路径的 Unix 资源等待机制：先释放全部 I/O 并回收 writer，再等待 child；两种后端在 macOS CI 的最大关闭等待降至 360/341ms。历史第二轮具体卡点因没有 trace 无法追溯，原失败记录仍保留。独立技术验证 PASS，P1 整阶段尚未完成。
 
-用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。用户随后要求继续并行，第三批 Shell 发现/选择及缺失反馈正在实施；本批仍需另行确认 main 合并。
+用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。用户随后要求继续并行，第三批 Shell 发现/选择及缺失反馈已完成实现、本机门禁与本批 CI；本批仍需另行确认 main 合并。
 
 ### 分支
 
-- **集成分支 `p1/integration`**：第三批 Shell 选择前端 `b7bb69b`、Rust 后端 `bb9a261`、原生探针/场景 `dbe43eb` 及 Windows lint 修复 `68808de` 已推送。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证 `68808de`，当前进行中。本机 Rust 228、浏览器 396、真实 OpenSSH 11、native helpers 17 项通过，Windows 类型检查修正后通过；macOS Bash/Zsh 真实 PTY 和 Bash 单轮原生窗口启动/重开已验证。实际结果、初次失败与平台边界见 [P1 执行记录](p1/RESULTS.zh-CN.md)。本批 main 合并尚未获批准。
+- **集成分支 `p1/integration`**：第三批 Shell 选择前端 `b7bb69b`、Rust 后端 `bb9a261`、原生探针/场景 `dbe43eb` 及 Windows lint 修复 `68808de` 已推送。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证 `68808de`，7/7 通过，Linux/Windows 原生各 6/6。本机 Rust 228、浏览器 396、真实 OpenSSH 11、native helpers 17 项通过，Windows 类型检查修正后通过；macOS Bash/Zsh 真实 PTY、Bash 单轮原生窗口及 Windows PowerShell 的有限启动/重开已验证。Linux Zsh 未安装、PowerShell 7 未实测。实际结果、初次失败与平台边界见 [P1 执行记录](p1/RESULTS.zh-CN.md)。本批 main 合并尚未获批准。
 - **远端 `main`**：P1 第二批已于 2026-10-18 从 `bdcbb3e` 快进合并并推送至 `cf700c2`，合并记录为 `8823be4`。第二批被测提交为 `db335d3`，之后仅补文档；第三批代码仍仅在集成分支。接手时用远端 refs 核对最新状态。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
@@ -84,9 +84,9 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
   - 递归、目录传输、断点续传
   - 持久连接、断线恢复
   - 原生面板验收
-- 不能说 Windows 终端可用：
-  - 只在 CI 上验证了 `cmd.exe` 的 ConPTY 生命周期。
-  - PowerShell、WebView2 原生窗口、输入法和真实用户环境都没有验收。
+- 不能说 Windows 终端完整可用：
+  - `cmd.exe` 的 ConPTY 生命周期有 CI 证据；本批 Windows PowerShell 仅完成 WebView2 下的身份、目录、退出及重开场景。
+  - PowerShell 7、完整 PowerShell 行为、输入法和真实用户环境尚未验收。
   - 已知限制见 [ConPTY 决策记录](p0/WINDOWS_CONPTY_ADR.zh-CN.md)：排空没有期限，Job 分配存在竞态。
 - 测试替身的结果不能外推：
   - 浏览器 E2E 使用 IPC stub，不能外推为 Rust 或原生 GUI 成功。
@@ -118,7 +118,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 3. **出口评审**：用户已批准[三个决策包](p0/P0_CLOSEOUT_PROPOSAL_2026-10-15.zh-CN.md)，按架构关键判断、最小原生可行性、ADR 与工期定稿收尾；真实串口验收 P2，完整 IME/读屏/VT 验收 P1 对应交付前。最终独立技术评审已 PASS，详见[出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)。用户已明确回复「确认关闭 P0，并合并 main（推荐）」。下一步进入 P1 本地终端产品化，不再展开 P0 普查。
    - 用户已质疑 P0 迟迟不结束。执行[已批准的三个决策包](p0/P0_CLOSEOUT_PROPOSAL_2026-10-15.zh-CN.md)，停止普查式扩张；验收后移已获明确确认，但不能自动视为出口通过。
    - [164 项剩余估算](p0/EFFORT_ESTIMATE.zh-CN.md)与53包机器可复算覆盖已更新；已核对 G43 并入、四项暂缓及 ZMODEM 自研假设。新数字是资料基点的人工规划估计，不代表本轮已完成文档还要重复做，也不是代理耗时或交付日期；旧数字仅历史。纯文档不再重复触发全套构建。
-4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、PowerShell 与管理员 shell、Wayland 等，见归档第 5 节。
+4. **工程缺口**：ZMODEM 自研、tmux 界面、SCP 目录传输、完整 PowerShell 与管理员 shell、Wayland 等，见归档第 5 节；PowerShell 本批有限验收以 P1 记录为准。
 5. **终端内核**：按[技术调整决策](p0/TERMINAL_CORE_ADR.zh-CN.md)推进。启用 SIXEL 之前，需要评审 CSP 中的 `wasm-unsafe-eval`。
 
 ## 本地验证命令

@@ -22,7 +22,7 @@ P0 已合并到 main（`a35582f`）；P1 前两批已获批准合并，第三批
 
 - WindTerm 功能已对齐、P1 已通过或产品可用（P0 已获批准关闭，可如实记录）；
 - SFTP 已完成（只读浏览面板加写操作原型，只对 OpenSSH 夹具与 IPC stub 验证；无原生 WKWebView 实测、递归、续传）；
-- Windows 终端已完整可用（已有 cmd.exe 生命周期及 WebView2 原生冒烟证据，PowerShell、输入法和完整 Windows 验收未完成）；
+- Windows 终端已完整可用（已有 cmd.exe 生命周期及 WebView2 原生冒烟证据，本批 Windows PowerShell 仅覆盖身份/目录/退出重开；PowerShell 7、完整 PowerShell、输入法和真实用户环境验收未完成）；
 - 浏览器 E2E 通过等于 Rust/原生成功（浏览器测试使用 IPC stub）；
 - loopback russh 测试服务端通过等于真实 OS shell / OpenSSH 互操作通过；
 - CI 或本地 debug 构建通过等于 IME、高输出性能、签名公证或发行验收。

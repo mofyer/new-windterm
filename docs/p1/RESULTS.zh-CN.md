@@ -243,7 +243,23 @@ macOS 显式 Bash/Zsh 探针分别读回 `3.2.57(1)-release` 与 `5.9`；每种 
 
 ### 第三批跨平台 CI
 
-已触发 [CI 39060515987](https://github.com/mofyer/new-windterm/actions/runs/39060515987)，精确提交 `68808dea7e54943a0c2eb2c069418d795f58db10`。当前进行中，Windows/Linux 本批新增 Shell 原生场景待实际结果，独立代理分别检查 Windows 与 Unix/GSSAPI 日志和工件。
+[CI 39060515987](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证精确提交 `68808dea7e54943a0c2eb2c069418d795f58db10`，最终 **7/7 作业成功**。独立代理分别读取 Windows 与 Unix/GSSAPI 原始日志及工件，均给出 PASS、0 阻塞；不只依据作业绿色状态判断。
+
+| 本轮 CI 范围 | 实际结果 |
+| --- | --- |
+| macOS arm64 Rust | 228 passed / 0 failed / 33 ignored；格式、check、Clippy、前端及桌面链接通过 |
+| Linux x64 Rust | 227 passed / 0 failed / 33 ignored；格式、check、Clippy、前端及桌面链接通过 |
+| Windows Server 2022 / 2025 Rust | 各 222 passed / 0 failed / 7 ignored；新 Shell 路径/参数与 owner/cwd/拒绝测试实际执行，格式、check、Clippy、前端及链接通过 |
+| Windows 独立 ConPTY | 两平台各 2/2；2022 裸 ConPTY +24、会话 191→215 的既有系统基线保留；2025 裸增长 0、会话 117 稳定 |
+| Unix 默认与 readiness PTY | 四条 lane 均完成 2 MiB 完整性、UTF-8、Ctrl-C、12 次关闭回收和两次默认 cwd；macOS Bash/Zsh、Linux Bash 各完成两次身份/cwd/exit 7/回收 |
+| Linux 原生 WebKitGTK | 6/6；真实 Bash `5.2.21(1)-release`，初开和重开实际 cwd 均为 `/tmp/p1 中文-JLROjT`，清理后剩 1 标签 |
+| Windows 原生 WebView2 | 6/6；实际 Windows PowerShell `5.1.20348.5622`，初开和重开独立版本行、中文 cwd 一致，两次 exit 7 后清到 1 标签，SSH 夹具 active=0 |
+| Linux 互操作 | lrzsz 11、X11 1、agent 1，均 0 failed / 0 skipped；非阻塞步骤已独立读日志 |
+| Linux GSSAPI | 3 单元、4 认证、3 健康复验，均通过；仍仅隔离 KDC/OpenSSH 探针 |
+
+Linux runner 未安装 Zsh，两条探针均明确 SKIP；PowerShell 7 未完成实际启动验收，不能由发现/命令构造测试外推。Windows native helper 为 16 passed / 0 failed / 1 macOS-only skipped，本机 helper 17/17；不得把平台跳过计为执行通过。macOS CI 默认/readiness 2 MiB 分别为 31.24/0.64 秒，仅预算内诊断，不替代 P1 性能验收。
+
+本轮日志、原生截图和行级文本已保存到 `.artifacts/p1/batch3/ci-first/`，其中 Unix/GSSAPI 与 Windows 分目录归档，`run-final.json` 固定精确 SHA、作业状态及结果。后续提交只补本批证据与计划文档，不重复触发代码 CI。
 
 ### 保留的边界与待办
 
@@ -251,4 +267,8 @@ macOS 显式 Bash/Zsh 探针分别读回 `3.2.57(1)-release` 与 `5.9`；每种 
 - Windows 的启动目录继续受产品既有本地盘符规则约束。这是本批实现边界，不是 PowerShell 自身不支持 UNC 的结论。
 - 目录和可执行文件在最后检查与实际启动之间仍可被外部删除、替换或改变目标；第二批记录的 cwd TOCTOU 限制继续成立，未以额外检查宣称消除竞态。
 - 用户任意命令/路径、启动参数编辑、env/locale 配置、持久化、WSL、Git Bash/Cygwin 和 Clink 均未在本批交付。完整 T34、相关 Shell 功能项、P1 和 164 项功能对齐不因本切片而更新为完成。
-- 后续补齐本批跨平台 CI 与独立验收；全部证据完成后再请求本批 main 合并确认。
+- 本机、跨平台与独立验收已完成；请求本批 main 合并确认，当前 main 仍为 `8823be4`。
+
+### 第三批最终验收：通过，等待 main 合并批准
+
+独立 verifier 重新核对本轮 CI 精确 SHA、四平台 Rust 实际计数、Linux/Windows 原生身份和目录输出、Unix 回收日志、本机图像与二进制哈希，以及远端分支和五份文档的一致性，给出 **PASS / APPROVE，0 个技术阻塞**。本批候选代码为 `68808de`，其后仅更新文档；`p1/integration` 的最终文档提交以远端 refs 为准。Linux Zsh 缺失、PowerShell 7 未实测、Windows 2022 系统句柄基线、TOCTOU 与完整 P1/发行验收边界均保留。本批尚未获得 main 合并授权。
