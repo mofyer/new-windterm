@@ -151,12 +151,16 @@ pub(crate) fn local_command() -> Result<CommandBuilder, String> {
 /// An explicit cwd is passed to the process builder, never to a shell command.
 #[cfg(test)]
 pub(crate) fn command_with_cwd(cwd: Option<&str>) -> Result<CommandBuilder, String> {
-    command_with_options(crate::pty::LocalLaunchOptions { cwd, shell: None })
+    command_with_options(crate::pty::LocalLaunchOptions {
+        cwd,
+        ..Default::default()
+    })
 }
 
 pub(crate) fn command_with_options(
     options: crate::pty::LocalLaunchOptions<'_>,
 ) -> Result<CommandBuilder, String> {
+    crate::local_environment::validate(options.env, options.locale)?;
     let cwd = options.cwd;
     if let Some(cwd) = cwd {
         validate_cwd(cwd)?;
@@ -168,6 +172,7 @@ pub(crate) fn command_with_options(
     if let Some(cwd) = cwd {
         command.cwd(cwd);
     }
+    crate::local_environment::apply(&mut command, options.env, options.locale);
     Ok(command)
 }
 
@@ -420,6 +425,7 @@ mod tests {
                 assert!(command_with_options(crate::pty::LocalLaunchOptions {
                     cwd: Some(cwd),
                     shell: Some(&shell.id),
+                    ..Default::default()
                 })
                 .unwrap_err()
                 .contains("startup directory"));

@@ -1,4 +1,5 @@
 //! P0 local PTY transport. No terminal decoding or remote/file APIs live here.
+pub use crate::local_environment::{EnvironmentVariable, LocaleMode, LocaleOptions};
 pub use crate::local_shell::{local_shells, LocalShell};
 use crate::platform;
 
@@ -51,6 +52,8 @@ fn elapsed_ns(start: Instant) -> u64 {
 pub struct LocalLaunchOptions<'a> {
     pub cwd: Option<&'a str>,
     pub shell: Option<&'a str>,
+    pub env: &'a [EnvironmentVariable],
+    pub locale: Option<&'a LocaleOptions>,
 }
 
 pub const CHUNK_BYTES: usize = 4096;
@@ -437,7 +440,10 @@ impl Sessions {
             owner,
             cols,
             rows,
-            LocalLaunchOptions { cwd, shell: None },
+            LocalLaunchOptions {
+                cwd,
+                ..Default::default()
+            },
             sink,
         )
     }
@@ -509,7 +515,10 @@ impl Sessions {
             generation,
             cols,
             rows,
-            LocalLaunchOptions { cwd, shell: None },
+            LocalLaunchOptions {
+                cwd,
+                ..Default::default()
+            },
             sink,
         )
     }
@@ -580,10 +589,13 @@ fn spawn_local_session(
     if let Some(cwd) = options.cwd {
         platform::validate_cwd(cwd)?;
     }
-    let child = pair
-        .slave
-        .spawn_command(command)
-        .map_err(|e| e.to_string())?;
+    let child = pair.slave.spawn_command(command).map_err(|error| {
+        if options.env.is_empty() && options.locale.is_none() {
+            error.to_string()
+        } else {
+            "Cannot start local shell with the supplied launch options".into()
+        }
+    })?;
     #[cfg(windows)]
     let tree = match child
         .as_raw_handle()
@@ -1062,6 +1074,81 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rejected_environment_does_not_register_sessions_or_emit_output() {
+        let sessions = Sessions::default();
+        let mut env = [EnvironmentVariable {
+            name: "ENV".into(),
+            value: "secret-marker".into(),
+        }];
+        for _ in 0..MAX_SESSIONS + 1 {
+            let error = sessions
+                .open_with_options(
+                    "main",
+                    80,
+                    24,
+                    LocalLaunchOptions {
+                        env: &env,
+                        ..Default::default()
+                    },
+                    Arc::new(|_| panic!("invalid environment emitted an event")),
+                )
+                .unwrap_err();
+            assert!(error.contains("reserved"));
+            assert!(!error.contains("secret-marker"));
+        }
+        assert!(sessions.registry.lock().unwrap().sessions.is_empty());
+        // No cached validation result: a new call validates the current choices.
+        env[0].name = "LANG".into();
+        assert!(sessions
+            .open_with_options(
+                "main",
+                80,
+                24,
+                LocalLaunchOptions {
+                    env: &env,
+                    ..Default::default()
+                },
+                Arc::new(|_| panic!("invalid environment emitted an event"))
+            )
+            .unwrap_err()
+            .contains("dedicated locale"));
+        let generation = sessions.generation("main").unwrap();
+        sessions.reload_owner("main");
+        assert_eq!(
+            sessions
+                .open_at_generation_with_options(
+                    "main",
+                    generation,
+                    80,
+                    24,
+                    LocalLaunchOptions {
+                        env: &env,
+                        ..Default::default()
+                    },
+                    Arc::new(|_| Ok(()))
+                )
+                .unwrap_err(),
+            "PTY request belongs to an unloaded document"
+        );
+        sessions.close_owner("main");
+        assert_eq!(
+            sessions
+                .open_with_options(
+                    "main",
+                    80,
+                    24,
+                    LocalLaunchOptions {
+                        env: &env,
+                        ..Default::default()
+                    },
+                    Arc::new(|_| Ok(()))
+                )
+                .unwrap_err(),
+            "PTY window or application is closing"
+        );
+    }
+
+    #[test]
     fn rejected_shell_does_not_register_a_session_or_emit_output() {
         let sessions = Sessions::default();
         for _ in 0..MAX_SESSIONS + 1 {
@@ -1073,7 +1160,8 @@ mod tests {
                         24,
                         LocalLaunchOptions {
                             cwd: None,
-                            shell: Some(shell)
+                            shell: Some(shell),
+                            ..Default::default()
                         },
                         Arc::new(|_| panic!("invalid shell emitted an event"))
                     )
@@ -1091,6 +1179,7 @@ mod tests {
         let options = LocalLaunchOptions {
             cwd: None,
             shell: Some("invalid"),
+            ..Default::default()
         };
         assert_eq!(
             sessions

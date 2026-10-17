@@ -1,4 +1,5 @@
 mod known_hosts;
+mod local_environment;
 mod local_shell;
 pub mod modem;
 pub mod net_terminal;
@@ -379,6 +380,8 @@ fn pty_shells() -> Vec<pty::LocalShell> {
     pty::local_shells()
 }
 
+// Flat IPC fields preserve compatibility with existing pty_open callers.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn pty_open(
     window: WebviewWindow,
@@ -388,6 +391,8 @@ async fn pty_open(
     rows: u16,
     cwd: Option<String>,
     shell: Option<String>,
+    env: Option<local_environment::EnvironmentVariables>,
+    locale: Option<pty::LocaleOptions>,
 ) -> Result<Opened, String> {
     let sessions = sessions.inner().clone();
     let owner = window.label().to_owned();
@@ -402,6 +407,8 @@ async fn pty_open(
                 pty::LocalLaunchOptions {
                     cwd: cwd.as_deref(),
                     shell: shell.as_deref(),
+                    env: env.as_ref().map_or(&[], |env| env.0.as_slice()),
+                    locale: locale.as_ref(),
                 },
                 Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string())),
             )
