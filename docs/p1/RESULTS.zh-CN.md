@@ -174,3 +174,9 @@ macOS 与 Linux desktop 已通过。macOS 默认/readiness 均为 12/12 周期�
 两次完整输出截图与 AX 文本保存为 `.artifacts/p1/batch2/mac-cwd-{first,reopen}.{png,txt}`，最终退出记录为 `mac-cwd-exit.txt`。操作只涉及本轮创建的终端、临时目录和本轮启动的应用；结束后已退出应用并删除该临时目录。未改变输入法配置。截图/日志为本机证据，不含在提交中。
 
 跨平台 [CI 39051867574](https://github.com/mofyer/new-windterm/actions/runs/39051867574) 已触发，验证精确代码提交 `8c3e5d383a02a77cb5ef3ee8abd45df248d1db0d`；当前运行中，结果与原生第五场景需结束后独立核对。
+
+### 第二批首轮 CI：Windows 原生 cwd 失败
+
+Windows 原生作业 `117451925058` 的原四个场景通过，第五场景在首次实际 cwd 输出等待 30 秒后失败；不能算新增 Windows 功能验收通过。失败已进入“本机 shell 已启动”，没有直接收到目录校验拒绝。原脚本 `finally` 在外层截图前关闭新标签，导致失败工件只剩演示标签，无法从旧现场精确区分路径拼写、代码页或产品行为。
+
+脚本修正使用 `realpath(directory)` 同时作为输入与精确比较目标，排除 Windows `RUNNER~1` 这类短名与长名的拼写差异；仍拒绝短长路径混判，没有放宽完整行断言或超时。新增 `catch` 在清理前保存 expected、实际填值、阶段、状态、终端输出及截图。独立审查 APPROVE，helper 16/16 通过；这里只能证明测试输入与取证改善，不能断言已追溯历史超时根因。是否通过以修正后的原生 CI 为准。
