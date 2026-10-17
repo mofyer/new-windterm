@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Frontend contract tests with a stub IPC boundary, not native PTY integration.
-async function installIpc(page: Page) {
+async function installIpc(page: Page, openDefault = true) {
   await page.addInitScript(() => {
     const state: any = { calls: [], pendingOpen: null, rejectOpen: null, rejectResize: null, holdResize: false, channel: null, failClose: false, holdAck: false, resolveAck: null, holdWrite: false, resolveWrite: null };
     Object.assign(window, {
@@ -11,7 +11,7 @@ async function installIpc(page: Page) {
         transformCallback: () => 1,
         unregisterCallback: () => {},
         invoke: (command: string, args: any) => {
-          state.calls.push({ command, id: args.id, sequence: args.sequence, data: args.data });
+          state.calls.push({ command, id: args.id, sequence: args.sequence, data: args.data, ...(command === 'pty_open' ? { cwd: args.cwd } : {}) });
           if (command === 'pty_open') {
             state.channel = args.onEvent;
             return new Promise((resolve, reject) => { state.pendingOpen = resolve; state.rejectOpen = reject; });
@@ -26,8 +26,10 @@ async function installIpc(page: Page) {
     });
   });
   await page.goto('/');
-  await page.locator('#local-open').click();
-  await expect(page.getByRole('tab')).toHaveCount(2);
+  if (openDefault) {
+    await page.locator('#local-open').click();
+    await expect(page.getByRole('tab')).toHaveCount(2);
+  }
 }
 async function ready(page: Page) {
   await page.evaluate(() => (window as any).qaIpc.pendingOpen({ id: 'test-pty' }));
@@ -194,4 +196,73 @@ test('open rejection after an exit does not replace the exit status', async ({ p
   });
   await expect(page.locator('#terminal-state')).toContainText('已退出 · code 9');
   await expect(page.locator('.terminal-pane:visible .xterm-accessibility-tree')).not.toContainText('本地 PTY 启动失败');
+});
+
+async function launchWithDirectory(page: Page, cwd: string) {
+  await page.locator('#local-options-open').click();
+  await page.getByLabel('启动目录', { exact: true }).fill(cwd);
+  await page.locator('#local-start').click();
+  await expect(page.locator('#local-dialog')).not.toBeVisible();
+}
+async function requestedDirectories(page: Page) {
+  return page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_open').map((c: any) => c.cwd));
+}
+
+test('default one-click and empty launch options both send null cwd', async ({ page }) => {
+  await installIpc(page);
+  await ready(page);
+  await launchWithDirectory(page, '');
+  expect(await requestedDirectories(page)).toEqual([null, null]);
+});
+
+for (const cwd of ['/tmp/中文 project $HOME;$(touch nope)  ', 'C:\\Users\\测试 Project\\work', '   ']) {
+  test('launch options preserve exact path characters: ' + JSON.stringify(cwd), async ({ page }) => {
+    await installIpc(page, false);
+    await launchWithDirectory(page, cwd);
+    expect(await requestedDirectories(page)).toEqual([cwd]);
+    expect(await page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_write'))).toEqual([]);
+  });
+}
+
+for (const cwd of [null, '/tmp/original 中文  ']) {
+  test('reopen inherits its session directory independently of edited form: ' + JSON.stringify(cwd), async ({ page }) => {
+    await installIpc(page, cwd === null);
+    if (cwd !== null) await launchWithDirectory(page, cwd);
+    await ready(page);
+    await page.evaluate(() => (window as any).qaIpc.channel.onmessage({ kind: 'exit', id: 'test-pty', code: 0 }));
+    await page.locator('#local-options-open').click();
+    await page.locator('#local-cwd-input').fill('/tmp/another');
+    await page.locator('#local-dialog').getByRole('button', { name: '取消', exact: true }).click();
+    await page.locator('#local-reopen').click();
+    expect(await requestedDirectories(page)).toEqual([cwd, cwd]);
+    await expect(page.getByRole('tab')).toHaveCount(3);
+  });
+}
+
+test('backend rejection preserves failed tab and offers directory correction in a new session', async ({ page }) => {
+  await installIpc(page, false);
+  await launchWithDirectory(page, 'relative/path');
+  await page.evaluate(() => (window as any).qaIpc.rejectOpen('启动目录必须是绝对路径'));
+  await expect(page.locator('#terminal-state')).toContainText('启动失败：启动目录必须是绝对路径');
+  await page.locator('#local-edit-cwd').click();
+  await expect(page.locator('#local-cwd-input')).toHaveValue('relative/path');
+  await page.locator('#local-cwd-input').fill('/tmp/corrected 中文');
+  await page.locator('#local-start').click();
+  await ready(page);
+  expect(await requestedDirectories(page)).toEqual(['relative/path', '/tmp/corrected 中文']);
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  await page.getByRole('tab').nth(1).click();
+  await expect(page.locator('#terminal-state')).toContainText('启动失败：启动目录必须是绝对路径');
+  await page.locator('#local-edit-cwd').click();
+  await expect(page.locator('#local-cwd-input')).toHaveValue('relative/path');
+});
+
+test('browser launch options clearly explain that no local shell can start', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#local-options-open').click();
+  await expect(page.locator('#local-runtime-hint')).toContainText('浏览器演示无法启动本机 shell');
+  await page.locator('#local-cwd-input').fill('/tmp/example');
+  await expect(page.locator('#local-start')).toBeDisabled();
+  await page.locator('#local-cwd-input').press('Enter');
+  await expect(page.getByRole('tab')).toHaveCount(1);
 });

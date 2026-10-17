@@ -359,3 +359,7 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
   .forward-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .forward-row button { justify-self: start; margin-top: 4px; }
 }
+
+#local-edit-cwd[hidden] { display: none; }
+#local-dialog .dialog-heading h2 { margin-bottom: 0; }
+#local-dialog #local-cwd-input { font-family: ui-monospace, monospace; }
