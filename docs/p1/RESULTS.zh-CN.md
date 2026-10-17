@@ -163,7 +163,7 @@ macOS 与 Linux desktop 已通过。macOS 默认/readiness 均为 12/12 周期�
 - Windows 当前使用 cmd.exe，明确拒绝 UNC、设备/verbatim 输入、盘符相对/根相对路径和会被 Win32 归一化的尾空格/尾点组件；这不是完整 Windows Shell 支持。
 - portable-pty 0.9.0 会在 cwd 失效时回退到 HOME/USERPROFILE。本批初检并在 spawn 前再次校验；外部进程在最后检查与库内检查之间删除、重命名或改变符号链接目标仍有竞态。没有更改 HOME、固定目录句柄或修改上游库，不能宣称彻底消除此窗口。
 - macOS 本批完成下述有限 WKWebView GUI 验收；Linux/Windows 原生第五场景及平台专属路径测试以本批 CI 为准。完整输入法/读屏、Shell 配置与发行仍未验收。
-- 本批尚未合并 main，第一批条件授权不延伸到本批。完整门禁与独立验收通过后再请求合并确认。
+- 本批在完整门禁与独立验收通过后取得用户单独批准，已于 2026-10-18 合并并推送 main，详见下文合并记录。后续新批次仍需单独确认。
 
 ### macOS 原生单轮操作与本批 CI
 
@@ -187,10 +187,16 @@ Windows 原生作业 `117451925058` 的原四个场景通过，第五场景在�
 
 第二轮 Linux、Windows 原生均 5/5 通过。Windows 工件明确记录临时路径为 `C:\Users\RUNNER~1\AppData\Local\Temp\p1 中文-n79gDJ`，实际传入的规范路径与初开/重开两次独立 `cd` 输出均为 `C:\Users\runneradmin\AppData\Local\Temp\p1 中文-n79gDJ`，关闭后剩 1 个初始标签。没有用提示符、命令回显或放宽比较来判定通过。该证据证明统一夹具路径拼写后当前功能通过，首轮失败时具体输出仍无法追溯。
 
-### 第二批最终验收：通过，等待 main 合并批准
+### 第二批最终验收：通过，已获 main 合并批准
 
 独立 verifier 核对第二轮精确 SHA、七个作业及行级工件后给出 **PASS / APPROVE，0 个技术阻塞**。macOS Rust 219/0/33，Linux 218/0/33，Windows 2022/2025 各 212/0/7；Windows 专属路径规则测试实际通过，独立 ConPTY 诊断各 2/0/0。Linux lrzsz 11、X11/agent 各 1、GSSAPI 3 单测/4 认证/3 健康复验均通过；Linux/Windows 原生各 5/5。Unix 四组默认/readiness 探针全部读回指定目录两次并完成 12 次关闭回归；macOS 单轮 WKWebView 证据已独立看图复核。
 
 第二轮 macOS 默认 2 MiB 为 33.57 秒、readiness 0.64 秒，保留为预算内诊断，不替代 P1 性能专项。Windows 2022 的既有 ConPTY 系统句柄增长与 portable-pty 最后校验后的目录竞态仍按上文保留；不宣称完整 Windows、T34、P1 或产品发行通过。第二轮工件本机归档到 `.artifacts/p1/batch2/ci-second/`。
 
-本批实现、独立审查、本机门禁、三端有限原生验证及跨平台 CI 均完成。`main` 仍为 `bdcbb3e`，尚未取得本批合并授权；已推送的集成代码及本记录供用户确认，后续仅补文档不重复触发代码 CI。下一切片按计划推进 Shell 发现/选择及缺失反馈，启动参数/env/locale 分批验收。
+本批实现、独立审查、本机门禁、三端有限原生验证及跨平台 CI 均完成。用户已单独批准本批合并；后续仅补文档不重复触发代码 CI。下一切片为 Shell 发现/选择及缺失反馈，尚未开始，启动参数/env/locale 后续分批验收。
+
+### 第二批 main 合并记录
+
+2026-10-18，用户明确回复「合并 main」后，协调者重新 fetch 并核对分支关系，确认 [CI 39052866884](https://github.com/mofyer/new-windterm/actions/runs/39052866884) 对 `db335d3a4f838fab783315a05f0f06f5f0566c46` 成功，通过 `git merge --ff-only p1/integration` 将 main 从 `bdcbb3e` 快进至 `cf700c2396fca4bf40b5fc161b2ff15b53930b8f`，并成功推送 origin main。
+
+`db335d3` 至 `cf700c2` 仅修改交接、计划与验收记录三份文档，本次后续提交也仅记录合并事实；不重复运行代码门禁或触发代码 CI。`p1/integration` 将同步本次合并记录，最终提交与远端分支一致性在推送后现场核对，具体 SHA 以远端 refs 为准。本批只交付启动目录切片，T34 整项、P1 整阶段及 164 项完整功能对齐均未完成；首轮失败证据和平台限制继续保留。
