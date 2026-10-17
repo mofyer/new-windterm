@@ -363,3 +363,7 @@ dialog input { width: 100%; background: var(--sidebar); border: 0; border-radius
 #local-edit-cwd[hidden] { display: none; }
 #local-dialog .dialog-heading h2 { margin-bottom: 0; }
 #local-dialog #local-cwd-input { font-family: ui-monospace, monospace; }
+#local-shell-select { width: 100%; color: var(--text); background: var(--sidebar); border: 0; border-radius: 10px; padding: 10px 12px; box-shadow: var(--inset-shadow); }
+#local-shell-status, #local-shell-missing { overflow-wrap: anywhere; }
+#local-shell-status:empty, #local-shell-missing:empty { display: none; }
+#local-shell-missing { color: var(--muted); font-size: 12px; line-height: 1.6; padding-left: 20px; }
