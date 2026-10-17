@@ -235,6 +235,166 @@ export async function localTerminalShell(ctx) {
   return localStartup(ctx, ctx.platform === 'win32' ? 'powershell' : 'bash');
 }
 
+/** Only fixed variable names and enumerated phases enter shell source; values go through the form. */
+export function environmentQueries(platform, phase, sample, custom) {
+  if (!['initial', 'independent', 'retained', 'modified', 'reopened', 'defaults'].includes(phase))
+    throw new Error('unsupported environment evidence phase');
+  const windows = platform === 'win32';
+  const lang = custom || !windows ? (platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8') : '';
+  const fields = [
+    ['SAMPLE_PRESENT', 'P1_ENV_SAMPLE', true, sample === null ? 'no' : 'yes'],
+    ['SAMPLE', 'P1_ENV_SAMPLE', false, sample ?? ''],
+    ['EMPTY_PRESENT', 'P1_ENV_EMPTY', true, custom ? 'yes' : 'no'],
+    ['EMPTY', 'P1_ENV_EMPTY', false, ''],
+    ['LANG_PRESENT', 'LANG', true, custom || !windows ? 'yes' : 'no'],
+    ['LANG', 'LANG', false, lang],
+    ['LC_ALL_PRESENT', 'LC_ALL', true, !custom && platform === 'linux' ? 'yes' : 'no'],
+    ['LC_ALL', 'LC_ALL', false, !custom && platform === 'linux' ? 'C.UTF-8' : ''],
+    ['LC_CTYPE_PRESENT', 'LC_CTYPE', true, !custom && platform === 'darwin' ? 'yes' : 'no'],
+    ['LC_CTYPE', 'LC_CTYPE', false, !custom && platform === 'darwin' ? 'UTF-8' : ''],
+  ];
+  return fields.map(([field, name, presence, value]) => {
+    const prefix = `P1_${phase}_${field}`;
+    let expression;
+    if (windows) {
+      expression = presence
+        ? `$(if ([Environment]::GetEnvironmentVariables('Process').Contains('${name}')) {'yes'} else {'no'})`
+        : `$env:${name}`;
+    } else {
+      expression = presence ? `"$(if [ \"\${${name}+x}\" = x ]; then printf yes; else printf no; fi)"` : `"$${name}"`;
+    }
+    const command = windows ? `'${prefix}=[' + ${expression} + ']'` : `printf '${prefix}=[%s]\\n' ${expression}`;
+    return { command, expected: `${prefix}=[${value}]` };
+  });
+}
+
+/** 7. Literal per-session env/locale, independent live tabs, and original configuration on reopen. */
+export async function localTerminalEnvironment(ctx) {
+  const { session } = ctx;
+  const before = await tabCount(session);
+  const windows = ctx.platform === 'win32';
+  const shell = windows ? 'powershell' : 'bash';
+  const artifact = '07-local-terminal-environment';
+  const evidence = {};
+  let phase = 'open';
+  const firstTab = `#tabs .tab:nth-child(${before + 1}) [role="tab"]`;
+  const secondTab = `#tabs .tab:nth-child(${before + 2}) [role="tab"]`;
+  async function read(phaseName, sample, custom) {
+    phase = phaseName;
+    if (windows) await typeInTerminal(ctx, `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8${Keys.ENTER}`);
+    const found = [];
+    for (const { command, expected } of environmentQueries(ctx.platform, phaseName, sample, custom)) {
+      await typeInTerminal(ctx, `${command}${Keys.ENTER}`);
+      const result = await waitForRow(ctx, row => row === expected, `${phaseName} exact environment output ${expected.split('=')[0]}`);
+      found.push(result.row);
+    }
+    evidence[phaseName] = found;
+  }
+  async function openConfigured(sample) {
+    await clickCss(session, '#local-options-open');
+    await waitFor(() => inPage(session, () => document.querySelector('#local-dialog')?.open === true),
+      { description: 'environment launch dialog' });
+    await fill(ctx, '#local-cwd-input', '');
+    await waitFor(() => inPage(session, value => {
+      const select = document.querySelector('#local-shell-select');
+      const option = select && [...select.options].find(item => item.value === value);
+      return !!option && !option.disabled && !select.disabled;
+    }, shell), { description: `environment ${shell} choice` });
+    await inPage(session, value => {
+      const select = document.querySelector('#local-shell-select');
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }, shell);
+    while (await inPage(session, () => !!document.querySelector('[data-env-remove]')))
+      await clickCss(session, '[data-env-remove]');
+    for (const [index, name, value] of [[1, 'P1_ENV_SAMPLE', sample], [2, 'P1_ENV_EMPTY', '']]) {
+      await clickCss(session, '#local-env-add');
+      await fill(ctx, `#local-env-rows > :nth-child(${index}) [data-env-name]`, name);
+      await fill(ctx, `#local-env-rows > :nth-child(${index}) [data-env-value]`, value);
+    }
+    await inPage(session, () => {
+      const select = document.querySelector('#local-locale-mode');
+      select.value = 'custom';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    while (await inPage(session, () => !!document.querySelector('[data-locale-remove]')))
+      await clickCss(session, '[data-locale-remove]');
+    await clickCss(session, '#local-locale-add');
+    await inPage(session, () => {
+      const select = document.querySelector('#local-locale-rows [data-locale-name]');
+      select.value = 'LANG';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await fill(ctx, '#local-locale-rows [data-locale-value]', ctx.platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8');
+    const count = await tabCount(session);
+    await clickCss(session, '#local-start');
+    await waitFor(async () => (await tabCount(session)) === count + 1, { description: 'configured environment tab' });
+    await waitForSessionState(ctx, '本机 shell 已启动', 'configured environment PTY');
+  }
+  try {
+    await openConfigured('中文 space=one');
+    await read('initial', '中文 space=one', true);
+    await openConfigured('独立 space=two');
+    await read('independent', '独立 space=two', true);
+    await clickCss(session, firstTab);
+    await read('retained', '中文 space=one', true);
+    await typeInTerminal(ctx, `${windows ? "$env:P1_ENV_SAMPLE = 'runtime-change'" : "export P1_ENV_SAMPLE='runtime-change'"}${Keys.ENTER}`);
+    await read('modified', 'runtime-change', true);
+    await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
+    evidence.exitState = (await waitForSessionState(ctx, '已退出 · code 7', 'environment shell exit')).state;
+    await clickCss(session, '#local-reopen');
+    await waitFor(async () => (await tabCount(session)) === before + 3, { description: 'reopened original environment tab' });
+    await waitForSessionState(ctx, '本机 shell 已启动', 'reopened environment PTY');
+    await read('reopened', '中文 space=one', true);
+    await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
+    evidence.reopenedExitState = (await waitForSessionState(ctx, '已退出 · code 7', 'reopened environment exit')).state;
+    await ctx.screenshot(artifact);
+    // Keep the second shell alive while the default session starts; opening and
+    // reopening another session must not change its process environment.
+    await clickCss(session, secondTab);
+    await typeInTerminal(ctx, `${windows ? "'P1_SECOND_STILL=[' + $env:P1_ENV_SAMPLE + ']'" : "printf 'P1_SECOND_STILL=[%s]\\n' \"$P1_ENV_SAMPLE\""}${Keys.ENTER}`);
+    evidence.secondStill = (await waitForRow(ctx, row => row === 'P1_SECOND_STILL=[独立 space=two]', 'second live session remains isolated')).row;
+    if (windows) {
+      // The default Windows shell is cmd.exe. Use fixed built-ins rather than
+      // switching it to PowerShell or modifying its environment first.
+      await clickCss(session, '#local-open');
+      await waitForSessionState(ctx, '本机 shell 已启动', 'fresh default cmd environment');
+      phase = 'defaults';
+      const rows = [];
+      for (const name of ['P1_ENV_SAMPLE', 'P1_ENV_EMPTY', 'LANG', 'LC_ALL', 'LC_CTYPE']) {
+        await typeInTerminal(ctx, `if defined ${name} (echo P1_DEFAULT_${name}=present) else (echo P1_DEFAULT_${name}=absent)${Keys.ENTER}`);
+        rows.push((await waitForRow(ctx, row => row === `P1_DEFAULT_${name}=absent`, `default cmd ${name} absent`)).row);
+      }
+      // IF DEFINED alone treats an empty variable as absent. Enumerate only the
+      // synthetic prefix too, so an inherited P1_ENV_EMPTY= cannot pass unnoticed.
+      await typeInTerminal(ctx, `set P1_ENV_ & echo P1_DEFAULT_ENV_SCAN_DONE${Keys.ENTER}`);
+      const scan = await waitForRow(ctx, row => row === 'P1_DEFAULT_ENV_SCAN_DONE', 'default cmd synthetic environment scan completed');
+      if (rowsMatching(scan.rows, row => /^P1_ENV_(SAMPLE|EMPTY)=/i.test(row)).length)
+        throw new Error('default cmd retained a synthetic environment entry');
+      evidence.defaults = rows;
+    } else {
+      await clickCss(session, '#local-open');
+      await waitForSessionState(ctx, '本机 shell 已启动', 'fresh default environment');
+      await read('defaults', null, false);
+    }
+    await ctx.writeText(`${artifact}.json`, `${JSON.stringify(evidence, null, 2)}\n`);
+  } catch (error) {
+    // Test-only values are safe to capture. Never enumerate the process env or
+    // general launch configuration; retain the failure before closing our tabs.
+    await ctx.writeText(`${artifact}-failure.json`, `${JSON.stringify({ phase, evidence,
+      error: String(error?.stack ?? error), status: await statusLine(session), rows: await terminalRows(session) }, null, 2)}\n`)
+      .catch(captureError => ctx.log(`environment failure text unavailable: ${captureError.message}`));
+    await ctx.screenshot(`${artifact}-failure`).catch(captureError => ctx.log(`environment failure screenshot unavailable: ${captureError.message}`));
+    throw error;
+  } finally {
+    while ((await tabCount(session)) > before) {
+      await clickCss(session, '#tabs .tab:last-child [role="tab"]');
+      await closeActiveTab(ctx, (await tabCount(session)) - 1);
+    }
+  }
+  return { shell, ...evidence, remainingTabs: await tabCount(session) };
+}
+
 async function localStartup(ctx, shell) {
   const { session } = ctx;
   const before = await tabCount(session);
@@ -396,4 +556,5 @@ export const SCENARIOS = Object.freeze([
   { name: 'local-terminal-reopen', run: localTerminalReopen },
   { name: 'local-terminal-cwd', run: localTerminalCwd },
   { name: 'local-terminal-shell', run: localTerminalShell },
+  { name: 'local-terminal-environment', run: localTerminalEnvironment },
 ]);

@@ -1,6 +1,7 @@
 //! Real local PTY smoke/stress probe; never connects to a remote host.
 use new_windterm_desktop::pty::{
-    local_shells, LocalLaunchOptions, PtyEvent, Session, Sessions, OUTPUT_BUDGET,
+    local_shells, EnvironmentVariable, LocalLaunchOptions, LocaleMode, LocaleOptions, PtyEvent,
+    Session, Sessions, OUTPUT_BUDGET,
 };
 use std::{
     sync::{
@@ -86,6 +87,7 @@ fn probe_custom_cwd(shell: Option<&str>) -> Result<(), String> {
                 LocalLaunchOptions {
                     cwd: Some(cwd),
                     shell,
+                    ..Default::default()
                 },
                 Arc::new(move |event| sender.try_send(event).map_err(|e| e.to_string())),
             )?;
@@ -160,6 +162,221 @@ fn probe_custom_cwd(shell: Option<&str>) -> Result<(), String> {
     sessions.shutdown();
     let cleanup = std::fs::remove_dir(&directory).map_err(|error| error.to_string());
     result.and(cleanup)
+}
+
+// These fixtures contain only synthetic values. Never print the parent env or
+// interpolate a configured value into shell source.
+fn open_environment_probe(
+    sessions: &Sessions,
+    options: LocalLaunchOptions<'_>,
+) -> Result<(String, Arc<Session>, Receiver<PtyEvent>), String> {
+    let (sender, receiver) = sync_channel(128);
+    let id = sessions.open_with_options(
+        "env-probe",
+        132,
+        24,
+        options,
+        Arc::new(move |event| sender.try_send(event).map_err(|e| e.to_string())),
+    )?;
+    let session = sessions.get("env-probe", &id)?;
+    receive_until(&receiver, &session, b"P0 ")?;
+    session.write(b"stty -echo; printf '\\033[?2004l\\nENV_%s\\n' READY\n".to_vec())?;
+    receive_until(&receiver, &session, b"ENV_READY")?;
+    Ok((id, session, receiver))
+}
+
+fn check_environment(
+    receiver: &Receiver<PtyEvent>,
+    session: &Session,
+    sample: Option<&str>,
+    lang: Option<&str>,
+    defaults: bool,
+) -> Result<(), String> {
+    session.write(br#"printf '\nENV_SAMPLE_PRESENT=[%s]\n' "${P1_ENV_SAMPLE+x}"; printf 'ENV_SAMPLE=[%s]\n' "$P1_ENV_SAMPLE"; printf 'ENV_EMPTY_PRESENT=[%s]\n' "${P1_ENV_EMPTY+x}"; printf 'ENV_EMPTY=[%s]\n' "$P1_ENV_EMPTY"; printf 'ENV_LANG_PRESENT=[%s]\n' "${LANG+x}"; printf 'ENV_LANG=[%s]\n' "$LANG"; printf 'ENV_LC_ALL_PRESENT=[%s]\n' "${LC_ALL+x}"; printf 'ENV_LC_ALL=[%s]\n' "$LC_ALL"; printf 'ENV_LC_CTYPE_PRESENT=[%s]\n' "${LC_CTYPE+x}"; printf 'ENV_LC_CTYPE=[%s]\n' "$LC_CTYPE"; printf 'ENV_%s\n' END
+"#.to_vec())?;
+    let output = receive_until(receiver, session, b"ENV_END")?;
+    let text = String::from_utf8_lossy(&output);
+    let lc_all = if defaults && cfg!(target_os = "linux") {
+        Some("C.UTF-8")
+    } else {
+        None
+    };
+    let lc_ctype = if defaults && cfg!(target_os = "macos") {
+        Some("UTF-8")
+    } else {
+        None
+    };
+    for (name, value) in [
+        ("SAMPLE", sample),
+        ("EMPTY", sample.map(|_| "")),
+        ("LANG", lang),
+        ("LC_ALL", lc_all),
+        ("LC_CTYPE", lc_ctype),
+    ] {
+        for row in [
+            format!(
+                "ENV_{name}_PRESENT=[{}]",
+                if value.is_some() { "x" } else { "" }
+            ),
+            format!("ENV_{name}=[{}]", value.unwrap_or("")),
+        ] {
+            if !text.lines().any(|line| line.trim_end_matches('\r') == row) {
+                return Err(format!(
+                    "Environment probe missing exact synthetic row {row:?}; output={text:?}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn exit_environment_probe(
+    sessions: &Sessions,
+    id: &str,
+    session: &Session,
+    receiver: &Receiver<PtyEvent>,
+) -> Result<(), String> {
+    session.write(b"exit 7\n".to_vec())?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .ok_or("Environment probe exit deadline exceeded")?;
+        match receiver
+            .recv_timeout(remaining)
+            .map_err(|e| e.to_string())?
+        {
+            PtyEvent::Data { sequence, .. } => session.ack(sequence)?,
+            PtyEvent::Exit { code: Some(7), .. } => break,
+            PtyEvent::Exit { code, .. } => {
+                return Err(format!("Environment probe unexpected exit {code:?}"))
+            }
+            PtyEvent::Error { message, .. } => return Err(message),
+        }
+    }
+    if !session.wait_closed(Duration::from_secs(2)) {
+        return Err("Environment probe worker did not reap".into());
+    }
+    sessions.close("env-probe", id)
+}
+
+fn probe_environment() -> Result<(), String> {
+    let keys = [
+        "P1_ENV_SAMPLE",
+        "P1_ENV_EMPTY",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+    ];
+    let parent_before = keys.map(std::env::var_os);
+    let lang = if cfg!(target_os = "macos") {
+        "en_US.UTF-8"
+    } else {
+        "C.UTF-8"
+    };
+    let first_env = [
+        EnvironmentVariable {
+            name: "P1_ENV_SAMPLE".into(),
+            value: "中文 space=one".into(),
+        },
+        EnvironmentVariable {
+            name: "P1_ENV_EMPTY".into(),
+            value: String::new(),
+        },
+    ];
+    let second_env = [
+        EnvironmentVariable {
+            name: "P1_ENV_SAMPLE".into(),
+            value: "独立 space=two".into(),
+        },
+        EnvironmentVariable {
+            name: "P1_ENV_EMPTY".into(),
+            value: String::new(),
+        },
+    ];
+    let locale = LocaleOptions {
+        mode: LocaleMode::Custom,
+        variables: vec![EnvironmentVariable {
+            name: "LANG".into(),
+            value: lang.into(),
+        }],
+    };
+    let first_options = LocalLaunchOptions {
+        shell: Some("bash"),
+        env: &first_env,
+        locale: Some(&locale),
+        ..Default::default()
+    };
+    let sessions = Sessions::default();
+    let result: Result<(), String> = (|| {
+        let (first_id, first, first_rx) = open_environment_probe(&sessions, first_options)?;
+        check_environment(&first_rx, &first, Some("中文 space=one"), Some(lang), false)?;
+        let (second_id, second, second_rx) = open_environment_probe(
+            &sessions,
+            LocalLaunchOptions {
+                env: &second_env,
+                ..first_options
+            },
+        )?;
+        check_environment(
+            &second_rx,
+            &second,
+            Some("独立 space=two"),
+            Some(lang),
+            false,
+        )?;
+        check_environment(&first_rx, &first, Some("中文 space=one"), Some(lang), false)?;
+        first.write(b"export P1_ENV_SAMPLE='runtime-change'\n".to_vec())?;
+        check_environment(&first_rx, &first, Some("runtime-change"), Some(lang), false)?;
+        exit_environment_probe(&sessions, &first_id, &first, &first_rx)?;
+        let (reopened_id, reopened, reopened_rx) =
+            open_environment_probe(&sessions, first_options)?;
+        if reopened_id == first_id {
+            return Err("Environment reopen reused the exited session ID".into());
+        }
+        check_environment(
+            &reopened_rx,
+            &reopened,
+            Some("中文 space=one"),
+            Some(lang),
+            false,
+        )?;
+        exit_environment_probe(&sessions, &reopened_id, &reopened, &reopened_rx)?;
+        check_environment(
+            &second_rx,
+            &second,
+            Some("独立 space=two"),
+            Some(lang),
+            false,
+        )?;
+        let (default_id, default_session, default_rx) =
+            open_environment_probe(&sessions, LocalLaunchOptions::default())?;
+        check_environment(&default_rx, &default_session, None, Some(lang), true)?;
+        exit_environment_probe(&sessions, &default_id, &default_session, &default_rx)?;
+        let cleared_locale = LocaleOptions {
+            mode: LocaleMode::Custom,
+            variables: vec![],
+        };
+        let (cleared_id, cleared, cleared_rx) = open_environment_probe(
+            &sessions,
+            LocalLaunchOptions {
+                shell: Some("bash"),
+                locale: Some(&cleared_locale),
+                ..Default::default()
+            },
+        )?;
+        check_environment(&cleared_rx, &cleared, None, None, false)?;
+        exit_environment_probe(&sessions, &cleared_id, &cleared, &cleared_rx)?;
+        exit_environment_probe(&sessions, &second_id, &second, &second_rx)?;
+        Ok(())
+    })();
+    sessions.shutdown();
+    if keys.map(std::env::var_os) != parent_before {
+        return Err("Environment probe changed parent process variables".into());
+    }
+    result?;
+    println!("PASS session environment: literal Unicode/spaces/equals, empty versus absent, two live sessions isolated, exit 7/reopen original config, default locale preserved, custom empty locale cleared, parent unchanged, workers reaped");
+    Ok(())
 }
 
 fn run() -> Result<(), String> {
@@ -327,7 +544,8 @@ fn main() {
                 println!("SKIP explicit zsh probe: zsh is unavailable on this host");
                 Ok(())
             }
-        });
+        })
+        .and_then(|()| probe_environment());
     if let Err(error) = result {
         eprintln!("FAIL PTY probe: {error}");
         std::process::exit(1);

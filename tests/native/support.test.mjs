@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
+import { environmentQueries, isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -143,4 +143,36 @@ test('shell evidence requires expanded version output and rejects echoed command
     ]) assert.ok(!isShellVersionOutput(row, shell), `${shell}: ${row}`);
   }
   assert.ok(!isShellVersionOutput('P1_SHELL=5.1.20348.2849', 'cmd'));
+});
+
+test('environment evidence separates empty from absent and never interpolates values into commands', () => {
+  const sample = "中文 space=one ' $(touch unwanted)";
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    const custom = environmentQueries(platform, 'initial', sample, true);
+    const defaults = environmentQueries(platform, 'defaults', null, false);
+    assert.equal(custom.length, 10);
+    assert.ok(custom.some(({ expected }) => expected.endsWith(`SAMPLE=[${sample}]`)));
+    assert.ok(custom.some(({ expected }) => expected.endsWith('EMPTY_PRESENT=[yes]')));
+    assert.ok(defaults.some(({ expected }) => expected.endsWith('EMPTY_PRESENT=[no]')));
+    for (const { command, expected } of custom) {
+      assert.ok(!command.includes(sample));
+      assert.notEqual(command, expected);
+      assert.notEqual(`P0 ${expected}`, expected);
+    }
+    if (platform === 'win32') assert.ok(custom.some(({ command }) => command.includes("Contains('P1_ENV_EMPTY')")));
+  }
+  assert.throws(() => environmentQueries('linux', "'; touch unwanted", '', true), /phase/);
+});
+
+test('fixed environment queries read literal Unicode and empty values from a real Bash child', {
+  skip: process.platform === 'win32' ? 'Bash not required on Windows; native PowerShell lane validates there' : undefined,
+}, () => {
+  const sample = "中文 space=one ' $(touch unwanted)";
+  const queries = environmentQueries('linux', 'initial', sample, true);
+  const child = spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', queries.map(item => item.command).join('\n')], {
+    env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', P1_ENV_SAMPLE: sample, P1_ENV_EMPTY: '' },
+    encoding: 'utf8', timeout: 10_000,
+  });
+  assert.equal(child.status, 0, child.stderr);
+  assert.deepEqual(child.stdout.trimEnd().split('\n'), queries.map(item => item.expected));
 });
