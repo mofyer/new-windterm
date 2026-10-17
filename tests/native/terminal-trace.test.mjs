@@ -47,14 +47,14 @@ export function createTraceRuntime(onRequest = () => ({ id: 'fixture-id' })) {
   return { window, internals, callbacks, register, deliver, requests, channel };
 }
 
-function fixture(onRequest) {
+function fixture(onRequest, clock = performance) {
   const runtime = createTraceRuntime(onRequest);
   const listeners = new Map();
   const textarea = {};
   const pane = { contains: target => target === textarea };
   const originalFetch = runtime.window.fetch;
   runInNewContext(`(${installTerminalTrace})('powershell', '/fixture');`, {
-    window: runtime.window, TextEncoder, Uint8Array, performance, Map,
+    window: runtime.window, TextEncoder, Uint8Array, performance: clock, Map,
     document: {
       querySelector: () => pane,
       addEventListener: (name, fn) => listeners.set(name, fn),
@@ -168,7 +168,73 @@ test('mismatched open IDs purge provisional bytes and prevent later session cont
   assert.ok(!trace.records.some(item => item.hex));
 });
 
-test('two fixture slots capture Enter only, enforce 64 KiB and flag truncation', async () => {
+test('complete two-shell workload retains per-key writes, output, ACKs, startup and exit without truncation', async (t) => {
+  const commands = ['[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    "'P1_SHELL=' + $PSVersionTable.PSVersion.ToString()", '(Get-Location).Path', 'exit 7'];
+  const text = commands.map(command => `${command}\r`).join('');
+  assert.equal(text.length, 135, 'the unchanged native scenario has 135 input bytes per shell');
+  const sessions = new Map();
+  const acknowledgements = [];
+  let totalData = 0;
+  let ticks = 0;
+  const f = fixture((command, args, { deliver }) => {
+    const emit = (session, data) => {
+      totalData++;
+      deliver(session.channel, { index: session.index++, message: {
+        kind: 'data', id: session.id, sequence: ++session.sequence, data: [...Buffer.from(data)],
+      } });
+    };
+    if (command === 'pty_open') {
+      const id = `fixture-${sessions.size + 1}`;
+      const session = { id, channel: Number(args.onEvent.slice(12)), index: 0, sequence: 0, line: '' };
+      sessions.set(id, session);
+      emit(session, '\x1b[6nWindows PowerShell\r\nCopyright Microsoft Corporation.\r\nPS /fixture> ');
+      return { id };
+    }
+    if (command === 'pty_write' && args.data[0] !== 27) {
+      const session = sessions.get(args.id);
+      const char = Buffer.from(args.data).toString('utf8');
+      // Per-keystroke terminal redraw, followed by the corresponding ACK,
+      // exercises the trace interface instead of estimating JSON string sizes.
+      emit(session, `\r\x1b[2KPS /fixture> ${char}`);
+      if (char === '\r') {
+        if (session.line.startsWith("'P1_SHELL='")) emit(session, '\r\nP1_SHELL=5.1.20348.1\r\n');
+        if (session.line === '(Get-Location).Path') emit(session, '\r\n/fixture\r\n');
+        if (session.line === 'exit 7') deliver(session.channel, { index: session.index++, message: { kind: 'exit', id: session.id, code: 7 } });
+        session.line = '';
+      } else session.line += char;
+    }
+    return null;
+  }, { now: () => 12345.100000000093 + ticks++ * 17.333333333333 });
+  for (let slot = 1; slot <= 2; slot++) {
+    const channel = f.channel(event => {
+      if (event.kind === 'data') acknowledgements.push(f.internals.invoke('pty_ack', { id: event.id, sequence: event.sequence }));
+    });
+    const { id } = await f.open(channel);
+    await f.internals.invoke('pty_resize', { id, cols: 100, rows: 30 });
+    await f.internals.invoke('pty_write', { id, data: [...Buffer.from('\x1b[1;1R')] });
+    for (const char of text) {
+      if (char === '\r') f.listeners.get('keydown')({ key: 'Enter', target: f.textarea });
+      await f.internals.invoke('pty_write', { id, data: [...Buffer.from(char)] });
+    }
+    f.deliver(channel.id, { index: sessions.get(id).index, end: true });
+  }
+  await Promise.all(acknowledgements);
+  const trace = f.controller.stop();
+  assert.equal(trace.truncated, false, `lost ${trace.droppedRecords} records at ${trace.limitBytes} bytes`);
+  assert.equal(trace.incomplete, false);
+  assert.equal(trace.records.filter(item => item.command === 'pty_write' && item.state === 'begin').length, 272);
+  assert.equal(trace.records.filter(item => item.command === 'pty_write' && item.state === 'fulfilled').length, 272);
+  assert.equal(trace.records.filter(item => item.event === 'data').length, totalData);
+  assert.equal(trace.records.filter(item => item.command === 'pty_ack' && item.state === 'fulfilled').length, totalData);
+  assert.equal(trace.records.filter(item => item.event === 'exit' && item.code === 7).length, 2);
+  assert.equal(trace.records.filter(item => item.event === 'keydown-enter').length, 8);
+  const capturedBytes = Buffer.byteLength(`${JSON.stringify(trace)}\n`);
+  assert.ok(capturedBytes <= trace.limitBytes);
+  t.diagnostic(`two-shell workload: ${trace.records.length} records, ${capturedBytes}/${trace.limitBytes} bytes, no truncation`);
+});
+
+test('two fixture slots capture Enter only, enforce 256 KiB and flag truncation', async () => {
   let id = 0;
   const f = fixture(() => ({ id: `id-${++id}` }));
   const first = f.channel(() => {});
@@ -185,7 +251,8 @@ test('two fixture slots capture Enter only, enforce 64 KiB and flag truncation',
   const trace = f.controller.stop();
   assert.equal(trace.records.filter(item => item.event === 'keydown-enter').length, 1);
   assert.ok(trace.truncated);
-  assert.ok(Buffer.byteLength(`${JSON.stringify(trace)}\n`) <= 65536);
+  assert.equal(trace.limitBytes, 256 * 1024);
+  assert.ok(Buffer.byteLength(`${JSON.stringify(trace)}\n`) <= 256 * 1024);
 });
 
 test('unreplaceable fetch fails installation immediately; empty trace is explicitly incomplete', () => {

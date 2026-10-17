@@ -18,7 +18,9 @@ export function installTerminalTrace(shell, cwd) {
   const installed = new Map();
   const reasons = new Set();
   const encoder = new TextEncoder();
-  const limit = 64 * 1024;
+  // Two 135-key shells with per-key echo and ACK records exceed 64 KiB.
+  // Keep a fixed 256 KiB cap; truncation still invalidates successful capture.
+  const limit = 256 * 1024;
   let used = 1024; // Reserve the bounded metadata envelope.
   let dropped = 0;
   let armed = false;
