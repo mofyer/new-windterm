@@ -71,10 +71,12 @@ export async function typeInTerminal(ctx, text) {
 }
 
 /** Types into a form field and checks the value; sets it from script only if typing did not land. */
-async function fill(ctx, css, value) {
+export async function fill(ctx, css, value) {
   const id = await ctx.session.findElement(css);
   await ctx.session.clear(id);
-  await ctx.session.sendKeys(id, value);
+  // WebKitGTK rejects an empty sendKeys payload. Clearing already supplies the
+  // requested empty value; still read it back and retain the fallback below.
+  if (value !== '') await ctx.session.sendKeys(id, value);
   const typed = await inPage(ctx.session, (selector) => document.querySelector(selector)?.value, css);
   if (typed === value) return 'typed';
   ctx.log(`typing into ${css} produced ${JSON.stringify(typed)}; setting the value from script`);

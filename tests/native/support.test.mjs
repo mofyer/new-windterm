@@ -6,8 +6,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
-import { environmentQueries, isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
+import { environmentQueries, fill, isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -22,6 +23,37 @@ const BANNER = [
   'Stop: press Enter; automatic stop after 600 seconds',
   '',
 ].join('\n');
+
+test('empty form values clear and read back without sending empty WebDriver text', async () => {
+  for (const clearWorks of [true, false]) {
+    const calls = [];
+    const input = { value: 'previous value', dispatchEvent: event => calls.push(event.type) };
+    const ctx = {
+      log: () => calls.push('fallback log'),
+      session: {
+        findElement: async css => { assert.equal(css, '#field'); return 'field-id'; },
+        clear: async id => { assert.equal(id, 'field-id'); calls.push('clear'); if (clearWorks) input.value = ''; },
+        sendKeys: async (_id, value) => {
+          assert.notEqual(value, '', 'WebKitGTK rejects empty sendKeys with Missing text parameter');
+          calls.push('sendKeys');
+        },
+        execute: async (script, args) => {
+          calls.push('execute');
+          return runInNewContext(`(function () { ${script} }).apply(null, args)`, {
+            args,
+            document: { querySelector: css => { assert.equal(css, '#field'); return input; } },
+            Event: class { constructor(type) { this.type = type; } },
+          });
+        },
+      },
+    };
+    assert.equal(await fill(ctx, '#field', ''), clearWorks ? 'typed' : 'script');
+    assert.equal(input.value, '');
+    assert.deepEqual(calls, clearWorks
+      ? ['clear', 'execute']
+      : ['clear', 'execute', 'fallback log', 'execute', 'input']);
+  }
+});
 
 test('parseFixtureBanner reads the ssh_terminal_fixture banner once every field has arrived', () => {
   assert.deepEqual(parseFixtureBanner(BANNER), {
