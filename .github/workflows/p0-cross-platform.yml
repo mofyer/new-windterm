@@ -19,6 +19,15 @@ on:
       - "rust-toolchain.toml"
       - ".github/workflows/p0-cross-platform.yml"
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: "Diagnostic run: only the two native WebView jobs (not the full acceptance gate)"
+        type: boolean
+        default: false
+      windows_shell_repeats:
+        description: "Extra Windows shell diagnostics after the seven base scenarios (integer 0..10)"
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -29,6 +38,7 @@ concurrency:
 
 jobs:
   gssapi:
+    if: ${{ !inputs.native_only }}
     name: Linux x64 — isolated Rust GSSAPI and KDC probe
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -80,6 +90,7 @@ jobs:
           retention-days: 14
 
   desktop:
+    if: ${{ !inputs.native_only }}
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
@@ -306,6 +317,12 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
+      - name: Validate native diagnostic inputs before installing or building
+        env:
+          NATIVE_SHELL_REPEATS_INPUT: ${{ inputs.windows_shell_repeats || 0 }}
+        run: |
+          node --input-type=module -e 'import { parseShellRepeats } from "./tests/native/runner-config.mjs"; parseShellRepeats(process.env.NATIVE_SHELL_REPEATS_INPUT);'
+
       - name: Install Linux Tauri prerequisites, Xvfb and the matching WebKitWebDriver
         if: runner.os == 'Linux'
         run: |
@@ -325,7 +342,7 @@ jobs:
         run: npm ci
 
       - name: Unit-test the WebDriver client and runner helpers
-        run: node --test tests/native/webdriver.test.mjs tests/native/support.test.mjs
+        run: node --test tests/native/webdriver.test.mjs tests/native/support.test.mjs tests/native/runner-config.test.mjs
 
       - name: Build production frontend assets
         working-directory: apps/desktop
@@ -372,6 +389,7 @@ jobs:
       - name: Run native WebView smoke (Windows)
         if: runner.os == 'Windows'
         env:
+          P1_NATIVE_SHELL_REPEATS: ${{ inputs.windows_shell_repeats || 0 }}
           P0_NATIVE_TAURI_DRIVER: ${{ runner.temp }}/native-tools/bin/tauri-driver
           P0_NATIVE_SSH_FIXTURE: apps/desktop/src-tauri/target/debug/ssh_terminal_fixture
         run: P0_NATIVE_OUT="$RUNNER_TEMP/p0-native" node tests/native/run.mjs

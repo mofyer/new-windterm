@@ -9,11 +9,16 @@
 //   P0_NATIVE_TAURI_DRIVER tauri-driver binary (default: `tauri-driver` from PATH)
 //   P0_NATIVE_EDGEDRIVER   Windows: msedgedriver.exe matching the WebView2 Runtime
 //   P0_NATIVE_SSH_FIXTURE  built ssh_terminal_fixture; without it the SSH scenario is skipped
+//   P1_NATIVE_SHELL_REPEATS Windows only: 0..10 extra shell diagnostics after the base suite
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseShellRepeats, scenarioCounts, scenarioPlan } from './runner-config.mjs';
+
+// Validate before starting any fixture, driver or application.
+const shellRepeats = parseShellRepeats(process.env.P1_NATIVE_SHELL_REPEATS);
 
 if (process.platform === 'darwin') {
   console.log('skipped: tauri-driver does not support macOS');
@@ -27,6 +32,7 @@ if (!['linux', 'win32'].includes(process.platform)) {
 const { createWebDriver, waitFor } = await import('./webdriver.mjs');
 const { freePort, resolveExecutable, startSshFixture, startTauriDriver, stopProcess, stopSshFixture } = await import('./processes.mjs');
 const { SCENARIOS } = await import('./scenarios.mjs');
+const scenarios = scenarioPlan(SCENARIOS, shellRepeats, process.platform);
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const exe = process.platform === 'win32' ? '.exe' : '';
@@ -49,6 +55,7 @@ const log = (message) => {
 const summary = {
   platform: process.platform, arch: process.arch, node: process.version,
   startedAt: new Date().toISOString(), app: config.app, scenarios: [],
+  shellRepeats,
 };
 let driver;
 let fixture;
@@ -95,17 +102,18 @@ try {
     screenshot: async (name) => writeFile(join(config.out, `${name}.png`), await session.screenshot()),
     writeText: (name, text) => writeFile(join(config.out, name), text),
   };
-  for (const scenario of SCENARIOS) {
+  for (const scenario of scenarios) {
+    const scenarioCtx = { ...ctx, artifactPrefix: scenario.artifactPrefix };
     const started = Date.now();
     await log(`scenario ${scenario.name}: start`);
     try {
-      const evidence = await scenario.run(ctx);
+      const evidence = await scenario.run(scenarioCtx);
       const status = evidence?.skipped ? 'skipped' : 'passed';
-      summary.scenarios.push({ name: scenario.name, status, durationMs: Date.now() - started, evidence });
+      summary.scenarios.push({ name: scenario.name, kind: scenario.kind, artifactPrefix: scenario.artifactPrefix, status, durationMs: Date.now() - started, evidence });
       await log(`scenario ${scenario.name}: ${status}${evidence?.skipped ? ` (${evidence.skipped})` : ''}`);
     } catch (error) {
       failed = true;
-      summary.scenarios.push({ name: scenario.name, status: 'failed', durationMs: Date.now() - started, error: String(error?.stack ?? error) });
+      summary.scenarios.push({ name: scenario.name, kind: scenario.kind, artifactPrefix: scenario.artifactPrefix, status: 'failed', durationMs: Date.now() - started, error: String(error?.stack ?? error) });
       await log(`scenario ${scenario.name}: FAILED ${error?.message ?? error}`);
       await ctx.screenshot(`failure-${scenario.name}`).catch(e => log(`failure screenshot unavailable: ${e.message}`));
       await dumpPage(ctx, `failure-${scenario.name}.json`);
@@ -122,6 +130,7 @@ try {
   summary.fixtureExit = await stopSshFixture(fixture);
   summary.finishedAt = new Date().toISOString();
   summary.result = failed ? 'failed' : 'passed';
+  summary.counts = scenarioCounts(scenarios, summary.scenarios);
   await writeFile(join(config.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   await writeStepSummary(summary);
   await log(`result: ${summary.result}; evidence in ${config.out}`);
@@ -152,11 +161,12 @@ async function writeStepSummary(result) {
   if (!process.env.GITHUB_STEP_SUMMARY) return;
   // WebKitGTK reports the embedder (wry) here; the WebKitGTK package version is recorded by CI.
   const runtime = `browserName=${result.capabilities?.browserName ?? '?'}, browserVersion=${result.capabilities?.browserVersion ?? '?'}`;
-  const rows = result.scenarios.map(s => `| ${s.name} | ${s.status} | ${s.durationMs} ms |`).join('\n');
+  const rows = result.scenarios.map(s => `| ${s.kind} | ${s.name} | ${s.status} | ${s.durationMs} ms |`).join('\n');
   const text = [
     `### Native WebView smoke (${result.platform}/${result.arch}) — ${result.result}`, '',
     `WebDriver session capabilities: ${runtime}`, '',
-    '| Scenario | Outcome | Time |', '| --- | --- | --- |', rows || '| (none) | not run | |', '',
+    `Base scenarios: ${result.counts.base.attempted}/${result.counts.base.planned} attempted; extra shell diagnostics: ${result.counts.diagnostic.attempted}/${result.counts.diagnostic.planned} attempted. Any failure remains a failed run; repetitions are not retries.`, '',
+    '| Group | Scenario | Outcome | Time |', '| --- | --- | --- | --- |', rows || '| | (none) | not run | |', '',
     result.error ? `Fatal: \`${result.error.split('\n')[0]}\`\n` : '',
     'Drives the debug app with the bundled frontend through tauri-driver. Not verified here: macOS WKWebView, IME, accessibility, high-output performance, signing or installers.', '',
   ].join('\n');
