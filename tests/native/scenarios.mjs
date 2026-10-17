@@ -6,6 +6,7 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { Keys, WebDriverError, waitFor } from './webdriver.mjs';
+import { installTerminalTrace } from './terminal-trace.mjs';
 
 const PANE = '.terminal-pane.focused-pane:not([hidden])';
 const TEXTAREA = `${PANE} .xterm-helper-textarea`;
@@ -409,7 +410,7 @@ async function localStartup(ctx, shell) {
   const versionQuery = shell === 'powershell'
     ? "'P1_SHELL=' + $PSVersionTable.PSVersion.ToString()"
     : `printf 'P1_SHELL=%s\\n' "$BASH_VERSION"`;
-  const artifact = shell ? '06-local-terminal-shell' : '05-local-terminal-cwd';
+  const artifact = shell ? `${ctx.artifactPrefix ?? ''}06-local-terminal-shell` : '05-local-terminal-cwd';
   const identities = [];
   let selected;
   async function queryCwd() {
@@ -430,8 +431,13 @@ async function localStartup(ctx, shell) {
   let expected;
   let filled;
   let phase = 'open';
+  let tracing = false;
   try {
     expected = await realpath(directory);
+    if (shell) {
+      await inPage(session, installTerminalTrace, shell, expected);
+      tracing = true;
+    }
     await clickCss(session, '#local-options-open');
     await waitFor(() => inPage(session, () => document.querySelector('#local-dialog')?.open === true),
       { description: 'local startup options dialog' });
@@ -450,6 +456,18 @@ async function localStartup(ctx, shell) {
       return { value: select.value, label: select.selectedOptions[0]?.textContent };
     }, shell ?? '');
     if (selected.value !== (shell ?? '')) throw new Error('shell selection did not stick');
+    if (shell) {
+      // Diagnostic repetitions run after the environment scenario. Reset its
+      // retained form draft so these remain the original default-env fixtures.
+      while (await inPage(session, () => !!document.querySelector('[data-env-remove]')))
+        await clickCss(session, '[data-env-remove]');
+      await inPage(session, () => {
+        const select = document.querySelector('#local-locale-mode');
+        select.value = 'default';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    if (tracing) await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.arm());
     await clickCss(session, '#local-start');
     await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'custom cwd local tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'custom cwd PTY startup');
@@ -457,6 +475,7 @@ async function localStartup(ctx, shell) {
     const initial = await queryCwd();
     await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
     await waitForSessionState(ctx, '已退出 · code 7', 'custom cwd shell exit');
+    if (tracing) await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.arm());
     await clickCss(session, '#local-reopen');
     await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'reopened custom cwd tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'reopened custom cwd PTY startup');
@@ -488,15 +507,22 @@ async function localStartup(ctx, shell) {
       .catch(captureError => ctx.log(`cwd failure screenshot unavailable: ${captureError.message}`));
     throw error;
   } finally {
-    // Close only tabs created by this scenario, even when a cwd assertion fails.
-    // Windows can briefly keep cwd open while the backend worker is reaping.
     try {
-      while ((await tabCount(session)) > before) {
-        await clickCss(session, '#tabs .tab:last-child [role="tab"]');
-        await closeActiveTab(ctx, (await tabCount(session)) - 1);
+      if (tracing) {
+        const trace = await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.stop());
+        await ctx.writeText(`${artifact}-trace.json`, `${JSON.stringify(trace)}\n`);
       }
     } finally {
-      await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      // Close only tabs created by this scenario, even when a cwd assertion fails.
+      // Windows can briefly keep cwd open while the backend worker is reaping.
+      try {
+        while ((await tabCount(session)) > before) {
+          await clickCss(session, '#tabs .tab:last-child [role="tab"]');
+          await closeActiveTab(ctx, (await tabCount(session)) - 1);
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
     }
   }
 }

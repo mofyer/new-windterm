@@ -6,9 +6,10 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
+import { createContext, runInContext, runInNewContext } from 'node:vm';
 import test from 'node:test';
-import { environmentQueries, fill, isCwdOutput, isShellVersionOutput } from './scenarios.mjs';
+import './terminal-trace.test.mjs';
+import { environmentQueries, fill, isCwdOutput, isShellVersionOutput, localTerminalShell } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -23,6 +24,107 @@ const BANNER = [
   'Stop: press Enter; automatic stop after 600 seconds',
   '',
 ].join('\n');
+
+test('shell scenario writes distinct prefixed success/failure and trace artifacts without changing commands', async () => {
+  const allPaths = new Set();
+  for (const failure of [false, true]) {
+    for (const artifactPrefix of ['', 'diag-shell-01-', 'diag-shell-02-']) {
+      let tabs = 1;
+      let state = '';
+      let rows = [];
+      const commands = [];
+      const written = [];
+      let trace;
+      let savedLaunch;
+      const opens = [];
+      // Model the form left by scenario 7 before diagnostic shell repetitions.
+      const env = [{ name: 'P1_ENV_SAMPLE', value: 'previous fixture value' }, { name: 'P1_ENV_EMPTY', value: '' }];
+      const locale = { value: 'custom', dispatchEvent() {} };
+      const input = { value: '', dispatchEvent() {} };
+      const select = { value: 'powershell', disabled: false, options: [{ value: 'powershell', disabled: false }],
+        selectedOptions: [{ textContent: 'Windows PowerShell' }], dispatchEvent() {} };
+      const area = { focus: () => { document.activeElement = area; } };
+      const pane = { contains: target => target === area, querySelectorAll: () => rows.map(textContent => ({ textContent })) };
+      const document = {
+        activeElement: null,
+        addEventListener() {}, removeEventListener() {},
+        querySelectorAll: () => Array(tabs).fill({}),
+        querySelector: css => {
+          if (css === '#local-dialog') return { open: true };
+          if (css === '#local-cwd-input') return input;
+          if (css === '#local-shell-select') return select;
+          if (css === '[data-env-remove]') return env.length ? {} : null;
+          if (css === '#local-locale-mode') return locale;
+          if (css === '#terminal-state') return { textContent: state };
+          if (css === '#terminal-size' || css === '#session-detail') return { textContent: '' };
+          if (css.endsWith('.xterm-helper-textarea')) return area;
+          if (css.startsWith('.terminal-pane')) return pane;
+          throw new Error(`unexpected selector: ${css}`);
+        },
+      };
+      const window = { __TAURI_INTERNALS__: { invoke: (_command, args) => {
+        opens.push(args);
+        const id = `fixture-${opens.length}`;
+        args.onEvent.onmessage({ id, kind: 'data', sequence: 1, data: [27, 91, 54, 110] });
+        return Promise.resolve({ id });
+      } } };
+      const realm = createContext({ window, document, TextEncoder, performance, Event: class {} });
+      const session = {
+        execute: async (script, args) => { realm.args = args; return runInContext(`(function () { ${script} }).apply(null, args)`, realm); },
+        findElement: async css => css,
+        clear: async () => { input.value = ''; },
+        click: async css => {
+          if (css === '[data-env-remove]') env.shift();
+          if (css === '#local-start' || css === '#local-reopen') {
+            if (css === '#local-start') savedLaunch = { cwd: input.value, shell: select.value,
+              env: env.map(item => ({ ...item })), locale: { mode: locale.value,
+                variables: locale.value === 'custom' ? [{ name: 'LANG', value: 'C.UTF-8' }] : [] } };
+            await window.__TAURI_INTERNALS__.invoke('pty_open', { ...savedLaunch, onEvent: { onmessage() {} } });
+            tabs++; state = '本机 shell 已启动';
+          }
+          if (css.includes('.tab-close')) tabs--;
+        },
+        sendKeys: async (css, text) => {
+          if (css === '#local-cwd-input') { input.value = text; return; }
+          commands.push(text.slice(0, -1));
+          if (text.startsWith('(Get-Location).Path')) {
+            if (failure) throw new Error('fixture cwd input failed');
+            rows = [input.value];
+          } else if (text.startsWith("'P1_SHELL='")) rows = ['P1_SHELL=5.1.20348.1'];
+          else if (text.startsWith('exit 7')) state = '已退出 · code 7';
+        },
+      };
+      const ctx = { session, platform: 'win32', artifactPrefix, log() {},
+        writeText: async (path, text) => { written.push(path); if (path.endsWith('-trace.json')) trace = JSON.parse(text); },
+        screenshot: async name => { written.push(`${name}.png`); },
+      };
+      if (failure) await assert.rejects(localTerminalShell(ctx), /fixture cwd input failed/);
+      else await localTerminalShell(ctx);
+      const base = `${artifactPrefix}06-local-terminal-shell`;
+      assert.deepEqual(written, failure
+        ? [`${base}-failure.json`, `${base}-failure.png`, `${base}-trace.json`]
+        : [`${base}.txt`, `${base}.png`, `${base}-trace.json`]);
+      for (const path of written) {
+        const qualified = `${failure ? 'failure' : 'success'}/${path}`;
+        assert.ok(!allPaths.has(qualified), `artifact overwritten: ${qualified}`);
+        allPaths.add(qualified);
+      }
+      const query = ['[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+        "'P1_SHELL=' + $PSVersionTable.PSVersion.ToString()", '(Get-Location).Path'];
+      assert.deepEqual(commands, failure ? query : [...query, 'exit 7', ...query, 'exit 7']);
+      assert.equal(opens.length, failure ? 1 : 2);
+      for (const launch of opens) {
+        assert.deepEqual(launch.env, []);
+        assert.deepEqual(launch.locale, { mode: 'default', variables: [] });
+      }
+      assert.deepEqual(trace.records.filter(item => item.command === 'pty_open' && item.state === 'begin')
+        .map(item => item.slot), failure ? [1] : [1, 2]);
+      assert.equal(trace.records.filter(item => item.event === 'data' && item.hex === '1b5b366e').length, opens.length);
+      assert.equal(tabs, 1);
+      assert.equal(window.__P1_NATIVE_SHELL_TRACE__, undefined);
+    }
+  }
+});
 
 test('empty form values clear and read back without sending empty WebDriver text', async () => {
   for (const clearWorks of [true, false]) {
