@@ -275,6 +275,143 @@ Linux runner 未安装 Zsh，两条探针均明确 SKIP；PowerShell 7 未完成
 
 ### 第三批 main 合并记录
 
-2026-10-18，用户针对第三批候选 `780a10e` 明确回复「合并 main」后，协调者在隔离 main 工作树中以 fast-forward 将 main 从 `8823be4` 推进至 `780a10e686d7c02c968a38e1ab63cd110408d093`，已推送并读回远端核对。被测产品代码仍为 `68808de`，其后的第三批提交仅补证据文档；本次记录也只更新文档，不重复触发代码 CI。后续文档提交的 SHA 以远端 refs 为准。
+2026-10-18，用户针对第三批候选 `780a10e` 明确回复「合并 main」后，协调者在隔离 main 工作树中以 fast-forward 将 main 从 `8823be4` 推进至 `780a10e686d7c02c968a38e1ab63cd110408d093`，已推送并读回远端核对。被测产品代码仍为 `68808de`，其后的第三批提交仅补证据文档；本次记录也只更新文档，不重复触发代码 CI。合并记录文档经独立审阅后提交并推送为 `40405d7`，已通过 `3aaa783` 同步到集成分支；产品代码未改变。最新分支位置以远端 refs 为准。
 
 此次仅合并第三批 Shell 发现、选择与缺失反馈及其证据；环境变量与 locale 属于第四批，未包含在本次 main 产品基线中，后续仍须完成本批验收并单独取得合并批准。P1 整阶段与完整功能对齐未完成。
+
+## 2026-10-18：第四批会话环境变量与 locale
+
+从第三批证据文档 `780a10e` 开始，在 `p1/env-backend`、`p1/env-ui`、`p1/env-native` 三个隔离工作树并行实施。后端、界面及原生验收代码已分别审查、集成并推送至 `bea905f`；本机全套门禁与 macOS 有限原生验收已通过，首轮 CI 的 Linux 第七原生场景因 WebDriver 空输入失败，夹具修复已集成为 `eb76e4b`。首轮已结束，6/7 作业成功，唯一失败为 Linux native；第二轮 `39063630062` 已结束，同为 6/7 作业成功、整体失败，唯一失败为 Windows native 旧第六 Shell 场景；新增环境场景及其余作业通过。Windows 根因诊断与最终验收未完成。第三批已获单独批准并合入 main，产品基线为 `780a10e`；第四批尚未获合并授权，不沿用第三批授权或 CI 宣称第四批已批准或通过。
+
+### 已集成实现与契约
+
+- 后端 `333b2b7`（来源 `e7b1d6e`）：扩展 `pty_open` / `LocalLaunchOptions`，由 `local_environment.rs` 验证每会话环境条目与 locale，只修改当前子进程的 `CommandBuilder`，不修改应用全局环境。缺省参数兼容原入口；打开与重新打开均校验，保留 cwd、owner/generation、容量、ACK 与回收约束。
+- 前端 `b0a9d16`（来源 `1957b7f`）：名称/值行编辑、独立 locale 模式、清晰错误反馈；每会话深复制启动配置，重开使用原始配置，后续表单修改只影响新会话，终端内交互修改不会成为重开配置。默认一键入口保持原行为，不自动重放输入。
+- 原生探针与场景 `bea905f`（来源 `826f1ea`）：加入实际环境/locale 读回、会话隔离、空值与字面值、退出重开和默认兼容验证；Rust probe 经独立审查及固定退出 deadline 修复复核后 APPROVE，本批原生 WebView 的实际结果见下文，不能由代码审查代替。
+- 值按字面传递，保留空字符串、Unicode、空格和等号，不解释 shell 语法；禁止 NUL。普通环境最多 64 项，locale 最多 13 项；名称匹配 `[A-Za-z_][A-Za-z0-9_]*` 且最多 64 字节，单值最多 4096 UTF-8 字节；两组合计按每项名称 + 值 + 2 的字节数计，不超过 16 KiB。Windows ASCII 大小写不敏感、Unix 大小写敏感，重复和冲突明确拒绝。
+- locale 缺省或 `default` 加空列表保留原平台设置；默认模式带非空变量报错。`custom` 先清除默认注入的 `LANG`/`LC_*` 再添加选定项，自定义空列表表示全部清除。允许 `LANG`、`LC_ALL` 和 11 个分类变量；拒绝 `LC_ALL` 与其他 `LC_*` 并存，允许 `LANG` 与 `LC_ALL` 并存且后者优先。不验证系统是否安装指定 locale；Windows 仅传递变量，不代表改变代码页或 PowerShell 显示语言。
+- 普通变量不能写入 locale 名称、运行/提示符/历史路径保留项或启动加载相关前缀，具体名单以后端为准。`PATH` 可显式覆盖，但 Shell 仍从固定绝对路径选择。保留名单是本切片支持范围，不删减最终功能目标；不能由此宣称任意变量对后续用户命令没有影响。
+- 配置值只留在应用内存，应用不将其写入状态文案、日志或持久设置；反序列化、验证、Debug 和自定义环境的启动错误均防止回显值。这不保证 Shell、用户命令或操作系统不会记录这些值，也不代表提供持久凭据管理。
+
+### 工作树定向验证与审查
+
+下表是各工作树的实施证据，**不是最终集成树门禁或跨平台原生验收**；精确集成提交、原始日志和计数见下文集成树及 CI 记录。
+
+| 检查 | 当前证据 | 适用边界 |
+| --- | --- | --- |
+| 后端独立 Rust 与安全审查 | APPROVE；已处理变量值泄露问题 | 不替代全量门禁或真实平台执行 |
+| 前端与原生 JS 独立审查 | APPROVE | Rust probe 亦已独立复核 APPROVE；不代表原生场景已执行 |
+| UI build / 新增浏览器契约 | build 通过；新增 17 项通过 | IPC stub；不是原生子进程 |
+| 既有浏览器定向回归 | 32 项通过 | 不是全套浏览器回归 |
+| 独立 Node helper | 19 项通过 | 不是原生 WebView 执行 |
+| Rust library | 独立默认特性 188 passed / 0 failed / 7 ignored；实现者 all-features 190 passed / 0 failed / 7 ignored | 两种特性与执行者分开记录；不是 all-targets 全量结果 |
+| 默认/readiness 真实 PTY 工作树探针 | 两种后端通过既有 12 次关闭、2 MiB、cwd、Bash/Zsh，以及新增环境/locale 场景 | 集成树复验见下文；不能代替 Windows 或 GUI |
+
+新增 PTY 场景验证字面值与空值、两会话隔离、运行时修改后 exit 7 再重开恢复初始配置、自定义空 locale 和父进程环境不变。工作树测试保留初次失败：UI 两项断言预期经修正后通过；native probe 首次编译的闭包类型推断错误修正后通过，不将失败从记录中删除。
+
+独立 Rust 审查发现 HIGH：portable-pty 即使采用显式 argv，也可能解析 `SHELL`，并在值非法时记录该值。后端已将 `SHELL` 列为保留项并增加回归测试，Rust 与安全审查分别复核后 APPROVE。另一次独立 Rust probe 审查发现 MEDIUM：退出接收循环每收到一条 Data 便重新等待 5 秒，持续输出时可能没有总期限；协调者已改为固定 `Instant` 的 5 秒 deadline，每轮仅使用剩余预算，超时返回错误并由外层 shutdown 清理。该探针修复已获独立复核 APPROVE，集成树默认与 readiness 两种后端实跑均通过。
+
+### 集成树本机门禁
+
+当前集成代码为 `bea905f419c42b50155328b108b8af1ae423c2be`，本机门禁脚本 exit 0。以下结果不等于原生 GUI 或跨平台 CI 验收。
+
+| 检查 | 已完成结果 | 边界 |
+| --- | --- | --- |
+| 前端 TypeScript / Vite build | 通过 | 不等于原生运行 |
+| 全套浏览器回归 | 413 passed / 0 failed / 0 skipped / 0 flaky；无重跑 | IPC stub |
+| Rust all-targets / all-features | 19 suites，共 238 passed / 0 failed / 33 ignored | 忽略测试不计为通过 |
+| fmt / Clippy all-targets / all-features | 通过 | 静态检查 |
+| Windows 交叉 all-targets / all-features Clippy | 通过，5.42 秒 | 仅类型与 lint 检查，不执行 Windows 测试 |
+| 真实 OpenSSH 客户端与夹具 | 7 + 4 passed / 0 failed / 0 skipped | 独立临时服务与文件 |
+| Native helper | 19 passed / 0 failed | 不等于原生 WebView 执行 |
+| 默认/readiness 真实 PTY 探针 | 两种后端均通过，包括最终 deadline 修复 | 既有生命周期/完整性、Shell/cwd 及新增环境/locale 验证；不代替 GUI |
+
+本机原始日志在 `.artifacts/p1/batch4/`：`fmt.log`、`clippy.log`、`frontend.log`、`playwright.log` 与 `playwright-results.json`、`rust.log`、`wincheck.log`、`openssh-clients.log`、`openssh-fixtures.log`、`native-helpers.log`、`pty-default.log`、`pty-readiness.log`；首轮 UI 与探针编译失败分别保留于 `ui-first/` 和 `probe-initial-compile-failure.log`。
+
+代码已推送 `p1/integration`；[首轮 CI 39062783489](https://github.com/mofyer/new-windterm/actions/runs/39062783489) 已结束，失败与修复、第二轮进展见下文。本机默认/readiness 的 2 MiB 分别为 7.66/0.42 秒，仅保留为既定预算内诊断，不代表 GUI 性能验收。
+
+### macOS 原生窗口有限验收
+
+协调者构建 debug `.app`，二进制 SHA-256 为 `9c7a6ddff804bb007a0c831edecfcf47d8ac4cb79b68aab54fa7f3c4cab46d2e`。通过 CUA 操作真实 WKWebView，选择 Bash，填写 `P1_ENV_SAMPLE=中文 space=one`、空值 `P1_ENV_EMPTY` 与自定义 `LANG=en_US.UTF-8`。Local 2 的独立输出行读回原字面值、空值存在标志 `yes` 与长度 `0`、LANG，以及已清除的 LC_ALL/LC_CTYPE。随后交互改为 `runtime_changed`，读回新值并 exit 7。
+
+点击“重新打开”生成 Local 3，独立输出恢复 `中文 space=one`，空值仍存在、长度 0，LANG 保留而 LC_CTYPE 未设置，再次 exit 7。一键打开默认 Local 4，两个测试变量均不存在，默认 LANG=en_US.UTF-8、LC_CTYPE=UTF-8 保持；exit 0 后退出应用，进程核对未残留。默认入口的 Zsh 身份来自平台策略，本轮 GUI 没有另读其版本，不能由提示符独立证明身份。本轮没有修改用户 Shell 设置或输入法。
+
+证据保存于 `mac-env-{options,initial,first-exit,reopen,default}.{png,txt}`、`mac-env-reopen-exit.txt`、`macos-build.log` 与 `macos-binary.sha256`。部分即时 AX 快照曾只显示命令前几个字符，窗口 Raise 后完整输出可见，未将该快照现象外推为产品性能结论。此单轮 GUI 没有同时打开两个不同自定义配置的活动会话，该项由真实 PTY 与后续 Linux/Windows 原生场景验证；完整 IME、读屏、长期输出及发行验收不在本次范围。独立 verifier 实际查看五张截图与六份 AX 文本、核对二进制哈希、逐项汇总本机原始日志后给出本机阶段 PASS / APPROVE，0 个阻塞；跨平台最终结论另行核验。
+
+### 第四批首轮 CI：Linux 原生空输入失败及夹具修复
+
+[首轮 CI 39062783489](https://github.com/mofyer/new-windterm/actions/runs/39062783489) 最终 **6/7 作业成功、1 个失败，整体失败**，唯一失败为 Linux native。该作业前六场景 PASS，第七环境变量场景在 `phase=open` 填写空 cwd 时返回 WebDriver `Missing text parameter`。失败发生在创建该场景的环境变量 PTY 之前，不能将其写成环境传递失败，也不能用其余六个绿色作业代表整轮通过。
+
+根因是 `fill` 清空字段后继续对空字符串调用 `sendKeys`，该驱动拒绝空输入。修复 `eb76e4b`（来源 `5bcb228`）在值为空时不发送按键，保留清空后的读回检查与必要的 DOM fallback。fake-driver 回归先红后绿，分别覆盖 clear 有效与无效两条路径；两个文件经独立 JS review APPROVE，集成后的 native helper 为 **20 passed / 0 failed / 0 skipped**，日志为 `.artifacts/p1/batch4/native-helpers-fixed.log`。产品源码未改，先前 Rust、浏览器及 macOS 原生证据继续适用；修正版 CI 的 Linux 第七场景已通过；Windows 旧第六场景另有未定位失败，详见下文。
+
+首轮失败现场保留于 `.artifacts/p1/batch4/ci-first/unix/linux-native/` 的 `summary.json`、`07-local-terminal-environment-failure.json` 与同名 `.png`。Linux runner 截图因缺少 CJK 字体出现方块；Unicode 文本读回正确与字形视觉验收是两项不同证据，不能由文本读回宣称中文字形显示已验收。
+
+首轮通过范围按原始日志与工件分别记录：
+
+| 首轮范围 | 实际结果与边界 |
+| --- | --- |
+| macOS / Linux desktop Rust | 分别 238 / 237 passed，均 0 failed / 33 ignored |
+| Unix 默认/readiness PTY | 四条 lane 全部通过，包含新增环境/locale 阶段及既有生命周期、完整性验证 |
+| Unix 2 MiB 诊断 | macOS 默认/readiness 33.26/0.57 秒；Linux 0.53/0.38 秒；仅预算内诊断，不作 GUI 性能结论 |
+| Linux 互操作与 GSSAPI | lrzsz 11、X11 1、agent 1；GSSAPI 3 单元、4 认证、3 健康复验，均通过；仍保留对应探针范围 |
+| Windows Server 2022 / 2025 Rust | 各 232 passed / 0 failed / 7 ignored；新增 9 项环境测试与 1 项 PTY 拒绝测试均实际执行通过 |
+| Windows 独立 ConPTY | 两平台各 2 项通过；2022 裸 ConPTY +24、session 191→215 的既有系统基线保留；2025 裸增长 0、session 117 稳定 |
+| Windows native helper | 17 passed / 0 failed / 2 skipped，共 19 项；真实 Bash 辅助测试与 macOS 专有测试跳过，不能计为执行通过 |
+| Windows native | 7/7；Windows PowerShell `5.1.20348.5622`，WebView2/driver `131.0.2903.86`；独立读回空值存在 `yes` 与空内容、两个会话不同中文字面值、运行时修改后重开恢复原值；默认 cmd 无测试变量，关闭后 `remainingTabs=1`，SSH 夹具 `active=0` |
+
+### 第四批第二轮 CI：6/7 作业通过，Windows 旧 Shell 场景失败
+
+首轮完全结束后已触发 [第二轮 CI 39063630062](https://github.com/mofyer/new-windterm/actions/runs/39063630062)，验证精确提交 `eb76e4b6f3e2c12b09cf6ad4e1fd872296e8bd27`。产品代码仍为 `bea905f` 对应内容，后续 `eb76e4b` 只改原生测试夹具与其回归测试。第二轮已结束，**6/7 作业成功、1 个失败，整体失败**。唯一失败为 Windows native 的旧第六 Shell 场景，新增环境场景通过；Linux native、四个 desktop 作业与 GSSAPI 均通过，不能据此宣布整批验收完成。
+
+Linux native **7/7** 实际执行通过，第七场景耗时 32.034 秒。逐行核对 `initial`、`independent`、`retained`、`modified`、`reopened`、`defaults`：两个活动会话分别读回含 one/two 的中文字面值，空变量存在且内容为空；自定义 `LANG=C.UTF-8` 且 `LC_ALL` 未设置。第一会话运行时修改为 `runtime-change`，exit 7 后重开恢复原配置，第二会话仍保持独立值；默认会话没有 sample/empty 测试变量，`LANG`/`LC_ALL` 均保留 `C.UTF-8`。清理后 `remainingTabs=1`，SSH 夹具 `active=0`。原始工件与作业日志保存于 `.artifacts/p1/batch4/ci-second/unix/linux-native/` 及对应 job log。
+
+Linux native helper 实际为 **19 passed / 0 failed / 1 skipped**，共 20 项，macOS 专有测试跳过，新增空 fill 回归通过；不能将 20 项总数写成 20 项执行通过。首轮 Linux 第七场景失败已由修复提交的第二轮实际执行关闭，首轮失败工件及 CJK 字形边界继续保留。
+
+第二轮其他已核验结果如下，原始日志与工件保存在 `.artifacts/p1/batch4/ci-second/`：
+
+| 第二轮范围 | 实际结果与边界 |
+| --- | --- |
+| macOS / Linux desktop Rust | 分别 238 / 237 passed，均 0 failed / 33 ignored；构建与静态检查通过 |
+| Windows Server 2022 / 2025 Rust | 各 232 passed / 0 failed / 7 ignored；构建与静态检查通过 |
+| Windows 独立 ConPTY | 两平台各 2 项通过；2022 裸 ConPTY +24、session 191→215 的既有系统基线保留；2025 裸增长 0、session 117 稳定 |
+| Unix 默认/readiness PTY | 四条 lane 均通过，包括新增环境/locale、既有生命周期、完整性、cwd 和可用 Shell；Linux Zsh 缺失仍为跳过 |
+| Unix 2 MiB 诊断 | macOS 默认/readiness 31.21/0.58 秒；Linux 0.56/0.44 秒；仅预算内诊断，不作 GUI 性能结论 |
+| Linux 互操作与 GSSAPI | lrzsz 11、X11 1、agent 1；GSSAPI 3 单元、4 认证、3 健康复验，均通过；仍为对应探针范围 |
+| Windows native helper | 18 passed / 0 failed / 2 skipped，共 20 项；真实 Bash 辅助测试与 macOS 专有测试跳过 |
+| Windows native | 6/7；旧第六 Shell 场景失败。新增第七环境场景通过，两个会话字面值与空值、运行时修改、重开恢复和默认无测试变量均读回；清理后 `remainingTabs=1`，SSH 夹具 `active=0` |
+
+第二轮新增阻塞：Windows 原生旧第六场景 `local-terminal-shell` 在 `initial cwd query` 等待实际目录输出 30 秒超时，第七环境场景通过。失败记录在 `.artifacts/p1/batch4/ci-second/windows-native/06-local-terminal-shell-failure.{json,png}`；版本 `P1_SHELL=5.1.20348.5622` 已读回，随后只见 `(Get-Location).Path` 命令回显和下一行光标，没有目录输出或新提示符。不能据此认定 Enter 丢失、脚本抖动或产品无问题；现有工件没有原始 PTY 输入输出，根因未定。
+
+### 待完成与保留边界
+
+`p1/native-trace` 与 `p1/native-diagnostic-ci` 的测试侧有界追踪和可选重复诊断，经组合独立审查集成为 `2225103` 与 `ab0ee0b`，当时 Node helper 34/34 通过。诊断保留原三条命令、严格 cwd 断言及超时，不合并命令、放宽比较或以重跑掩盖失败；仅追踪受控测试会话，不记录启动环境配置。`pty_write` 成功仍只证明入队，不证明实际 ConPTY 写入完成。
+
+[诊断 CI 39064960825](https://github.com/mofyer/new-windterm/actions/runs/39064960825) 验证 `ab0ee0b66ebd55dcddb49c0921380aac2520f049`，参数为 `native_only=true`、`windows_shell_repeats=10`；仅运行 Linux/Windows 两个 native 作业，Windows 标准场景后追加 10 次 Shell 诊断，不能替代七作业全套门禁。Linux native 7/7，但 `ci-diagnostic/linux-native/06-local-terminal-shell-trace.json` 只有 82 字节且 `records=[]`，追踪无效，不能用于根因判断。Windows 基础 7/7、追加 10/10，均无失败或跳过；11 轮 Shell 的首次与重开目录、PowerShell 5.1.20348.5622 身份均通过，所有 11 份 trace 同样为 82 字节空记录。两端功能成功仅证明本轮未复现，不能关闭原停滞；Windows 独立审计在 `ci-diagnostic/windows-native/independent-audit.json`。
+
+已定位的是**测试追踪工具缺陷**：Tauri runtime 的只读 global/invoke 使原包装赋值静默失败。测试侧修复 `5fe00fd` 改用 fetch 与 callbackMap，已获独立安全与 JS 审查 APPROVE，组合 helper 35/35 通过；真实 SDK 脚本红绿证据 `trace-real-sdk-red-green.json` 显示旧版 records/data 为 0/0，修正版为 6/2 且 `incomplete=false`。该结果只验证追踪修复，产品代码仍为 `bea905f` 对应内容，Windows 目录查询停滞根因未定。修正版[全套 CI 39066177739](https://github.com/mofyer/new-windterm/actions/runs/39066177739) 验证精确 SHA `5fe00fdfc7c44ad025385374fdae1ee0f9a81b7a`，七作业门禁、Windows 另加 3 次重复诊断，已结束为 **6/7 作业成功、整体失败**，最终状态保存在 `ci-trace-fixed/run-final.json`。四个 desktop、GSSAPI 与 Linux native 成功，唯一失败为 Windows native 的 trace 容量不足。Linux native 已核验 7/7，`ci-trace-fixed/unix/linux-native/06-local-terminal-shell-trace.json` 为 42,098 字节、440 条记录，覆盖首次与重开两个会话槽，无 incomplete/truncated，证明修正版在本轮 Linux 原生环境实际取得追踪。GSSAPI 3 单元、4 认证、3 健康复验通过；各通过项仍保留其平台与探针范围，不推断 Windows 根因或整批通过。
+
+Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完成版本、实际 cwd、exit 7 与重新打开断言，并生成成功 TXT/PNG；随后在 `finally` 中因 64 KiB trace 截断判为失败。四份 trace 分别为 64,623 / 64,673 / 64,668 / 64,628 字节，丢弃 159 / 167 / 174 / 164 条记录，详见 `ci-trace-fixed/windows-native/independent-audit.json`。每轮首次会话槽的 136 次 write 均 fulfilled，4 个 CR、CPR 应答及对应 ACK 成功，Data/ACK 数分别为 29 / 31 / 33 / 31；这些是成功会话的完整片段。第二会话槽已截断，缺失记录不能推断丢失 IPC 或复现原停滞，也不能把追踪容量失败改写为产品功能通过的整轮 CI。
+
+另一个测试追踪容量回归模拟完整诊断负载：原 64 KiB 上限丢弃 813 条记录；调整为有界 256 KiB 后完整保留 1,390 条、156,281 字节。该测试侧修复经独立审查 APPROVE，组合 helper 36/36 通过，日志为 `native-diagnostic-capacity-helpers.log`，已集成并推送 `0906c85`。该提交只修改两份测试文件；[native 补验 39067079503](https://github.com/mofyer/new-windterm/actions/runs/39067079503) 已完成成功，被测 SHA 为 `0906c85fd3abbe772f29a25c5a464b710f4fbd52`，两平台各默认七场景 7/7、无额外重复。Linux helpers 35 passed / 0 failed / 1 skipped，Windows 34 passed / 0 failed / 2 skipped，各 36 项；跳过项不计为通过。两端 trace 均完整覆盖首次与重开两个槽：Linux 44,810 字节、467 条记录，Data 分别 38/41；Windows 85,251 字节、757 条记录，Data 分别 32/33；两端均 `incomplete=false`、`truncated=false`、`droppedRecords=0`。证据保存在 `.artifacts/p1/batch4/ci-capacity/`，Windows 独立复核见其 `windows-native/independent-audit.json`。这仅证明本轮追踪容量修复和七场景通过，不能关闭原 Windows 目录查询停滞。产品代码仍为 `bea905f` 对应内容，不重复未受影响的 Rust 门禁；补验与上一轮各自记录，不能拼写成某单轮 CI 7/7。默认配置路径的静态对比只确认新增 apply 在缺省配置下不改环境，不能据此排除产品影响或确定原停滞根因。整批验收与 main 合并请求继续暂缓。
+
+### 独立 PowerShell 延迟诊断：已取得环境差异，严格检查失败
+
+四份已有原始追踪位于 `.artifacts/p1/batch4/ci-trace-fixed/windows-native/06-local-terminal-shell-trace.json` 及同目录 `diag-shell-01-06-local-terminal-shell-trace.json`、`diag-shell-02-06-local-terminal-shell-trace.json`、`diag-shell-03-06-local-terminal-shell-trace.json`。首次 `(Get-Location).Path` 回显及 ACK 完成后，距 cwd 输出约 20.8–27.1 秒。这是测试侧可见事件之间的间隔，不是 cmdlet 内部执行耗时；只能作为进一步分离 Shell 初始化与产品链路的调查线索，不能据此解释原 CI 的目录查询停滞。
+
+独立探针已集成并推送为 `7c9a14b`，经独立代码审查 APPROVE，本机 12/12 回归通过；[双平台诊断 39094470445](https://github.com/mofyer/new-windterm/actions/runs/39094470445) 验证该提交，**两个作业均失败**。两端各 12/12 helper 通过、各完成 6 个测量样本，所有样本三阶段 cwd 校验成立、exit 0、无超时；但每个样本均有 392 字节 stderr，按严格规则判为失败。只保存了字节数，未保存内容，因此不能将 stderr 解释为无害进度提示。`cleanupSucceeded=null` 表示未触发超时清理，不是清理测试通过。
+
+| 独立 stdio 测量 | 继承环境：首次 Get-Location | 产品白名单环境：首次 Get-Location |
+| --- | --- | --- |
+| Windows Server 2022，分别 3 个新进程 | 53.8–380.2 ms | 21,299.5–27,214.0 ms |
+| Windows Server 2025，分别 3 个新进程 | 38.9–251.9 ms | 11,187.2–26,948.5 ms |
+
+12 个样本的 .NET 路径参照为 3.65–6.39 ms，第二次 Get-Location 为 0.1435–0.296 ms。这些是独立脚本内 Stopwatch 计时，与上面的原生前端事件间隔是不同证据。原始报告与最终 CI 状态保存在 `.artifacts/p1/batch4/powershell-latency-ci/`，已有独立审查逐项核对。
+
+本轮支持环境策略与首次 cmdlet 延迟存在明显关联，但继承环境先执行、白名单随后执行，顺序和缓存未控制；stdio/EncodedCommand 与交互 ConPTY 不同，尚未定位具体变量或初始化机制，也不能解释历史 30 秒停滞。产品启动路径和原场景断言未改，整批验收仍未完成。
+
+下一步最小诊断：先在内存中对有界 stderr 作结构分类，只保存已知流类型计数及未知标志，不保存内容或路径；未知仍判失败。然后仅在诊断中比较继承、白名单、白名单加入父 PSModulePath、继承移除 PSModulePath 四组，反转区组顺序、每样本新进程，首样本单列。PSModulePath 只是候选因子，未证实；锁定因子后还须在 ConPTY 验证，不能直接修改产品白名单或提高原 30 秒断言。上述下一轮实验尚未实施。
+
+- 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
+- Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
+- 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
+- 推进范围为 `p1/integration`。第三批已单独批准并合并；第四批技术验收完成后另行请求 main 批准，不能复用第三批授权。

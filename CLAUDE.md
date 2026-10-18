@@ -5,14 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目定位
 
 用 Rust + Tauri 2 + xterm.js 独立重构 WindTerm 2.7.0 的**完整**功能（Apache-2.0）。macOS Apple Silicon 优先，但 Windows/Linux 在架构与测试层面同步考虑，不能因先做 macOS 删减平台或功能。**P0 已于 2026-10-15 经独立技术评审和用户确认关闭，当前进入 P1。** 已有实现仍多为原型或探针，不能视为完整产品验收：
-- 真实本地 PTY（Windows 默认 `cmd.exe` ConPTY；P1 第三批已交付并合并固定候选 Shell 的发现与选择，新增 Shell 的平台验收以 P1 执行记录为准）。
+- 真实本地 PTY（Windows 默认 `cmd.exe` ConPTY；P1 第三批已验收固定候选 Shell 的发现与选择，第四批已集成会话环境变量与 locale，正在完成跨平台验收，各平台实际验收范围以 P1 执行记录为准）。
 - 受限交互 SSH。
 - 只读 SFTP 文件面板。
 - Telnet / Raw TCP 终端标签。
 - 多个 SSH 网络探针（转发、代理、SCP 等）。
 - 苹果风 UI 原型。
 
-P0 已合并到 main（`a35582f`）；P1 前三批均已获单独批准并合并，main 产品基线为 `780a10e`（第三批被测代码 `68808de`，其后仅补文档）；环境变量与 locale 为下一批计划，不在本次 main 范围。后续开发使用 `p1/integration`。后续每批合并到 `main` 仍需要用户单独同意。P1 的切片计划与执行证据见 [docs/p1/PLAN.zh-CN.md](docs/p1/PLAN.zh-CN.md) 和 [docs/p1/RESULTS.zh-CN.md](docs/p1/RESULTS.zh-CN.md)。
+P0 已关闭并合并；P1 前三批已获单独批准并合并，main 产品基线为 `780a10e`。第三批 Shell 发现/选择已交付；第四批会话环境变量与 locale 已实现，本机门禁与 macOS 有限原生验收通过，但 Windows 旧 Shell 场景曾出现目录查询停滞，根因仍未确定。最新 CI、追踪与验收状态以 [P1 执行记录](docs/p1/RESULTS.zh-CN.md) 为准。第四批尚未获 main 合并批准，不能把第三批授权或“继续”当作第四批合并授权。切片范围见 [P1 计划](docs/p1/PLAN.zh-CN.md)。
 
 当前优先级与交接要点见 [docs/HANDOFF.zh-CN.md](docs/HANDOFF.zh-CN.md)；当前测试结果与未完成项以 [P1 执行记录](docs/p1/RESULTS.zh-CN.md) 为准，[P0 记录](docs/p0/RESULTS.zh-CN.md)保留历史证据。
 
@@ -101,12 +101,15 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 - `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash、Windows `cmd.exe /D /Q /K`）。Windows 细节在 `platform_windows.rs`：kill-on-close Job Object 回收进程树；等待线程在子进程退出后关闭 pseudoconsole，使阻塞读取得到 EOF；会话关闭时终止 Job，而不是在 IPC 线程上关闭 pseudoconsole（可能阻塞）；reader 结束后要排空管道。ConPTY 启动时会发 `ESC[6n` 并等待回复，前端会暂存会话 ID 到达前的输入。Windows 测试在 `pty.rs` 的 `windows_tests` 中，只能在 Windows CI 上运行。
 - Cargo features：`pty-readiness` 是默认关闭的 Unix poll/ACK 通知实验（默认构建仍是 5 ms 轮询）；`pty-diagnostics` 启用计时字段，并与 `dev-tools` 一起启用 `pty_diagnose` 二进制；`dev-tools` 只用于门控 `src/bin` 下的测试/探针二进制。
 
-### 本地启动选项（P1 第三批已交付并合并）
+### 本地启动选项（第三批已验收，第四批集成中）
 
 - 前两批已交付退出/失败后新建会话与可选绝对启动目录。第三批前端 `local-launch.ts` 通过 `pty_shells` 发现固定 ID 的候选，并将可选 `shell` 与 `cwd` 传给 `pty_open`；会话保留自己的启动选项，重新打开继承原选项，不读取后来修改的表单。默认按钮继续走原默认 Shell；浏览器演示不启动本机进程。
-- 后端本批工作树中的 `local_shell.rs` 负责固定路径发现、可执行文件检查和固定 argv，`LocalLaunchOptions` 将 Shell ID 与目录传到 `Sessions::open_with_options`，原入口保留为默认参数包装。Unix 候选为 `bash`、`zsh`、`pwsh`，Windows 为 `cmd`、`powershell`、`pwsh`；只检查列出的常见安装位置，不扫描 PATH，也不接受任意命令或可执行路径。发现列表报告不可用原因，每次打开/重开仍重新检查。
-- 显式 Bash 使用 `--noprofile --norc -i`，Zsh 使用 `-f -i`，PowerShell 使用 `-NoLogo -NoProfile`，cmd 使用 `/D /Q /K`。Zsh 的系统 `zshenv` 仍会执行，PowerShell `-NoProfile` 不等于禁用历史记录。默认 Shell 的 argv/环境/cwd 保持原行为；用户自定义参数、env、locale、启动配置持久化及 WSL/Git Bash/Cygwin/Clink 不属于本批。
-- 既有 cwd 校验、owner/generation、容量、ACK 与回收期限保持。Windows 本批继续采用产品既有的本地盘符目录限制，不能写成 PowerShell 本身不支持 UNC。目录或可执行文件最后校验与启动之间仍可能被外部改变，不能宣称消除 TOCTOU。以上描述第三批实现范围，集成提交、全量门禁和各平台实际运行结论以 P1 执行记录为准。
+- 后端 `local_shell.rs` 负责固定路径发现、可执行文件检查和固定 argv，`LocalLaunchOptions` 将 Shell ID 与目录传到 `Sessions::open_with_options`，原入口保留为默认参数包装。Unix 候选为 `bash`、`zsh`、`pwsh`，Windows 为 `cmd`、`powershell`、`pwsh`；只检查列出的常见安装位置，不扫描 PATH，也不接受任意命令或可执行路径。发现列表报告不可用原因，每次打开/重开仍重新检查。
+- 显式 Bash 使用 `--noprofile --norc -i`，Zsh 使用 `-f -i`，PowerShell 使用 `-NoLogo -NoProfile`，cmd 使用 `/D /Q /K`。Zsh 的系统 `zshenv` 仍会执行，PowerShell `-NoProfile` 不等于禁用历史记录。未配置新选项时，默认 Shell 的 argv/环境/cwd 保持原行为；用户自定义参数、启动配置持久化及 WSL/Git Bash/Cygwin/Clink 尚未交付。
+- 第四批扩展 `pty_open` 的可选 `env` 条目数组与 `locale: { mode, variables }`。`local_environment.rs` 统一验证并仅修改子进程环境，值按字面传递，不作 shell 展开；普通变量最多 64 项，locale 最多 13 项，名称 64 字节、单值 4096 UTF-8 字节，两组按名称 + 值 + 2 的字节数合计最多 16 KiB。Unix 大小写敏感，Windows ASCII 大小写不敏感；拒绝重复、NUL、保留项和启动加载相关前缀，错误与 Debug 不输出变量值。`SHELL` 亦为保留项，防止 portable-pty 解析非法值时将其写入日志；具体名单以后端为准。
+- locale 缺省或 `default` 加空列表保留原平台设置；`custom` 先移除默认 `LANG`/`LC_*` 再添加选定项，自定义空列表表示清空。`LC_ALL` 不能与其他 `LC_*` 并存，可与 `LANG` 并存且前者优先；不校验系统是否安装该 locale。Windows 只传递环境变量，不代表修改代码页或 PowerShell 显示语言。`PATH` 可覆盖，但不改变固定绝对路径的 Shell 选择。
+- 前端以名称/值行编辑并为每个会话深复制配置；重开继承最初配置，不继承交互命令的修改、不重放输入。配置值只保留在应用内存，不进入状态文案、日志或持久设置；这不保证 Shell、后续用户命令或操作系统不会记录这些值，也不表示任意变量不会影响后续命令。
+- 既有 cwd 校验、owner/generation、容量、ACK 与回收期限保持。Windows 继续采用产品既有的本地盘符目录限制，不能写成 PowerShell 本身不支持 UNC。目录或可执行文件最后校验与启动之间仍可能被外部改变，不能宣称消除 TOCTOU。第四批本机全量门禁及 macOS 有限原生验收已通过，第二轮跨平台 CI 因 Windows 旧 Shell 场景失败而未通过，根因诊断与最终综合验收尚待完成，实际结论以 P1 执行记录为准；T34 和 P1 整阶段未完成。
 
 ### SSH 流程（`ssh.rs`，交互通道在 `ssh_terminal.rs`，通过 `#[path]` 挂为 `ssh::terminal`）
 

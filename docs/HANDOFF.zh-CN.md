@@ -20,7 +20,7 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-18，P0 已关闭，P1 第三批已批准并合并）
+## 当前仓库状态（2026-10-18，P0 已关闭，P1 第四批实施中）
 
 P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。第一批修复本地终端失败/退出状态及显式重新打开，配套浏览器竞态和原生场景；第二批已交付启动目录配置，后续继续按切片推进。当前计划与新代码证据见 [P1 计划](p1/PLAN.zh-CN.md) 和 [P1 执行记录](p1/RESULTS.zh-CN.md)。下列 P0 记录保留作历史依据，P0 不再重开；P1 新批次合并 main 仍需用户确认。
 
@@ -28,10 +28,12 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。第三批 Shell 发现/选择及缺失反馈完成实现、本机门禁与本批 CI 后，用户单独确认「合并 main」；2026-10-18 main 已从 `8823be4` 快进至 `780a10e`，并完成推送与远端读回核对。本次授权仅限第三批。
 
+第四批会话环境变量与 locale 已实现，产品代码为 `bea905f` 对应内容，本机全量门禁、macOS 有限原生验收及本机独立复核通过。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于产品故障修复。最新执行入口见下文，逐轮 CI、失败现场与验证范围统一记录于 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
+
 ### 分支
 
-- **集成分支 `p1/integration`**：第三批 Shell 选择前端 `b7bb69b`、Rust 后端 `bb9a261`、原生探针/场景 `dbe43eb` 及 Windows lint 修复 `68808de` 已推送。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证 `68808de`，7/7 通过，Linux/Windows 原生各 6/6。本机 Rust 228、浏览器 396、真实 OpenSSH 11、native helpers 17 项通过，Windows 类型检查修正后通过；macOS Bash/Zsh 真实 PTY、Bash 单轮原生窗口及 Windows PowerShell 的有限启动/重开已验证。Linux Zsh 未安装、PowerShell 7 未实测。实际结果、初次失败与平台边界见 [P1 执行记录](p1/RESULTS.zh-CN.md)。本批已获用户单独批准，第三批证据文档提交 `780a10e` 已合入 main；第四批环境变量与 locale 为下一批计划。
-- **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，其后仅补文档；main 产品基线不包含第四批环境变量与 locale。接手时用远端 refs 核对最新文档提交。
+- **集成分支 `p1/integration`**：追踪容量修复的被测提交为 `0906c85`，[native 补验 39067079503](https://github.com/mofyer/new-windterm/actions/runs/39067079503) 已完成成功，两平台各 7/7、无额外重复；前一提交 `5fe00fd` 的全套 CI 已结束为 6/7，唯一失败是 Windows trace 容量不足。随后已同步第三批 main 文档记录（合并提交 `3aaa783`），独立 PowerShell 延迟探针 `7c9a14b` 已推送，[双平台诊断 39094470445](https://github.com/mofyer/new-windterm/actions/runs/39094470445) 已完成，两作业均因 stderr 严格检查失败，但取得了有效计时数据。各轮结果须对应被测 SHA，最新分支位置用远端 refs 核对，详见 [P1 执行记录](p1/RESULTS.zh-CN.md)。
+- **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，合并记录 `40405d7` 已审阅、提交并推送，未修改产品代码；第四批尚未合入 main。接手时用远端 refs 核对最新文档提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
 - **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
@@ -111,7 +113,11 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 ## 推荐下一步顺序
 
-**当前执行入口**：第三批已完成验收并合入 main，下一批按 [P1 计划](p1/PLAN.zh-CN.md)准备会话环境变量与 locale；第四批实现与验收不在本次 main 产品基线中，合并前仍需单独批准。下列 P0 五项保留为关闭依据及后续边界，不是重开 P0 的任务列表。
+**当前执行入口**：续做 [P1 第四批](p1/PLAN.zh-CN.md#第四批会话环境变量与-locale2026-10-18-开始)，先核对 `git status`、`git worktree list` 与 [RESULTS](p1/RESULTS.zh-CN.md)。全套 CI `39066177739`（`5fe00fd`）已结束为 6/7：四个 desktop、GSSAPI、Linux native 通过；Windows 四轮 Shell 功能断言完成，但在保存 trace 时超出 64 KiB 容量而失败。容量修复 `0906c85` 的 [native 补验 39067079503](https://github.com/mofyer/new-windterm/actions/runs/39067079503) 已完成成功，两平台各 7/7、无额外重复；helpers 分别为 Linux 35 passed / 1 skipped、Windows 34 passed / 2 skipped（各 36 项）。
+
+两端 trace 均完整覆盖首次与重开两槽：Linux 44,810 字节 / 467 条、Data 38/41；Windows 85,251 字节 / 757 条、Data 32/33；均无 incomplete、truncated 或 dropped records。
+
+原 Windows 目录停滞仍未归因。四份已有 trace 显示首次 `(Get-Location).Path` 回显及 ACK 完成后，距 cwd 输出约 20.8–27.1 秒；这是测试侧可见事件之间的间隔，不是 cmdlet 内部执行耗时，也不能说明原失败原因。隔离 `powershell-latency` 工作树的独立探针已集成并推送为 `7c9a14b`，双平台诊断 `39094470445` 已完成：两端各 6 个样本完整、exit 0，但均有 392 字节未知 stderr，因此两作业失败。独立脚本内首次 Get-Location 在继承环境下约 39–380 ms、白名单环境下约 11–27 秒；这只是环境策略与时延的明显关联，固定执行顺序和缓存未控制，未确定原 ConPTY 停滞根因。下一步先安全分类 stderr，再对 PSModulePath 候选因子作反向顺序的单变量诊断，详见 RESULTS；这些后续实验尚未执行。不得将多轮组合证据写成单轮 CI 7/7，也不能用成功重跑关闭未归因故障。产品代码仍为 `bea905f` 对应内容，不重复未受测试侧修复影响的 Rust 门禁。第三批已合并，第四批 main 合并仍须单独批准。下列 P0 五项是关闭依据及后续边界，不是重新开启 P0 的任务列表。
 
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **最小原生证据已齐**：[上游架构关键观察](p0/UPSTREAM_ARCHITECTURE_2026-10-15.zh-CN.md)已经成文，A2 SCP、A4 多窗口/活进程及全量兼容留后续对应交付。原生 1 MiB 粘贴完整性与过滤已测；[补充记录](p0/NATIVE_CLOSEOUT_2026-10-15.zh-CN.md)现已有 CUA Raise 后固定负载的可见结束、12 条有序编号及后续恢复截图，重新取得 30 个包含 WebKit 的负载前/中/后样本。不要重复执行负载或展开完整 IME/读屏/VT 调查。后台自动化截图差异没有定根因，本轮正向观察不等于修复。上游已退出，本轮新备份 `.reference/plist-backup-2026-10-15-closeout/` 恢复共用偏好并 cmp 一致；首轮使用 `.reference/plist-backup-2026-10-15/`，两轮各自验证。
