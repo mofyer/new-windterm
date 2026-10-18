@@ -20,18 +20,18 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-18，P0 已关闭，P1 第三批待合并确认）
+## 当前仓库状态（2026-10-18，P0 已关闭，P1 第三批已批准并合并）
 
 P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。第一批修复本地终端失败/退出状态及显式重新打开，配套浏览器竞态和原生场景；第二批已交付启动目录配置，后续继续按切片推进。当前计划与新代码证据见 [P1 计划](p1/PLAN.zh-CN.md) 和 [P1 执行记录](p1/RESULTS.zh-CN.md)。下列 P0 记录保留作历史依据，P0 不再重开；P1 新批次合并 main 仍需用户确认。
 
 第一批最新被测提交 `645ed38` 的第四轮 CI 7/7 通过，本机浏览器 376、Rust 211、真实 OpenSSH 11 项通过。`P1-PTY-CLOSE-001` 已通过确定性红绿回归与真实 A/B 定位并修复同路径的 Unix 资源等待机制：先释放全部 I/O 并回收 writer，再等待 child；两种后端在 macOS CI 的最大关闭等待降至 360/341ms。历史第二轮具体卡点因没有 trace 无法追溯，原失败记录仍保留。独立技术验证 PASS，P1 整阶段尚未完成。
 
-用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。用户随后要求继续并行，第三批 Shell 发现/选择及缺失反馈已完成实现、本机门禁与本批 CI；本批仍需另行确认 main 合并。
+用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。第三批 Shell 发现/选择及缺失反馈完成实现、本机门禁与本批 CI 后，用户单独确认「合并 main」；2026-10-18 main 已从 `8823be4` 快进至 `780a10e`，并完成推送与远端读回核对。本次授权仅限第三批。
 
 ### 分支
 
-- **集成分支 `p1/integration`**：第三批 Shell 选择前端 `b7bb69b`、Rust 后端 `bb9a261`、原生探针/场景 `dbe43eb` 及 Windows lint 修复 `68808de` 已推送。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证 `68808de`，7/7 通过，Linux/Windows 原生各 6/6。本机 Rust 228、浏览器 396、真实 OpenSSH 11、native helpers 17 项通过，Windows 类型检查修正后通过；macOS Bash/Zsh 真实 PTY、Bash 单轮原生窗口及 Windows PowerShell 的有限启动/重开已验证。Linux Zsh 未安装、PowerShell 7 未实测。实际结果、初次失败与平台边界见 [P1 执行记录](p1/RESULTS.zh-CN.md)。本批 main 合并尚未获批准。
-- **远端 `main`**：P1 第二批已于 2026-10-18 从 `bdcbb3e` 快进合并并推送至 `cf700c2`，合并记录为 `8823be4`。第二批被测提交为 `db335d3`，之后仅补文档；第三批代码仍仅在集成分支。接手时用远端 refs 核对最新状态。
+- **集成分支 `p1/integration`**：第三批 Shell 选择前端 `b7bb69b`、Rust 后端 `bb9a261`、原生探针/场景 `dbe43eb` 及 Windows lint 修复 `68808de` 已推送。[本批 CI](https://github.com/mofyer/new-windterm/actions/runs/39060515987) 验证 `68808de`，7/7 通过，Linux/Windows 原生各 6/6。本机 Rust 228、浏览器 396、真实 OpenSSH 11、native helpers 17 项通过，Windows 类型检查修正后通过；macOS Bash/Zsh 真实 PTY、Bash 单轮原生窗口及 Windows PowerShell 的有限启动/重开已验证。Linux Zsh 未安装、PowerShell 7 未实测。实际结果、初次失败与平台边界见 [P1 执行记录](p1/RESULTS.zh-CN.md)。本批已获用户单独批准，第三批证据文档提交 `780a10e` 已合入 main；第四批环境变量与 locale 为下一批计划。
+- **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，其后仅补文档；main 产品基线不包含第四批环境变量与 locale。接手时用远端 refs 核对最新文档提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
 - **未跟踪目录 `.claude/`**：存放子代理的 worktree。此前三个被用量上限中断的任务已在 10-15 完成代码或文档收尾，macOS/Linux 虚拟串口实测通过，GSSAPI 首轮 CI 失败后已修复，第二轮四场景通过；历史位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。删除之前，先用 `git worktree list` 确认里面的提交已经合并。
@@ -110,6 +110,8 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
 
 ## 推荐下一步顺序
+
+**当前执行入口**：第三批已完成验收并合入 main，下一批按 [P1 计划](p1/PLAN.zh-CN.md)准备会话环境变量与 locale；第四批实现与验收不在本次 main 产品基线中，合并前仍需单独批准。下列 P0 五项保留为关闭依据及后续边界，不是重开 P0 的任务列表。
 
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **最小原生证据已齐**：[上游架构关键观察](p0/UPSTREAM_ARCHITECTURE_2026-10-15.zh-CN.md)已经成文，A2 SCP、A4 多窗口/活进程及全量兼容留后续对应交付。原生 1 MiB 粘贴完整性与过滤已测；[补充记录](p0/NATIVE_CLOSEOUT_2026-10-15.zh-CN.md)现已有 CUA Raise 后固定负载的可见结束、12 条有序编号及后续恢复截图，重新取得 30 个包含 WebKit 的负载前/中/后样本。不要重复执行负载或展开完整 IME/读屏/VT 调查。后台自动化截图差异没有定根因，本轮正向观察不等于修复。上游已退出，本轮新备份 `.reference/plist-backup-2026-10-15-closeout/` 恢复共用偏好并 cmp 一致；首轮使用 `.reference/plist-backup-2026-10-15/`，两轮各自验证。
