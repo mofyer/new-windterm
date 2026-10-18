@@ -1,0 +1,40 @@
+name: P1 Windows Shell Latency Diagnostic
+
+on:
+  push:
+    branches: [p1/integration]
+    paths:
+      - .github/workflows/p1-windows-shell-diagnostic.yml
+      - tests/native/powershell-latency-probe.mjs
+      - tests/native/powershell-latency-probe.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-latency:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.0.0"
+      - name: Validate diagnostic schema
+        run: node --test tests/native/powershell-latency-probe.test.mjs
+      - name: Compare inherited and product whitelist environments
+        run: node tests/native/powershell-latency-probe.mjs
+      - name: Preserve every measurement
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: powershell-latency-${{ matrix.os }}
+          path: .artifacts/p1/powershell-latency/
+          if-no-files-found: error
