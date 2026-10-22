@@ -1,8 +1,9 @@
 // Serialized into the fixture WebView; keep this function self-contained.
 // Tauri 2's invoke/global properties are immutable. Observe its custom-protocol
 // transport and only the callback IDs belonging to two explicitly armed shells.
-export function installTerminalTrace(shell, cwd) {
+export function installTerminalTrace(shell, cwd, options) {
   'use strict';
+  options = options || {};
   const key = '__P1_NATIVE_SHELL_TRACE__';
   if (window[key]) throw new Error('shell trace already installed');
   const internals = window.__TAURI_INTERNALS__;
@@ -50,6 +51,8 @@ export function installTerminalTrace(shell, cwd) {
   const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 128;
   const callbackId = value => typeof value === 'string' && /^\d{1,10}$/.test(value)
     && Number(value) <= 4294967295 ? Number(value) : null;
+  const stageNames = new Set(['webdriver-input-return', 'pty-write-enter', 'first-data-after-enter']);
+  const stageTiming = options?.stageTiming === true;
   function wrap(id, observe) {
     const original = callbacks.get(id);
     if (id === null || typeof original !== 'function' || installed.has(id)) {
@@ -82,7 +85,7 @@ export function installTerminalTrace(shell, cwd) {
         return null;
       }
       target = { slot: targets.length + 1, id: null, rejected: false,
-        pane: document.querySelector('.terminal-pane.focused-pane:not([hidden])') };
+        pane: document.querySelector('.terminal-pane.focused-pane:not([hidden])'), pendingDataStage: false };
       targets.push(target);
       wrap(callbackId(args.onEvent.slice('__CHANNEL__:'.length)), raw => {
         const event = raw?.message;
@@ -90,15 +93,27 @@ export function installTerminalTrace(shell, cwd) {
         if (target.id === null) target.id = event.id;
         if (target.id !== event.id) { record(target, { event: 'foreign-session-rejected' }); return; }
         const index = Number.isSafeInteger(raw.index) ? raw.index : null;
-        if (event.kind === 'data') record(target, { event: 'data', index,
-          sequence: Number.isSafeInteger(event.sequence) ? event.sequence : null, ...bytes(event.data) });
+        if (event.kind === 'data') {
+          if (stageTiming && target.pendingDataStage) {
+            target.pendingDataStage = false;
+            record(target, { event: 'stage', stage: 'first-data-after-enter' });
+          }
+          record(target, { event: 'data', index,
+            sequence: Number.isSafeInteger(event.sequence) ? event.sequence : null, ...bytes(event.data) });
+        }
         else if (event.kind === 'exit') record(target, { event: 'exit', index, code: Number.isSafeInteger(event.code) ? event.code : null });
         else if (event.kind === 'error') record(target, { event: 'error', index });
       });
     } else if (command !== 'pty_open') target = targets.find(item => !item.rejected && item.id !== null && item.id === args?.id);
     if (!target) return null;
     const detail = { command, call: ++call };
-    if (command === 'pty_write') Object.assign(detail, bytes(args.data));
+    if (command === 'pty_write') {
+      Object.assign(detail, bytes(args.data));
+      if (stageTiming && Array.isArray(args.data) && args.data.some(byte => byte === 13 || byte === 10)) {
+        target.pendingDataStage = true;
+        record(target, { event: 'stage', stage: 'pty-write-enter' });
+      }
+    }
     if (command === 'pty_ack') detail.sequence = Number.isSafeInteger(args.sequence) ? args.sequence : null;
     if (command === 'pty_resize') {
       detail.cols = Number.isSafeInteger(args.cols) ? args.cols : null;
@@ -141,7 +156,7 @@ export function installTerminalTrace(shell, cwd) {
   const enter = event => {
     if (event.key !== 'Enter') return;
     const target = targets.find(item => item.pane?.contains(event.target));
-    if (target) record(target, { event: 'keydown-enter', repeat: !!event.repeat,
+    if (target) record(target, { event: 'keydown-enter', ...(stageTiming ? { stage: 'webview-keydown-enter' } : {}), repeat: !!event.repeat,
       ctrl: !!event.ctrlKey, alt: !!event.altKey, shift: !!event.shiftKey, meta: !!event.metaKey });
   };
   window.fetch = fetch;
@@ -149,6 +164,14 @@ export function installTerminalTrace(shell, cwd) {
   document.addEventListener('keydown', enter, true);
   window[key] = {
     arm() { if (!stopped && targets.length < 2) armed = true; },
+    mark(stage) {
+      if (!stageTiming) return false;
+      if (!stageNames.has(stage)) { reasons.add('invalid-stage'); return false; }
+      const target = [...targets].reverse().find(item => !item.rejected && item.id !== null);
+      if (!target) { reasons.add('stage-without-session'); return false; }
+      record(target, { event: 'stage', stage });
+      return true;
+    },
     stop() {
       stopped = true;
       if (window.fetch === fetch) window.fetch = originalFetch;

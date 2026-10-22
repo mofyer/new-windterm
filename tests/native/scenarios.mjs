@@ -52,7 +52,7 @@ async function clickCss(session, css) {
 }
 
 /** Focuses xterm's input textarea, then types; falls back to the actions API if a driver refuses the hidden element. */
-export async function typeInTerminal(ctx, text, onTiming) {
+export async function typeInTerminal(ctx, text, onTiming, onReturned) {
   const focused = await inPage(ctx.session, (css) => {
     const area = document.querySelector(css);
     area?.focus();
@@ -60,18 +60,21 @@ export async function typeInTerminal(ctx, text, onTiming) {
   }, TEXTAREA);
   if (!focused) throw new Error('the focused terminal textarea did not take focus');
   const started = onTiming ? performance.now() : 0;
+  let inputMethod;
   try {
     await ctx.session.sendKeys(await ctx.session.findElement(TEXTAREA), text);
-    return 'element send keys';
+    inputMethod = 'element send keys';
   } catch (error) {
     if (!(error instanceof WebDriverError) || !['element not interactable', 'invalid element state'].includes(error.error)) throw error;
     ctx.log(`element send keys refused (${error.error}); typing through the actions API`);
     await ctx.session.performKeys(text);
     await ctx.session.releaseActions();
-    return 'actions API';
+    inputMethod = 'actions API';
   } finally {
     if (onTiming) onTiming(performance.now() - started);
   }
+  if (onReturned) await onReturned();
+  return inputMethod;
 }
 
 /** Types into a form field and checks the value; sets it from script only if typing did not land. */
@@ -422,6 +425,11 @@ async function localStartup(ctx, shell) {
   const recordTypeTiming = (event, milliseconds) => {
     if (ctx.webviewTiming) timings.push({ phase, event, milliseconds });
   };
+  const markInputReturn = async () => {
+    if (ctx.webviewTiming && tracing) {
+      await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.mark('webdriver-input-return'));
+    }
+  };
   let selected;
   async function queryCwd() {
     if (shell === 'powershell') {
@@ -432,13 +440,13 @@ async function localStartup(ctx, shell) {
     }
     if (shell) {
       const versionStarted = ctx.webviewTiming ? performance.now() : 0;
-      await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`, milliseconds => recordTypeTiming('version-typeInTerminal', milliseconds));
+      await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`, milliseconds => recordTypeTiming('version-typeInTerminal', milliseconds), markInputReturn);
       const identity = await waitForRow(ctx, row => isShellVersionOutput(row, shell), `actual ${shell} version expansion`);
       recordTiming(phase, 'version-send-to-row', versionStarted);
       identities.push(identity.row);
     }
     const cwdStarted = ctx.webviewTiming ? performance.now() : 0;
-    await typeInTerminal(ctx, `${query}${Keys.ENTER}`, milliseconds => recordTypeTiming('cwd-typeInTerminal', milliseconds));
+    await typeInTerminal(ctx, `${query}${Keys.ENTER}`, milliseconds => recordTypeTiming('cwd-typeInTerminal', milliseconds), markInputReturn);
     const result = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual shell cwd output');
     recordTiming(phase, 'cwd-send-to-row', cwdStarted);
     return result;
@@ -451,7 +459,7 @@ async function localStartup(ctx, shell) {
   try {
     expected = await realpath(directory);
     if (shell) {
-      await inPage(session, installTerminalTrace, shell, expected);
+      await inPage(session, installTerminalTrace, shell, expected, { stageTiming: ctx.webviewTiming === true });
       tracing = true;
     }
     await clickCss(session, '#local-options-open');

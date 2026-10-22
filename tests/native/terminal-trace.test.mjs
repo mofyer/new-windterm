@@ -47,14 +47,14 @@ export function createTraceRuntime(onRequest = () => ({ id: 'fixture-id' })) {
   return { window, internals, callbacks, register, deliver, requests, channel };
 }
 
-function fixture(onRequest, clock = performance) {
+function fixture(onRequest, clock = performance, options = {}) {
   const runtime = createTraceRuntime(onRequest);
   const listeners = new Map();
   const textarea = {};
   const pane = { contains: target => target === textarea };
   const originalFetch = runtime.window.fetch;
-  runInNewContext(`(${installTerminalTrace})('powershell', '/fixture');`, {
-    window: runtime.window, TextEncoder, Uint8Array, performance: clock, Map,
+  runInNewContext(`(${installTerminalTrace})('powershell', '/fixture', options);`, {
+    window: runtime.window, TextEncoder, Uint8Array, performance: clock, Map, options,
     document: {
       querySelector: () => pane,
       addEventListener: (name, fn) => listeners.set(name, fn),
@@ -86,10 +86,29 @@ test('trace works with real immutable Tauri descriptors and serialized early Cha
   const trace = f.controller.stop();
   assert.ok(trace.records.some(item => item.event === 'data' && item.hex === '1b5b366e' && item.index === 0));
   assert.ok(trace.records.some(item => item.command === 'pty_ack' && item.state === 'fulfilled'));
+  assert.equal(trace.records.filter(item => item.event === 'stage').length, 0);
   assert.equal(f.callbacks.get(channel.id), original);
   assert.equal(f.window.fetch, f.originalFetch);
   assert.equal(f.listeners.size, 0);
   assert.doesNotMatch(JSON.stringify(trace), /PRIVATE_INVOKE_KEY|Tauri-Invoke-Key|\/fixture/);
+});
+
+test('trace records bounded input boundary stages without terminal text', async () => {
+  const f = fixture((command, args, runtime) => {
+    if (command === 'pty_open') cprRequest(args, runtime);
+    return command === 'pty_open' ? { id: 'fixture-id' } : null;
+  }, performance, { stageTiming: true });
+  const channel = f.channel(() => {});
+  await f.open(channel);
+  assert.equal(f.controller.mark('webdriver-input-return'), true);
+  f.listeners.get('keydown')({ key: 'Enter', target: f.textarea });
+  await f.internals.invoke('pty_write', { id: 'fixture-id', data: [13] });
+  f.deliver(channel.id, { index: 1, message: { id: 'fixture-id', kind: 'data', sequence: 2, data: [65] } });
+  const trace = f.controller.stop();
+  assert.equal(JSON.stringify(trace.records.filter(item => item.event === 'stage').map(item => item.stage)),
+    JSON.stringify(['webdriver-input-return', 'pty-write-enter', 'first-data-after-enter']));
+  assert.equal(trace.records.filter(item => item.event === 'keydown-enter')[0].stage, 'webview-keydown-enter');
+  assert.doesNotMatch(JSON.stringify(trace), /PRIVATE|fixture-id|[\u0000-\u001f]/);
 });
 
 test('fetch wrapper preserves original promise, receiver, parameters and rejection object; marks fallback incomplete', async () => {

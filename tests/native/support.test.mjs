@@ -182,6 +182,19 @@ test('terminal typing timing is opt-in and records only elapsed milliseconds', a
   assert.ok(events[0] >= 0);
 });
 
+test('terminal typing can mark the WebDriver return boundary after input resolves', async () => {
+  const calls = [];
+  const ctx = {
+    session: {
+      execute: async () => true,
+      findElement: async css => css,
+      sendKeys: async () => calls.push('sendKeys'),
+    },
+  };
+  await typeInTerminal(ctx, 'marked\u000d', undefined, async () => calls.push('returned'));
+  assert.deepEqual(calls, ['sendKeys', 'returned']);
+});
+
 test('parseFixtureBanner reads the ssh_terminal_fixture banner once every field has arrived', () => {
   assert.deepEqual(parseFixtureBanner(BANNER), {
     host: '127.0.0.1', port: 50123, username: 'fixture',
