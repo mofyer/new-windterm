@@ -136,6 +136,24 @@ test('stderr report does not retain raw content and unknown stderr remains a fai
   assert.ok(!JSON.stringify(result).includes('SECRET'));
 });
 
+test('stderr line classification retains CRLF bytes across chunks', async () => {
+  const child = fakeProcess(107);
+  const warning = 'WARNING: progress\r\n';
+  const result = await sample('powershell.exe', cwd, {}, 'C:\\Windows', {
+    spawnProcess: () => {
+      queueMicrotask(() => {
+        child.stdout.write(lines.join('\n'));
+        child.stderr.write(warning.slice(0, 8));
+        child.stderr.write(warning.slice(8));
+        child.emit('close', 0, null);
+      });
+      return child;
+    },
+  });
+  assert.equal(result.stderr.knownBytes['powershell-stream'], Buffer.byteLength(warning));
+  assert.equal(result.stderr.unknown, false);
+});
+
 for (const killerMode of ['failed', 'stalled', 'throws', 'kill-error-event']) {
   test(`bounded termination when taskkill ${killerMode} and child never closes`, { timeout: 3_000 }, async () => {
     const child = fakeProcess(102);

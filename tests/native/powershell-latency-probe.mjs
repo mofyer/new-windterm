@@ -207,8 +207,9 @@ export async function sample(executable, cwd, env, systemRoot, {
     stderrHash.update(chunk);
     stderrLineBuffer += chunk.toString('utf8');
     if (stderrLineBuffer.length > 16_384) { stderr.unknown = true; stderr.unknownBytes += Buffer.byteLength(stderrLineBuffer); stderrLineBuffer = ''; }
-    const lines = stderrLineBuffer.split(/\n/);
-    stderrLineBuffer = lines.pop() ?? '';
+    const lines = stderrLineBuffer.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+    if (!lines.length || !lines.at(-1)?.endsWith('\n')) stderrLineBuffer = lines.pop() ?? '';
+    else stderrLineBuffer = '';
     for (const line of lines) classifyStderrLine(line);
     if (stderrBytes > 16_384) stop('Stderr limit exceeded');
   });
