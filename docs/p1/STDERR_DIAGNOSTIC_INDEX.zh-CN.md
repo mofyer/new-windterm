@@ -1,6 +1,6 @@
 # Windows PowerShell 诊断结果索引
 
-本文只索引已经完成的诊断结果，并把下一次复测的停止条件写成预先约定。它不把测试侧取证增强或计划中的复测写成产品验证结果。
+本文区分已完成的诊断结果与待验证的取证实现，并把下一次复测的停止条件写成预先约定。它不把测试侧取证增强或计划中的复测写成产品验证结果。
 
 ## 已完成：有限环境矩阵 `39788501384`
 
@@ -30,6 +30,14 @@
 
 ConPTY Windows 2025 为 16/16，Windows 2022 为 15/16，后者首轮产品白名单 marker timeout；加回父 `PSModulePath` 的白名单样本仍有约 17–25 秒慢路径。完整字段、指纹和证据边界见 [P1 执行记录](RESULTS.zh-CN.md#受控-stderr-对照与矩阵复测工作流-39804296453)。
 
+## 取证结果：有界结构摘要与 ConPTY 报告 `39812975794`
+
+本轮测试侧新增 `stderr.structure`，仅在完整、有界的固定 CLIXML 子集满足全部检查后输出固定流类型计数；非法 UTF-8、未知/恶意结构、拼接垃圾与截断保守拒绝，不保存原文或路径，也不提升现有 unknown 分类和非空 stderr 失败门禁。ConPTY 新 runner 将编译与测量输出分开，只生成固定字段的 `report.json`，workflow 不再上传原始 `probe.log`；历史工件仍保留其原有隐私限制。
+
+实现与 workflow 已提交并推送为 `67d7f37`；本机完整 native helper 110/110，通过独立复跑与审查。[Windows 双平台取证 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794) 的精确 HEAD 为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096`。两个 stdio 作业已失败，fixture 步骤通过；ConPTY 测量与上传步骤已完成，Windows 2022 成功、Windows 2025 失败，工作流已结束、整体失败；后续本地 runner 补强 `81d109a` 独立复跑 native helper 111/111，通过审查，该后续本地验证不属于该被测 HEAD。原八组矩阵、正反序、每样本新进程、stdio 60 秒及 ConPTY 单样本 30 秒边界保持。实现说明见 [P1 执行记录](RESULTS.zh-CN.md#有界-stderr-结构与-conpty-内容受限报告工作流-39812975794)。
+
+已取得的 32 条 stdio 测量均完整、cwd 匹配、exit 0、无超时和截断；真实 392 字节流的结构均为 `clixml`、16 节点、深度 5、仅 `progress=1`，指纹与历史 `a3639af5…623f` 一致。原分类仍为 unknown，32 条仍全部严格失败。两平台 fixture 的 warning 为 `warning=1/progress=1`，error 为 `error=4/progress=1`，empty 为空，17 字节 unknown 无 header；原字节数、指纹、分类与退出码预期不变。结构只说明允许语法中的流标记，不证明内容无害、慢路径根因或 ConPTY 行为。两个 ConPTY artifact 各仅有内容受限的 `report.json`，固定 schema 检查未发现原文或路径，均包含 16 个唯一完整样本；2022 为 16/16，2025 为 15/16，首轮产品白名单 marker timeout。两平台 build/probe 均观察到退出，未请求 tree kill，本地资源释放。下一步候选尚未实施：固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；不得通过抑制 progress 绕过原验收。
+
 ## 复测停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
@@ -39,4 +47,4 @@ ConPTY Windows 2025 为 16/16，Windows 2022 为 15/16，后者首轮产品白�
 3. 若一轮已完成但仍有未知 stderr，停止把 stderr 当作已分类证据；下一步只能先改进不留原文的分类取证，再开新的受控运行。不得用重复运行把未知流稀释为通过。
 4. 只有在有限矩阵完整结束、无未知 stderr、无超时且两平台结果可复核时，才进入真实 WebView/ConPTY 的候选环境复现；这仍只是根因定位门槛，不是第四批合并批准。
 
-工件索引优先引用工作流的 `summary.json`、测量 JSON、fixture `report.json` 和独立审计报告。上述 JSON 不包含 stderr 原文；ConPTY `probe.log` 同时含编译日志和路径，不满足脱敏报告边界，不能宣称整个 artifact 已脱敏或将其作为脱敏报告采用。本索引仅引用其中固定 PASS/FAIL 测量行的计数，后续应单独输出内容受限的 ConPTY 摘要。当前证据仍支持“环境差异与慢路径相关、根因未定”，不支持产品修复、第四批验收或 main 合并结论。
+工件索引优先引用工作流的 `summary.json`、测量 JSON、fixture `report.json` 和独立审计报告。上述 JSON 不包含 stderr 原文；ConPTY `probe.log` 同时含编译日志和路径，不满足脱敏报告边界，不能宣称整个 artifact 已脱敏或将其作为脱敏报告采用。本索引仅引用其中固定 PASS/FAIL 测量行的计数，本轮已为后续运行加入单独的内容受限 ConPTY 报告，本轮 Windows 上传报告已核对，不能据此改写历史工件的隐私限制。当前证据仍支持“环境差异与慢路径相关、根因未定”，不支持产品修复、第四批验收或 main 合并结论。

@@ -509,4 +509,28 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 本次核对使用上传的 fixture `report.json`、stdio `summary.json` / `measurements.json` 及 ConPTY 固定 PASS/FAIL 测量行。fixture 与 stdio JSON 不含 stderr 原文；ConPTY `probe.log` 同时包含编译日志和路径，不能声称整个工件已脱敏，也不把原始编译日志列为脱敏报告。下一步应对受控包装结构做独立、有界且不落原文的解析取证，再判断能否解释 392 字节流；未知流在证据充分前继续严格失败。Windows 目录停滞根因、第四批综合验收与 main 合并仍未完成。
 
-后续本地修复 `30d294d` 仅调整 fixture lifecycle：timeout 先锁定失败结果，再请求 kill，销毁本地 stdio 并 `unref`，避免活跃句柄继续牵住诊断父进程；报告明确保留 `termination=unconfirmed`，不声称子进程已终止。本地定向测试 25/25、完整 native helper 75/75 通过；独立 reviewer 复跑定向测试并审查通过，0 阻塞。尚未对该修复执行 Windows CI，以上本地结果不属于 `7c06cab` 的被测结果，也不改变 `39804296453` 整体失败、未知 stderr 与 Windows 根因未定的结论。
+后续本地修复 `30d294d` 仅调整 fixture lifecycle：timeout 先锁定失败结果，再请求 kill，销毁本地 stdio 并 `unref`，避免活跃句柄继续牵住诊断父进程；报告明确保留 `termination=unconfirmed`，不声称子进程已终止。本地定向测试 25/25、完整 native helper 75/75 通过；独立 reviewer 复跑定向测试并审查通过，0 阻塞。当时尚未对该修复执行 Windows CI，以上本地结果不属于 `7c06cab` 的被测结果，也不改变 `39804296453` 整体失败、未知 stderr 与 Windows 根因未定的结论。
+
+### 有界 stderr 结构与 ConPTY 内容受限报告（工作流 `39812975794`）
+
+本轮仅增强测试侧取证。`tests/native/stderr-structure.mjs` 在内存中识别有限 CLIXML 子集，最多保留 16 KiB，限制深度 32、节点 512、单元素属性 8；完整 UTF-8、单一固定 header/root/namespace/version 及受限语法全部满足后，才输出固定流类型计数。报告仅含固定状态、布尔值和计数，不返回原文、标签、属性值、路径或错误文本；DTD、实体声明、未知结构、拼接垃圾及非法 UTF-8 保守拒绝，超限或未观测完整结束标为截断。该字段用于比较受控 fixture 与真实 392 字节流，既不预设真实流是 CLIXML，也不改变现有 unknown 分类或任何非空 stderr 失败规则。这是有限结构识别器，不是通用 XML/CLIXML 解析器或 stderr 安全判定；格式参考 Microsoft 的 [PowerShell.exe 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1) 与官方仓库中的 [EncodedCommand stderr 示例](https://github.com/PowerShell/PowerShell/issues/16678)，对[重复 header/root 破损情况](https://github.com/PowerShell/PowerShell/issues/12489)保守拒绝。
+
+`tests/native/conpty-report.mjs` 将编译与探针执行分开，编译输出只在内存消费；报告只接受固定环境模式、轮次、有限计时及允许的失败类型，并保留缺样本、重复、顺序、退出码和未知输出检查。workflow 改为上传单独 `report.json`，不再上传含编译路径的原始 `probe.log`。新 runner 不修改 Rust 探针、产品白名单、八组正反序矩阵、30 秒单样本 ConPTY 或 60 秒 stdio 期限。
+
+上述测试侧实现及 workflow 已提交并推送为 `67d7f37`；本机完整 native helper **110/110 通过**，独立 reviewer 复跑同套测试通过并审查通过。Windows 2022/2025 [新取证 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794) 的精确 HEAD 为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096`；两个 stdio 作业已结束并失败，独立 fixture 步骤通过；两平台 ConPTY 测量与上传步骤均已完成，Windows 2022 成功、Windows 2025 失败。所有测量与上传步骤已完成；API 已确认 `status=completed`、`conclusion=failure`，整条工作流已结束、整体失败。本地 helper 通过不等于真实 Windows 验收通过。即使结构识别成功或某平台 ConPTY 样本完整，也不能据此关闭未知 stderr、历史间歇超时、Windows 目录停滞或第四批验收；`main` 合并仍未授权。
+
+后续本地提交 `81d109a` 补强 ConPTY runner error-handler 及对应测试，独立 reviewer 完整 native helper 111/111 通过；该后续本地验证不属于上述 Windows 被测 HEAD。此本地结果不回填至 `39812975794`，不声称补强已在 Windows 执行。
+
+本轮 stdio 与 fixture 已上传工件的结构字段经独立复核和固定 schema 检查：
+
+- 两平台 stdio 各 16/16 条完整测量，三阶段 cwd 匹配、exit 0，无超时、无截断；32 条真实 392 字节 stderr 均符合有限 CLIXML 子集：`status=clixml`、16 个节点、最大深度 5，仅 `streams.progress=1`，其余流计数为 0；SHA-256 均为历史同一指纹 `a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f`。原分类仍为 unknown，所有测量仍按非空 stderr 严格失败。
+- 两平台受控 fixture 结构一致：warning 为 `warning=1` 加 `progress=1`；error 为 `error=4` 加 `progress=1`；empty 为空；17 字节 unknown 无 CLIXML header。各 case 的字节数、指纹、原分类及退出码保持上一轮预期，fixture 通过没有改变主测量规则。
+- Windows 2022 最大首次 `Get-Location` 为 17,782.9911 ms；Windows 2025 为 42,757.5942 ms，后者最大 wall 为 42,908.7877 ms，均未触发原 60 秒进程期限；期限内完成不代表性能验收。
+
+本次新增证据将 392 字节流限定为该有限语法下含单一 progress 标记的完整结构，但未保留或解释其文本、未证明无害，也未证明它导致首次目录查询变慢。stdio/EncodedCommand 结果不能替代 ConPTY 或真实 WebView 证据，现有 unknown 与失败门禁保持。ConPTY 的独立报告结果如下，不沿用历史样本数推断本轮。
+
+本轮两个 ConPTY artifact 各只包含 `report.json`，经独立固定 schema 与字段检查，未包含原始输出或路径；均有完整的 16 个唯一环境/轮次样本。Windows 2022 构建、探针均 exit 0，16/16 通过；Windows 2025 构建 exit 0、探针 exit 1，15/16 通过，首轮 `product-whitelist` 为 marker timeout。两个报告中 build/probe 的 cleanup 均为 `termination=observed`、`treeKill=not-requested`、`localResources=released`；这些字段只证明对应 wrapper 观察到的退出与本地清理状态。
+
+ConPTY Windows 2022 产品白名单首次测量为 21.53–29.46 秒，加回父 `PSModulePath` 仍为 21.45–21.48 秒；Windows 2025 产品白名单仅成功样本为 19.41 秒，加回父 `PSModulePath` 为 19.40–26.40 秒。两平台继承环境及继承移除 `PSModulePath` 仍为约 53–364 ms。因此新 runner 已在真实 Windows 生成内容受限报告，但慢路径及间歇 marker timeout 仍存在，不能归因具体模块、变量或产品组件，也不能将第四批标为通过。
+
+下一步候选尚未实施：固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；不得通过抑制 progress 绕过原验收。
