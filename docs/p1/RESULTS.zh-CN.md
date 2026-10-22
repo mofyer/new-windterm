@@ -463,7 +463,7 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 提交 `9288f78`、`9d0a51c` 将有限环境矩阵扩展为 8 组（原四组加系统路径、身份、进程运行时、显式空 `PSModulePath`），两轮正反序、每组新进程，保留 stdio 60 秒与 ConPTY 30 秒门限、未知 stderr 严格失败和无重试。报告与 `summary.json` 只保存模式名、计数、计时、失败原因，不保存环境值；Node helper 与 Rust ConPTY 变体顺序一致，本机 67/67 helper 通过。矩阵运行 [39788501384](https://github.com/mofyer/new-windterm/actions/runs/39788501384) 已完成：Windows 2022/2025 的 stdio 各 16/16 样本均因 392 字节未知 stderr 失败；两平台 ConPTY 首轮 `product-whitelist` 均 marker timeout，其余新增变量组约 17–25 秒，继承环境约 42–72 ms。该结果说明新增四类变量不能单独消除慢路径，但仍不能归因具体变量、组件或产品根因；未知 stderr 与 ConPTY 间歇超时继续阻塞第四批验收。
 
-提交 `9be5c39` 为未知 stderr 增加不保存原文的有界形状摘要（UTF-8、ASCII、可打印字节、控制字节、ESC、NUL、换行与回车计数），并补充隐私测试；未知类型仍严格判失败。该提交只有测试/诊断侧变更，本机 native helper 全套 68/68 通过，尚未取得新的 Windows 运行结果。
+提交 `9be5c39` 为未知 stderr 增加不保存原文的有界形状摘要（UTF-8、ASCII、可打印字节、控制字节、ESC、NUL、换行与回车计数），并补充隐私测试；未知类型仍严格判失败。该提交只有测试/诊断侧变更，本机 native helper 全套 68/68 通过；当时尚未取得新的 Windows 运行结果，后续实测见下文工作流 `39799065768` 与 `39804296453`。
 
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
@@ -485,3 +485,28 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 - 直接 ConPTY 的 Windows 2022 取得 16/16，继承环境约 56–359 ms，产品白名单约 20.9–28.6 秒，白名单加回父 `PSModulePath` 仍约 21.0–21.3 秒，系统路径/身份/进程运行时/显式空变量组也约 21.0–21.2 秒；继承移除 `PSModulePath` 约 57 ms。Windows 2025 取得 15/16，首轮产品白名单 marker 超时，其余白名单相关组约 22.0–25.5 秒，继承与移除 `PSModulePath` 仍约 68–77 ms。
 
 这轮进一步确认 stdio 中的慢路径与环境策略存在稳定关联，并显示直接 ConPTY 中“加回父 `PSModulePath`”不能消除慢路径，因此尚未锁定具体变量或组件因果。未知 stderr、ConPTY 超时和 WebView2 cwd 延迟仍是未完成边界；没有修改产品白名单、门限或原生验收断言，第四批仍未完成，`main` 仍不应合并。
+
+### 受控 stderr 对照与矩阵复测（工作流 `39804296453`）
+
+提交 `aa75269` 新增独立 PowerShell stderr fixture，使用固定的 warning、error、empty 和 unknown 四个命令，设置 30 秒 timeout timer、16 KiB 捕获上限，只输出分类、计数、字节形状与 SHA-256。该版本超时后只请求 `child.kill`，不是已验证的有界终止保证。初次对照 `39803261358` 的 warning/error 预期不符；`7c06cab` 将 Windows PowerShell 5.1 的这两类输出继续保留为 `unknown`，使对照断言准确描述已观测行为，没有改变 latency 探针对未知 stderr 的失败规则，也没有把包装结构认定为已解码。
+
+[复测 39804296453](https://github.com/mofyer/new-windterm/actions/runs/39804296453) 验证精确提交 `7c06cab290aa09cb916f603f9d15892d811a1a26`，最终整体失败：两个 stdio 作业失败，ConPTY Windows 2022 失败、Windows 2025 成功。两平台 stdio 作业内独立的 fixture 步骤均通过，上传的 `report.json` 完全一致，各 case 无超时、无截断、`failure=null`：
+
+| 受控 case | 分类 | 进程退出码 | stderr 字节数 | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| warning | unknown | 0 | 426 | `c72fff80a021a02549cd8561cb4261c31b80a5ddbe33c87438b82e739078855b` |
+| error | unknown | 1 | 789 | `20e5257b8744ac22edb102e4b9228c9c55d658c3a4d6f48e96d6757634873f5f` |
+| empty | empty | 0 | 0 | 无 |
+| unknown | unknown | 0 | 17 | `9fd7b1f9094853adcefaf5c57b05184379e9acdcb7988cd6e1889a4a9c16dbd9` |
+
+三个非空 case 均为 ASCII、CR/LF 各 1、其他控制字节为 0，可打印字节分别为 424、787、15。fixture 通过只表示已知受控输入符合上述预期；不能把 error 的 exit 1 或 unknown 分类视为 latency 主测量的允许结果，也不能据此解释真实测量中不同指纹的 392 字节 stderr。
+
+该提交本机 fixture / latency 两份定向 Node 测试为 21 passed / 0 failed。本轮 Windows fixture 未触发 timeout，不证明超时子进程已终止或 kill 失败时父进程可退出；后续独立审查发现 `child.kill` 失败时可能遗留活跃管道，后续本地修复另记如下，不能用本轮成功 case 关闭此清理缺口。
+
+同轮两个 stdio 平台各完成 16/16 条完整测量，三阶段 cwd 均匹配、exit 0、无超时；32 条记录均为 `Process exit or stderr failure`，具体阻塞为 392 字节未知 stderr，`knownBytes={}`，形状及指纹与 `39799065768` 的正常样本一致。Windows 2022 产品白名单首次 `Get-Location` 为 20.95–29.19 秒；Windows 2025 为 21.93–57.15 秒，后者首轮仍在原 60 秒进程期限内，不能记作超时或性能通过。`cleanupSucceeded=null` 仅表示没有触发超时清理。
+
+直接 ConPTY 的 Windows 2022 为 15/16，首轮 `product-whitelist` marker timeout；其余白名单相关组约 21.2–24.7 秒，继承与继承移除 `PSModulePath` 约 56–358 ms。Windows 2025 为 16/16，产品白名单约 17.8–24.5 秒，其他白名单相关组约 17.3–17.7 秒，继承与继承移除 `PSModulePath` 约 51–215 ms。单个平台本轮全过不关闭历史间歇超时，也不证明加回父 `PSModulePath` 已消除 ConPTY 慢路径。
+
+本次核对使用上传的 fixture `report.json`、stdio `summary.json` / `measurements.json` 及 ConPTY 固定 PASS/FAIL 测量行。fixture 与 stdio JSON 不含 stderr 原文；ConPTY `probe.log` 同时包含编译日志和路径，不能声称整个工件已脱敏，也不把原始编译日志列为脱敏报告。下一步应对受控包装结构做独立、有界且不落原文的解析取证，再判断能否解释 392 字节流；未知流在证据充分前继续严格失败。Windows 目录停滞根因、第四批综合验收与 main 合并仍未完成。
+
+后续本地修复 `30d294d` 仅调整 fixture lifecycle：timeout 先锁定失败结果，再请求 kill，销毁本地 stdio 并 `unref`，避免活跃句柄继续牵住诊断父进程；报告明确保留 `termination=unconfirmed`，不声称子进程已终止。本地定向测试 25/25、完整 native helper 75/75 通过；独立 reviewer 复跑定向测试并审查通过，0 阻塞。尚未对该修复执行 Windows CI，以上本地结果不属于 `7c06cab` 的被测结果，也不改变 `39804296453` 整体失败、未知 stderr 与 Windows 根因未定的结论。
