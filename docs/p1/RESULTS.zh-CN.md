@@ -475,3 +475,13 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 在 `pty_open` 尚未返回本地 PTY ID 时，用户按键、粘贴、`insertText` 和二进制输入不再进入 early FIFO，避免连接建立后被延迟重放；本地 shell 的显式 CPR reply 仍通过有界 FIFO 保留，并在退出、启动失败、关闭和重开时清空。VT adapter 通过公开的同步 `onReply` hook 标记协议回复，CPR 在 normal/DECOM 两种状态下均由 adapter 显式应答，未使用 xterm 私有 `_core` API。实现提交为 `85ce71b`、`b3716ad`。
 
 本机 `apps/desktop` 构建通过；在 Vite ready 后运行的定向回归共 **145 passed / 0 failed**，覆盖 `pty-ui-contract`、VT adapter contract/spec、VT52、keys、paste、wide 和 IME。该证据仍是浏览器与 stub 契约级验证，不等于真实 PTY、WebView、Windows ConPTY、IME 或启动后命令验收；Windows 目录停滞、392 字节未知 stderr 和 ConPTY 间歇超时仍未解决，第四批仍不得宣称完成或请求合并 `main`。
+
+### 八组环境矩阵复测（工作流 `39799065768`）
+
+从包含 `9be5c39` 的 `a598a6a` 手动触发同一双平台诊断，保持八组环境、正反顺序、每样本新进程、60 秒 stdio/30 秒 ConPTY 门限、未知 stderr 严格失败和无重试。工作流整体失败，但取得了可复核的新样本：
+
+- Windows 2022 与 2025 的 stdio 均完成 16/16 样本，均因 392 字节未知 stderr 严格失败。两平台的每个正常样本都为 2 个 chunks、392 字节、全为有效 UTF-8/ASCII，390 个可打印字节，控制字节/ESC/NUL 为 0，CR/LF 各 1，SHA-256 均为 `a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f`；报告未保存原文。
+- stdio 首次 `Get-Location` 在 Windows 2022 的继承环境为 42.7–686.3 ms，产品白名单为 16.95–27.70 秒；白名单加回父 `PSModulePath` 为 23.5–23.6 ms，继承环境移除该变量为 69.8–70.1 ms。Windows 2025 继承环境为 53.8–360.6 ms，白名单有一次 17.74 秒样本和一次 60 秒超时；加回父 `PSModulePath` 为 26.1–28.7 ms，移除该变量为 81.2–90.7 ms。系统路径、身份和进程运行时组仍为约 16.9–23.4 秒，显式空 `PSModulePath` 为约 24.8–33.3 ms。
+- 直接 ConPTY 的 Windows 2022 取得 16/16，继承环境约 56–359 ms，产品白名单约 20.9–28.6 秒，白名单加回父 `PSModulePath` 仍约 21.0–21.3 秒，系统路径/身份/进程运行时/显式空变量组也约 21.0–21.2 秒；继承移除 `PSModulePath` 约 57 ms。Windows 2025 取得 15/16，首轮产品白名单 marker 超时，其余白名单相关组约 22.0–25.5 秒，继承与移除 `PSModulePath` 仍约 68–77 ms。
+
+这轮进一步确认 stdio 中的慢路径与环境策略存在稳定关联，并显示直接 ConPTY 中“加回父 `PSModulePath`”不能消除慢路径，因此尚未锁定具体变量或组件因果。未知 stderr、ConPTY 超时和 WebView2 cwd 延迟仍是未完成边界；没有修改产品白名单、门限或原生验收断言，第四批仍未完成，`main` 仍不应合并。
