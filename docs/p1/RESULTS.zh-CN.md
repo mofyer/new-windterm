@@ -469,3 +469,9 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
 - 推进范围为 `p1/integration`。第三批已单独批准并合并；第四批技术验收完成后另行请求 main 批准，不能复用第三批授权。
+
+### 早期输入来源门控（`b3716ad`）
+
+在 `pty_open` 尚未返回本地 PTY ID 时，用户按键、粘贴、`insertText` 和二进制输入不再进入 early FIFO，避免连接建立后被延迟重放；本地 shell 的显式 CPR reply 仍通过有界 FIFO 保留，并在退出、启动失败、关闭和重开时清空。VT adapter 通过公开的同步 `onReply` hook 标记协议回复，CPR 在 normal/DECOM 两种状态下均由 adapter 显式应答，未使用 xterm 私有 `_core` API。实现提交为 `85ce71b`、`b3716ad`。
+
+本机 `apps/desktop` 构建通过；在 Vite ready 后运行的定向回归共 **145 passed / 0 failed**，覆盖 `pty-ui-contract`、VT adapter contract/spec、VT52、keys、paste、wide 和 IME。该证据仍是浏览器与 stub 契约级验证，不等于真实 PTY、WebView、Windows ConPTY、IME 或启动后命令验收；Windows 目录停滞、392 字节未知 stderr 和 ConPTY 间歇超时仍未解决，第四批仍不得宣称完成或请求合并 `main`。
