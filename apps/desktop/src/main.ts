@@ -425,8 +425,9 @@ function createSession(name: string, mode: Mode, options?: LaunchOptions): Sessi
   let replyInputDepth = 0;
   const { terminal, vt } = createWorkspaceSession(colors(), {
     onNotice: (notice) => { if (owner && !owner.disposed) toast(`「${owner.name}」${describeVtNotice(notice)}`); },
-  }, (source, active) => {
-    if (source === "reply") replyInputDepth += active ? 1 : -1;
+    onReply: (active) => {
+      replyInputDepth += active ? 1 : -1;
+    },
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);

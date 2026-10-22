@@ -40,6 +40,8 @@ export interface VtAdapterOptions {
   readonly clipboardWrite?: boolean;
   /** Clipboard sink; defaults to navigator.clipboard.writeText. */
   readonly writeClipboard?: (text: string) => Promise<void>;
+  /** Synchronous boundary for protocol replies before they enter onData. */
+  readonly onReply?: (active: boolean) => void;
   /** Visible-notice hook (toast/indicator). Notices never contain clipboard text. */
   readonly onNotice?: (notice: VtNotice) => void;
 }
@@ -87,7 +89,14 @@ export function attachVtAdapters(terminal: Terminal, options: VtAdapterOptions =
   let clipboardNext: ClipboardWrite | null = null;
   const writeClipboard = options.writeClipboard ?? defaultClipboard;
 
-  const reply = (data: string) => terminal.input(data, false);
+  const reply = (data: string) => {
+    options.onReply?.(true);
+    try {
+      terminal.input(data, false);
+    } finally {
+      options.onReply?.(false);
+    }
+  };
   const active = (): BufferKind => (terminal.buffer.active.type === "alternate" ? "alternate" : "normal");
   const notify = (notice: VtNotice) => {
     if (disposed || (ONCE.has(notice.kind) && noticed.has(notice.kind))) return;
@@ -153,11 +162,14 @@ export function attachVtAdapters(terminal: Terminal, options: VtAdapterOptions =
     return false;
   };
 
-  // CPR/DECXCPR: only answered here while DECOM is set; otherwise xterm.js replies itself.
+  // CPR/DECXCPR: answer explicitly for every origin-mode state. Keeping this
+  // reply in the adapter makes protocol responses observable by the session's
+  // synchronous onReply hook, so a delayed PTY open can retain it without
+  // relying on xterm's private data-event plumbing.
   const cursorReport = (prefix: string) => (params: CsiParams) => {
-    if (first(params) !== 6 || !terminal.modes.originMode) return false;
+    if (first(params) !== 6) return false;
     const buffer = terminal.buffer.active;
-    const top = margins[active()]?.top ?? 0;
+    const top = terminal.modes.originMode ? (margins[active()]?.top ?? 0) : 0;
     reply(`${CSI}${prefix}${Math.max(1, buffer.cursorY - top + 1)};${buffer.cursorX + 1}R`);
     return true;
   };
