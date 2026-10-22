@@ -48,10 +48,10 @@ export function shape(bytes) {
 
 export function runCase(name, command, { spawnProcess = spawn, timeoutMs = STDERR_TIMEOUT_MS } = {}) {
   const encoded = Buffer.from(`$ErrorActionPreference = 'Continue'; ${command}`, 'utf16le').toString('base64');
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let child;
     try {
-      child = spawnProcess('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { windowsHide: true });
+      child = spawnProcess('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     } catch {
       resolve({ name, exitCode: null, failure: 'spawn-error', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.alloc(0)), totalBytes: 0, capturedBytes: 0, truncated: false, sha256: null } });
       return;
@@ -62,10 +62,13 @@ export function runCase(name, command, { spawnProcess = spawn, timeoutMs = STDER
     let truncated = false;
     const hash = createHash('sha256');
     let settled = false;
-    const finish = result => {
+    const finish = (result, beforeResolve) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // Settle before cleanup: kill/destroy may synchronously emit error/close.
+      beforeResolve?.();
+      chunks.length = 0;
       resolve(result);
     };
     child.stderr.on('data', chunk => {
@@ -91,8 +94,18 @@ export function runCase(name, command, { spawnProcess = spawn, timeoutMs = STDER
       finish({ name, exitCode: code, failure: truncated ? 'stderr-limit' : null, stderr: { classifications: { [classify(text)]: 1 }, shape: shape(capturedBytes), totalBytes: bytes, capturedBytes: capturedBytes.length, truncated, sha256: bytes ? hash.digest('hex') : null } });
     });
     const timer = setTimeout(() => {
-      try { child.kill?.(); } catch { /* bounded diagnostic cleanup */ }
-      finish({ name, exitCode: null, failure: 'timeout', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.concat(chunks)), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } });
+      const cleanup = { kill: 'failed', termination: 'unconfirmed', localResources: 'released' };
+      const result = { name, exitCode: null, failure: 'timeout', cleanup, stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.concat(chunks)), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } };
+      finish(result, () => {
+        try { if (child.kill?.() === true) cleanup.kill = 'requested'; } catch { /* keep cleanup unconfirmed */ }
+        // A successful kill call is only a request, not observed termination.
+        // Release our handles even when the OS refuses the request, so the
+        // diagnostic can write its failure report and exit without waiting.
+        for (const stream of [child.stdin, child.stdout, child.stderr]) {
+          try { stream?.destroy(); } catch { cleanup.localResources = 'release-failed'; }
+        }
+        try { child.unref?.(); } catch { cleanup.localResources = 'release-failed'; }
+      });
     }, timeoutMs);
   });
 }
