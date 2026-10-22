@@ -461,6 +461,8 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 直接诊断[39782434106](https://github.com/mofyer/new-windterm/actions/runs/39782434106) 仍为失败：stdio 比较步骤提前失败，测量 JSON 无可用样本但工件保留；ConPTY 在 Windows Server 2022/2025 首轮产品白名单均出现 marker timeout，2025 的首轮白名单加回父 `PSModulePath` 也超时，后续轮次出现约 21–24 秒慢样本而继承环境约 57–71 ms。未知 stderr 仍按严格规则阻塞，ConPTY 首轮现象为间歇性诊断不稳定，Windows 目录停滞根因仍未确定。该轮不能改写为诊断通过、产品根因已定或第四批已完成。
 
+提交 `9288f78` 将有限环境矩阵扩展为 8 组（原四组加系统路径、身份、进程运行时、显式空 `PSModulePath`），两轮正反序、每组新进程，保留 stdio 60 秒与 ConPTY 30 秒门限、未知 stderr 严格失败和无重试。报告与 `summary.json` 只保存模式名、计数、计时、失败原因，不保存环境值；Node helper 与 Rust ConPTY 变体顺序一致，本机 67/67 helper 通过。该提交尚未取得新的 Windows 运行结果，不能把矩阵实现写成根因证据或诊断通过；下一步先运行一次受控矩阵，再按停止条件决定是否继续分类未知 stderr。
+
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
