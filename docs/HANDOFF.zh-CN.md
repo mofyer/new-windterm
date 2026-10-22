@@ -109,7 +109,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **辅助功能与上游实机盘点**：协调者已用 CUA 执行有限操作；用户确认系统拼音候选窗与“你好”选字正常，也确认 Local 3 置前台后两条输出正常。临时添加的拼音已移除，输入法列表恢复 ABC 和豆包；用户现已确认最小 VoiceOver 标签与终端可达、能朗读且已关闭，完整读屏仍未验收。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
-- 当前远端 `p1/integration` HEAD 为 `ef8bde9`；上面的 `b0b8b54` 仅指产品实现基线，后续测试侧 timing 与文档提交均已推送。
+- 当前远端 `p1/integration` HEAD 为 `263658e`；上面的 `b0b8b54` 仅指产品实现基线，后续测试侧 timing、阶段标记与文档提交均已推送。
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
 
 ## 推荐下一步顺序
@@ -123,6 +123,10 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 对同一工件的 8 份 Windows shell trace 只读复核显示，每个 cwd 回车事件之后，首个 `pty_write` 与首个数据回流分别在约 0–4 ms、约 2–4 ms 内出现；18–28 秒的主要间隔发生在 trace 捕获到回车之前。这排除了“回车已进入 WebView 后，ConPTY/PowerShell 执行到首个回流”作为该轮主要延迟段，但 trace 没有 Node WebDriver 调用起点，不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。
 
 提交 `564aa3a` 只在 timing 开关开启时记录 `typeInTerminal` 的 Node 侧输入调用时长，默认行为不变。对应的[真实 WebView 复测 39764709186](https://github.com/mofyer/new-windterm/actions/runs/39764709186) 中，Windows WebView2 与 Linux WebKitGTK native job 均成功；Windows 8 个初次/重开样本的 `cwd-typeInTerminal` 为 62.7–68.5 ms，而 `cwd-send-to-row` 为 21,783.2–30,204.8 ms。同批 Windows trace 的 cwd 回车事件后首个数据回流为 2.7–5.9 ms。该结果把主要间隔进一步收窄到输入调用返回之后、页面事件/回读之前，但没有 Node 与 WebView 共用的跨时钟标记，仍不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。
+
+提交 `263658e` 在同一 timing 开关下增加了可选的阶段标记：`webdriver-input-return`、`webview-keydown-enter`、`pty-write-enter` 与 `first-data-after-enter`；默认关闭，不记录终端原文，也不改变产品 Rust 门禁。带 `native_only=true`、`windows_shell_repeats=3`、`windows_webview_timing=true` 的[复测 39783803294](https://github.com/mofyer/new-windterm/actions/runs/39783803294) 中，Linux WebKitGTK 与 Windows WebView2 native job 均成功，10/10 场景通过。Windows 8 个初次/重开样本的 `cwd-typeInTerminal` 为 63.1–70.3 ms，`cwd-send-to-row` 为 21,596.8–27,648.6 ms，`open→ready` 约 110.9–132.6 ms。阶段标记显示页面输入调用返回及 PTY 写入均在延迟前发生，但 `first-data-after-enter` 定义为 Enter 后首个 PTY 数据，可能是命令回显或提示符，不等于精确 cwd 行；该标记没有跨 Node/WebView/PTY 的统一时钟，不能据此确定组件根因。
+
+直接诊断[39782434106](https://github.com/mofyer/new-windterm/actions/runs/39782434106) 仍未通过：stdio 比较步骤提前失败，测量 JSON 没有可用样本，原始工件已保留；Windows Server 2022/2025 的 ConPTY 首轮产品白名单均出现 marker timeout，2025 首轮加回父 `PSModulePath` 也超时，后续轮次虽取得约 21–24 秒的慢样本，继承环境仍约 57–71 ms，工作流最终失败。未知 stderr 的严格检查与 ConPTY 首轮间歇超时仍是阻塞，Windows 目录停滞根因未定。
 
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **最小原生证据已齐**：[上游架构关键观察](p0/UPSTREAM_ARCHITECTURE_2026-10-15.zh-CN.md)已经成文，A2 SCP、A4 多窗口/活进程及全量兼容留后续对应交付。原生 1 MiB 粘贴完整性与过滤已测；[补充记录](p0/NATIVE_CLOSEOUT_2026-10-15.zh-CN.md)现已有 CUA Raise 后固定负载的可见结束、12 条有序编号及后续恢复截图，重新取得 30 个包含 WebKit 的负载前/中/后样本。不要重复执行负载或展开完整 IME/读屏/VT 调查。后台自动化截图差异没有定根因，本轮正向观察不等于修复。上游已退出，本轮新备份 `.reference/plist-backup-2026-10-15-closeout/` 恢复共用偏好并 cmp 一致；首轮使用 `.reference/plist-backup-2026-10-15/`，两轮各自验证。
