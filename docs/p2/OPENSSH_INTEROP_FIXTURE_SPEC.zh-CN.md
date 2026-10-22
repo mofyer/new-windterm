@@ -6,7 +6,7 @@
 
 ## 现有夹具边界
 
-当前 [`tests/fixtures/ssh-terminal/fixture.mjs`](../../tests/fixtures/ssh-terminal/fixture.mjs) 已提供系统 OpenSSH PTY、X11 和 agent forwarding 的独立场景。它只在非 root 的 macOS/Linux 运行，并且要求 `/usr/sbin/sshd`、`/usr/bin/ssh` 与 `ssh-keygen`。每次启动都会：
+当前 [`tests/fixtures/ssh-terminal/fixture.mjs`](../../tests/fixtures/ssh-terminal/fixture.mjs) 已提供系统 OpenSSH PTY、X11 和 agent forwarding 的独立场景。它只在非 root 的 macOS/Linux 运行，并且要求 `/usr/sbin/sshd`、`/usr/bin/ssh` 与 `ssh-keygen`。这些现有输出尚未满足本规格的证据脱敏门禁，因此只能作为开发探针，不能直接计为本规格的互操作证据。每次启动都会：
 
 - 在临时目录创建独立的 host、client、wrong-client Ed25519 key，目录 0700，私钥和公钥文件 0600；
 - 使用临时 `sshd_config`、随机回环端口和临时 `authorized_keys`，不读取用户 SSH 配置、用户 agent、用户 key 或系统 sshd 配置；
@@ -45,11 +45,17 @@ PermitUserEnvironment no
 PermitUserRC no
 ```
 
-转发模式再增加一条能力白名单：
+转发模式再增加一条能力白名单。`AllowTcpForwarding local` 是 OpenSSH 服务端对“客户端发起的本地转发”这一方向的总开关，不能单独区分 `-L` 与 `-D`；不能把它写成只允许其中一种能力：
 
-- `local-forward` 使用 `AllowTcpForwarding local`，`PermitOpen 127.0.0.1:<target-port>`，不设置 `PermitListen`；
+- `local-forward` 使用 `AllowTcpForwarding local`，`PermitOpen 127.0.0.1:<target-port>`，不设置 `PermitListen`。用客户端命令行和回环目标服务的字节往返证明 `-L`，并由 harness 明确尝试 SOCKS5 握手作为负向断言；该负向断言失败时不能声称服务端开关区分了 `-L/-D`；
 - `remote-forward` 使用 `AllowTcpForwarding remote`，只允许测试声明的 `PermitListen 127.0.0.1:<listen-port>`，不设置 `PermitOpen`；
-- `dynamic-forward` 只使用客户端的 SOCKS5 监听，服务端仍只允许 `AllowTcpForwarding local`，`PermitOpen` 绑定回环目标白名单。
+- `dynamic-forward` 使用客户端的 SOCKS5 监听，服务端仍使用 `AllowTcpForwarding local`，`PermitOpen` 绑定回环目标白名单。以 SOCKS5 握手、目标连接和字节哈希作为动态转发的可观测证据，并由 harness 尝试直接 `-L` 作为负向断言；这里的模式区分来自客户端行为和 harness 观测，不来自 `AllowTcpForwarding local` 本身。
+
+agent/X11 模式必须覆盖基线配置中的逐模式覆盖，不能沿用“全部关闭”的配置而把测试结果当成开启能力：
+
+- `agent-forward`：`PermitTTY no`、`X11Forwarding no`、`AllowAgentForwarding yes`，并在该模式的 `authorized_keys` 中保留除 agent 外的转发限制；
+- `x11-forward`：`PermitTTY no`、`AllowAgentForwarding no`、`X11Forwarding yes`，同时设置 `X11UseLocalhost yes` 和临时 Xauthority；
+- 其它模式保持 `AllowAgentForwarding no`、`X11Forwarding no`，并按场景需要显式保持 `PermitTTY no`。每个模式都要在配置摘要和负向尝试中记录实际生效值。
 
 具体 OpenSSH 版本若不接受某个细粒度选项，夹具必须在启动前报告“环境不支持”并跳过；不能删除限制后继续测试。所有目标服务和监听都绑定 127.0.0.1，禁止把 `GatewayPorts` 或 `*` 监听作为默认值。
 
@@ -63,11 +69,13 @@ PermitUserRC no
 4. 负向用例使用空 known_hosts、错误 key 或替换后的 host key，分别证明未知、认证失败和指纹变化不会被静默接受。不要用 `StrictHostKeyChecking=accept-new` 代替确认路径。
 5. 测试结束后确认 sshd、转发通道、目标服务和临时 agent 均退出，再删除目录；删除失败算清理失败，不能只报告主断言通过。
 
-metadata 只向测试进程传递最小字段：`scope`、角色、回环端口、临时用户名、SHA256 指纹和能力名。私钥内容、完整 known_hosts 行、认证口令和 agent socket 路径不能写入标准输出或 CI 摘要。
+metadata 只向测试进程传递最小字段：`scope`、角色、回环端口、临时用户名、SHA256 指纹和能力名。私钥内容、完整 known_hosts 行、认证口令和 agent socket 路径不能写入标准输出或 CI 摘要。metadata 自身也必须通过 allowlist 校验：不能包含 `rootDirectory`、私钥/known_hosts/config 的绝对路径、X11 cookie、agent socket、完整指纹或环境快照；需要引用文件时只使用 manifest 中的相对 artifact ID。
+
+目标服务、代理和临时 agent 必须是 harness 之外的独立子进程（有独立 PID、可核对的版本/启动参数摘要和回环端口），harness 只负责编排和收集结果。目标服务或代理若由同一 Node 进程内的 listener 代替，只能标记为 L1/L2-subset，不能作为完整 L2 外部进程互操作证据。manifest 必须记录这些子进程的 PID、版本摘要、端口和退出/清理状态；不得记录其完整命令行、环境或 socket 路径。
 
 ## 单一 forwarding 能力的最小场景
 
-以 `local-forward` 为最小首个实现，目标服务也是夹具的一部分：目标服务随机绑定回环端口，接受一次连接，读取带 nonce 的有限字节帧并回写固定响应和 SHA256。测试步骤为：
+以 `local-forward` 为最小首个实现，目标服务是独立于 harness 的临时子进程：它随机绑定回环端口，接受一次连接，读取带 nonce 的有限字节帧并回写固定响应和 SHA256。测试步骤为：
 
 1. 创建临时目录、key、known_hosts 和目标服务；确认权限后再启动 sshd。
 2. 以 `-N -T -o ExitOnForwardFailure=yes -L 127.0.0.1:<local-port>:127.0.0.1:<target-port>` 建立 SSH 隧道。连接必须使用显式临时 key 和 known_hosts。
@@ -82,7 +90,8 @@ metadata 只向测试进程传递最小字段：`scope`、角色、回环端口�
 一个**尝试**是一次完整的“创建临时服务 → 建立 SSH → 执行目标动作 → 关闭并清理”生命周期。建议每个场景运行三次独立尝试；每次尝试重新生成端口、key、known_hosts 和 nonce。
 
 - `failure_count` 每次尝试最多增加 1：任一强制断言失败、超时、意外退出、错误的转发方向、字节哈希不一致或清理残留都算该尝试失败。附加断言失败写入诊断列表，不重复增加场景失败数。
-- `skip_count` 只记录缺少系统 OpenSSH、root 账户、平台不支持或版本不接受安全配置；跳过不能计入通过，也不能计入失败。
+- `skip_count` 只记录**启动前**的受控预检跳过，原因限定为依赖缺失（如 telnetd/ssh-agent/OpenSSH 不存在）、root/权限不适用、平台不支持、版本不接受安全配置或真实设备缺失。跳过不能计入通过，也不能计入失败；不能用 skip 隐藏已启动进程的错误、脱敏不合规或清理失败。
+- 进程一旦启动，后续连接、协议、输出或清理问题必须记为 `failure_count` 或 `infra_error`；只有测试尚未开始且预检明确判定不可运行时才允许 skip。telnetd/ssh-agent 的“未安装”是 skip，不是通过；已启动的 telnetd/agent 异常退出是失败或基础设施错误。
 - `infra_error` 单独记录测试运行器崩溃、无法收集退出状态或宿主环境被外部终止；出现时场景状态为“阻塞”，不能用剩余样本宣称通过。
 - 三次尝试全部通过且没有清理失败，才能写“互操作通过（L2，列出的平台和 OpenSSH 版本）”。任何一次失败都保持“阻塞/失败”，重跑只能产生新证据，不能覆盖旧失败。
 - 失败原因只使用稳定分类：`host-key-rejected`、`auth-rejected`、`forwarding-rejected`、`target-unreachable`、`byte-mismatch`、`timeout`、`unexpected-exit`、`cleanup-failed`、`infra-error`。原始 stderr 作为受控附件保存前必须脱敏。
@@ -96,6 +105,12 @@ metadata 只向测试进程传递最小字段：`scope`、角色、回环端口�
 - SSH 命令行和环境变量使用 allowlist 组装；不能使用 `set -x`、`ssh -vvv` 或把带秘密的 argv 直接打印。代理/跳板口令不进入命令行。
 - stderr 只在经过同一脱敏函数后保存。若无法证明脱敏完整，则保存分类和退出码，丢弃原始 stderr，并将证据标为“不完整”。
 - CI artifact 必须包含 manifest：提交、平台、OpenSSH 版本、能力、尝试编号、状态、脱敏规则版本。manifest 不得包含私钥、完整主机 key 或认证材料。
+
+### 证据输出硬门禁
+
+stdout、stderr、metadata 和 manifest 都必须分别通过 allowlist 与同一版本的脱敏函数；任一通道失败，整次运行只能标记“证据不完整/阻塞”，不能标记互操作通过。当前 fixture 已知不合规的输出包括：`connection metadata: <absolute-path>`、完整或过长的 host fingerprint、X11 cookie、`P0_AGENT_SOCKET <absolute-path>`、`rootDirectory`/`serverConfigPath`/key/known_hosts 的绝对路径，以及包含这些字段的 `P0_AGENT_EVIDENCE`。这些输出即使来自临时目录，也不能计为本规格的证据；在 fixture 修复并重新跑过 allowlist 复核前，相关 C ID 只能保留为 L1/L2-subset 或阻塞。
+
+agent 转发结束后必须等待 sshd、转发通道和临时 agent 退出，按**精确的、由本次尝试创建且已在内部登记的 socket**执行 `lstat`/删除/不存在复核；禁止按 `/tmp` 或模式通配符清理。socket 路径不得进入 stdout、stderr、metadata 或 manifest；若路径位于 fixture 根目录之外，必须额外记录归属证明和删除结果，否则清理证据不完整，相关尝试不能通过。
 
 ## 证据与验收边界
 
