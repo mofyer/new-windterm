@@ -130,6 +130,8 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 提交 `9288f78`、`9d0a51c` 将诊断扩展为八组有限环境矩阵。运行 [39788501384](https://github.com/mofyer/new-windterm/actions/runs/39788501384) 中，两端 stdio 各 16/16 样本仍因 392 字节未知 stderr 严格失败；两端 ConPTY 首轮产品白名单均超时，系统路径、身份、进程运行时和显式空 `PSModulePath` 组均取得约 17–25 秒慢样本，继承环境约 42–72 ms。新增变量组不能单独消除慢路径，未知 stderr、ConPTY 超时和 WebView 根因未定仍保留。
 
+提交 `9be5c39` 在诊断报告中加入未知 stderr 的有界形状摘要，只保存结构计数，不保存原文，未知仍判失败；本机 native helper 为 68/68。P2 方面，`b9ad956` 新增隔离 OpenSSH 互操作夹具规格，限定临时 sshd、临时密钥/known_hosts、单一 forwarding 能力和脱敏证据；这只是准备工作，不代表正式进入 P2。
+
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **最小原生证据已齐**：[上游架构关键观察](p0/UPSTREAM_ARCHITECTURE_2026-10-15.zh-CN.md)已经成文，A2 SCP、A4 多窗口/活进程及全量兼容留后续对应交付。原生 1 MiB 粘贴完整性与过滤已测；[补充记录](p0/NATIVE_CLOSEOUT_2026-10-15.zh-CN.md)现已有 CUA Raise 后固定负载的可见结束、12 条有序编号及后续恢复截图，重新取得 30 个包含 WebKit 的负载前/中/后样本。不要重复执行负载或展开完整 IME/读屏/VT 调查。后台自动化截图差异没有定根因，本轮正向观察不等于修复。上游已退出，本轮新备份 `.reference/plist-backup-2026-10-15-closeout/` 恢复共用偏好并 cmp 一致；首轮使用 `.reference/plist-backup-2026-10-15/`，两轮各自验证。
    - 负载步骤已由协调者完成。用户对最小听测问项明确回复「标签与终端可达，能朗读，已关闭 VoiceOver」。这是用户回传，未指定朗读的是 HELLO 还是 RECOVERY，不扩写为两者均听测；无须重复本轮操作。
