@@ -533,4 +533,27 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 ConPTY Windows 2022 产品白名单首次测量为 21.53–29.46 秒，加回父 `PSModulePath` 仍为 21.45–21.48 秒；Windows 2025 产品白名单仅成功样本为 19.41 秒，加回父 `PSModulePath` 为 19.40–26.40 秒。两平台继承环境及继承移除 `PSModulePath` 仍为约 53–364 ms。因此新 runner 已在真实 Windows 生成内容受限报告，但慢路径及间歇 marker timeout 仍存在，不能归因具体模块、变量或产品组件，也不能将第四批标为通过。
 
-下一步候选尚未实施：固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；不得通过抑制 progress 绕过原验收。
+该轮结束时的下一步候选为固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；后续实现见下节，不得通过抑制 progress 绕过原验收。
+
+### 固定白名单的有限因果对照（工作流 `39816931188`）
+
+准确提交 `d2cee0ea84ce05a67b4d3cf313c1da268b11365f` 已提交并推送至 `p1/integration`，新增独立测试侧 `powershell-causal-probe.mjs`、专项测试、双 Windows 平台工作流及[执行前预注册方案](POWERSHELL_CAUSAL_PLAN.zh-CN.md)。本机 `node --test tests/native/*.test.mjs` **129/129 通过**，独立专项复跑 **18/18 通过**，代码及实验边界审查通过；这些是本地 helper 验证，不是 Windows 实测结果。
+
+实验固定产品白名单、PowerShell 5.1、五个 arm、正反两轮、每样本新进程，最多十个观察；比较直接目录读取、固定 `Write-Progress` 校准、默认 `Get-Location`、抑制 progress 的 `Get-Location` 和禁用自动模块导入的 `Get-Location`。严格区分内部 `elapsedMs` 与父进程 `wallMilliseconds`；类型确认的 command-not-found 仅计为观察，查询计时与 cwd 为 `null`。非空 stderr 继续严格失败，完整 progress-only 结构仅允许继续有限采集，`experimentComplete` 不等于 `strictPassed` 或产品验收。超时、协议、容量、清理或非允许结构错误停止剩余样本，无追加重试。
+
+工作流仅对 `p1/integration` 的三个新诊断文件路径触发 push，并保留手动 dispatch；本轮首次 push 启动该准确 HEAD 的[双平台运行 39816931188](https://github.com/mofyer/new-windterm/actions/runs/39816931188)，未重复 dispatch，未编译 Rust 或重跑旧八环境矩阵。运行已 `completed/failure`，Windows Server 2022/2025 两个作业均失败，helper 检查和工件上传均成功。
+
+两平台各取得十个预定观察：八个有效测量、两个类型确认的 command-not-found；均为 `experimentComplete=true`、`strictPassed=false`、`stopReason=null`。无超时、输出截断、协议或清理失败；所有 `cleanupSucceeded=null` 仅表示未触发终止清理，不能视为清理路径实测通过。非空 stderr 以及非成功查询的类型化缺失观察仍按预注册规则阻止严格通过。
+
+| 平台 | 默认 `Get-Location`，第 1 / 2 轮 | 抑制 progress，第 1 / 2 轮 | stderr 变化 |
+| --- | --- | --- | --- |
+| Windows 2022 | 19.682 / 19.476 秒 | 19.776 / 19.656 秒 | 392 字节、progress=1 → 空 |
+| Windows 2025 | 23.480 / 23.121 秒 | 23.240 / 23.120 秒 | 392 字节、progress=1 → 空 |
+
+表中均为操作内部 `elapsedMs`。默认查询的 stderr 指纹仍为 `a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f`。抑制 progress 后 stderr 归零，慢路径仍存在；这削弱“可见 progress 输出解释全部时延”的候选解释，但没有锁定模块加载、初始化或其他组件根因，也不构成采用抑制 progress 作为产品修复的依据。
+
+直接目录读取的内部耗时为 5.28–8.30 ms，但两平台首进程 `wallMilliseconds` 分别为 3.049 秒和 4.233 秒；不能据此称端到端启动或查询仅需毫秒。禁用自动加载的四个观察均 exit 2，`elapsedMs`、`cwdMatches` 均为 `null`，wall 为约 187–347 ms；这是命令缺失，不是查询性能改善。固定 `progress-only` 校准在 Windows 2022 两轮为 27.507 / 19.776 秒，2025 为 37.064 / 23.362 秒，均有 830 字节、progress=3 的有限 CLIXML；它包含 Utility 命令发现与可能的模块加载/初始化，不能解读为纯输出或序列化成本。跨轮差异未排除顺序、机器缓存或负载因素。
+
+两份 artifact 各仅包含精确 `measurements.json`，独立 schema 与隐私核验通过，未包含原文、错误文本、环境值或路径。文件 SHA-256：Windows 2022 为 `7504def2caf105402efa3ac83aeb656f16cf17292537047e1b883a3691e04231`；Windows 2025 为 `4e42c2b71c3b2c9cef5474a7f2be02dfdcaf638a5f737aeaf9f622146e052a2e`。这些是报告文件指纹，不是 stderr 指纹。
+
+下一步限定为 cmdlet 发现、模块加载与初始化阶段的预注册诊断候选，先定义有限干预及停止条件，再执行；本轮预注册方案不按结果改判。既定协议、产品白名单和旧门禁保持；stdio 证据不外推 ConPTY/WebView2，Windows 根因与第四批验收仍未完成，P1 未通过，P2 仅可准备，main 不合并。

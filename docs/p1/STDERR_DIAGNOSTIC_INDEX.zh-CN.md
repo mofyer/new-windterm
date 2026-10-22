@@ -36,9 +36,19 @@ ConPTY Windows 2025 为 16/16，Windows 2022 为 15/16，后者首轮产品白�
 
 实现与 workflow 已提交并推送为 `67d7f37`；本机完整 native helper 110/110，通过独立复跑与审查。[Windows 双平台取证 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794) 的精确 HEAD 为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096`。两个 stdio 作业已失败，fixture 步骤通过；ConPTY 测量与上传步骤已完成，Windows 2022 成功、Windows 2025 失败，工作流已结束、整体失败；后续本地 runner 补强 `81d109a` 独立复跑 native helper 111/111，通过审查，该后续本地验证不属于该被测 HEAD。原八组矩阵、正反序、每样本新进程、stdio 60 秒及 ConPTY 单样本 30 秒边界保持。实现说明见 [P1 执行记录](RESULTS.zh-CN.md#有界-stderr-结构与-conpty-内容受限报告工作流-39812975794)。
 
-已取得的 32 条 stdio 测量均完整、cwd 匹配、exit 0、无超时和截断；真实 392 字节流的结构均为 `clixml`、16 节点、深度 5、仅 `progress=1`，指纹与历史 `a3639af5…623f` 一致。原分类仍为 unknown，32 条仍全部严格失败。两平台 fixture 的 warning 为 `warning=1/progress=1`，error 为 `error=4/progress=1`，empty 为空，17 字节 unknown 无 header；原字节数、指纹、分类与退出码预期不变。结构只说明允许语法中的流标记，不证明内容无害、慢路径根因或 ConPTY 行为。两个 ConPTY artifact 各仅有内容受限的 `report.json`，固定 schema 检查未发现原文或路径，均包含 16 个唯一完整样本；2022 为 16/16，2025 为 15/16，首轮产品白名单 marker timeout。两平台 build/probe 均观察到退出，未请求 tree kill，本地资源释放。下一步候选尚未实施：固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；不得通过抑制 progress 绕过原验收。
+已取得的 32 条 stdio 测量均完整、cwd 匹配、exit 0、无超时和截断；真实 392 字节流的结构均为 `clixml`、16 节点、深度 5、仅 `progress=1`，指纹与历史 `a3639af5…623f` 一致。原分类仍为 unknown，32 条仍全部严格失败。两平台 fixture 的 warning 为 `warning=1/progress=1`，error 为 `error=4/progress=1`，empty 为空，17 字节 unknown 无 header；原字节数、指纹、分类与退出码预期不变。结构只说明允许语法中的流标记，不证明内容无害、慢路径根因或 ConPTY 行为。两个 ConPTY artifact 各仅有内容受限的 `report.json`，固定 schema 检查未发现原文或路径，均包含 16 个唯一完整样本；2022 为 16/16，2025 为 15/16，首轮产品白名单 marker timeout。两平台 build/probe 均观察到退出，未请求 tree kill，本地资源释放。该轮结束时提出的固定慢环境、模块命令解析与进度产生对照在后续 `d2cee0e` 完成实现，见下节；不得通过抑制 progress 绕过原验收。
 
-## 复测停止条件与后续取证边界
+## 已完成、严格失败：有限因果对照 `39816931188`
+
+准确提交 `d2cee0ea84ce05a67b4d3cf313c1da268b11365f` 已推送至 `p1/integration`，实现[预注册的固定白名单五 arm 对照](POWERSHELL_CAUSAL_PLAN.zh-CN.md)。本机全 native helper 129/129、独立专项 18/18 通过，独立审查通过；对应的 [Windows 双平台运行 39816931188](https://github.com/mofyer/new-windterm/actions/runs/39816931188) 已 `completed/failure`，两个作业均失败，helper 检查及两份工件上传成功。
+
+每平台正反两轮均取得十个预定观察，其中八个有效测量、两个类型化 command-not-found；报告均为 `experimentComplete=true`、`strictPassed=false`、`stopReason=null`。无超时、截断或清理失败，`cleanupSucceeded=null` 表示未触发终止清理。默认 `Get-Location` 与抑制 progress 后的内部操作耗时分别为：Windows 2022 的 19.682 / 19.476 秒与 19.776 / 19.656 秒；Windows 2025 的 23.480 / 23.121 秒与 23.240 / 23.120 秒。stderr 从 392 字节、progress=1 变为空，但慢路径仍在，削弱可见 progress 解释全部时延的假设，未锁定根因。
+
+类型化缺失的四个观察均 exit 2、`elapsedMs` 与 cwd 为 `null`，wall 187–347 ms 不是成功查询耗时；直接读取内部约 5–8 ms 也不能掩盖首进程 wall 为 3.049 / 4.233 秒。显式 `Write-Progress` 校准包含 Utility 命令发现与可能的初始化，不能当作纯序列化基准。两份 `measurements.json` 均通过独立 schema/隐私核验，文件 SHA-256 和完整计时见 [P1 执行记录](RESULTS.zh-CN.md#固定白名单的有限因果对照工作流-39816931188)。
+
+本轮只执行一次 push 触发，无追加重试，不改变旧门禁或产品白名单，不重跑原八环境矩阵。下一步仅准备 cmdlet 发现、模块加载与初始化阶段的预注册诊断候选；本轮方案不事后改判。P1 与第四批仍未通过，P2 仅准备，main 不合并。
+
+## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
 

@@ -28,11 +28,15 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。第三批 Shell 发现/选择及缺失反馈完成实现、本机门禁与本批 CI 后，用户单独确认「合并 main」；2026-10-18 main 已从 `8823be4` 快进至 `780a10e`，并完成推送与远端读回核对。本次授权仅限第三批。
 
-第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已完成测量与工件上传的 Windows 诊断为 `67d7f37` 上的 `39812975794`；工作流已结束、整体失败，具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
+第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已完成并核验的 Windows 因果对照为 `d2cee0e` 上的 `39816931188`；十个观察/平台收齐，但严格判断仍失败，具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
 
 ### 分支
 
-- **集成分支 `p1/integration`**：最新已核验的 Windows 诊断提交为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096`，[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794) 的测量与上传步骤均已完成；工作流已结束、整体失败。两平台 fixture 步骤通过，但 stdio 各 16/16 条仍严格失败；392 字节流已识别为有限 CLIXML 结构且仅有 progress 标记，未证明无害或慢路径根因。ConPTY Windows 2022 为 16/16，Windows 2025 为 15/16，后者首轮产品白名单 marker timeout；新工件均仅有内容受限 `report.json`。后续本地补强 `81d109a` 未包含在该 Windows 被测提交中。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
+本轮测试侧有限因果对照已提交并推送为 `d2cee0ea84ce05a67b4d3cf313c1da268b11365f`，固定白名单五 arm 的[预注册方案](p1/POWERSHELL_CAUSAL_PLAN.zh-CN.md)保持执行前设计。本机 native helper 129/129、独立专项 18/18 通过，独立审查通过；[Windows 双平台运行 39816931188](https://github.com/mofyer/new-windterm/actions/runs/39816931188) 已 `completed/failure`，两 job 失败、helper 与工件上传成功，精确 `measurements.json` 均通过独立 schema/隐私核验。每平台十个观察完整（八个测量、两个类型化命令缺失），`experimentComplete=true`、`strictPassed=false`、`stopReason=null`，无超时或清理失败；未触发终止清理不等于该路径已实测。
+
+抑制 progress 将 stderr 从 392 字节变为空，但查询内部耗时仍约 19.5–19.8 秒（2022）和 23.1–23.5 秒（2025），削弱可见 progress 解释全部延迟的假设，未锁根因。禁用自动加载的四次 exit 2、查询耗时/cwd 为 null，不能算性能改善；直接读取内部约 5–8 ms，但首进程 wall 分别为 3.049/4.233 秒。显式进度校准包含 Utility 命令发现与可能的初始化，不是纯序列化成本。本轮仅一次 push 运行，不改白名单、旧门禁或既定协议，不重跑 Rust/八环境矩阵；下一步仅准备 cmdlet 发现、模块加载与初始化阶段的预注册诊断候选。P1 与第四批仍未通过，P2 仅准备，main 不合并。详细计时及文件指纹见 [P1 执行记录](p1/RESULTS.zh-CN.md#固定白名单的有限因果对照工作流-39816931188)。
+
+- **集成分支 `p1/integration`**：最新核验为上述 `d2cee0e` 的有限因果对照 `39816931188`。最近一次旧矩阵诊断仍为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096` 的[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794)，整体失败：fixture 两平台通过，stdio 各 16/16 严格失败；ConPTY 2022 为 16/16、2025 为 15/16，后者首轮产品白名单 marker timeout。后续补强 `81d109a` 不在该旧 Windows 被测提交中，新对照不重写其失败证据。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
 - **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，合并记录 `40405d7` 已审阅、提交并推送，未修改产品代码；第四批尚未合入 main。接手时用远端 refs 核对最新文档提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
@@ -118,7 +122,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 该提交加入有界 stderr 结构摘要与 ConPTY 内容受限报告，本机完整 native helper 110/110，通过独立复跑与审查。两平台 fixture 步骤通过；32 条 stdio 真实 392 字节流均命中有限 CLIXML 结构（16 节点、深度 5、仅 progress=1），指纹不变，完整测量、cwd 匹配、exit 0、无超时或截断，原分类仍为 unknown 且全部严格失败。结构不证明内容无害或慢路径根因，不能外推为 ConPTY 结果。ConPTY 2022 为 16/16，2025 为 15/16（首轮产品白名单 marker timeout），两个 artifact 均仅含固定字段 `report.json`，无原文或路径。后续本地 runner error-handler 补强 `81d109a` 已通过独立复跑 native helper 111/111 与审查，该后续本地验证不属于本次 Windows 被测 HEAD。
 
-保持未知 stderr 严格失败、原时限和精确 cwd 断言；不能继续重复相同环境矩阵代替归因。下一步候选尚未实施：固定慢环境，先预注册模块命令解析与进度产生的少量因果对照及错误停止条件；不得通过抑制 progress 绕过原验收。Windows 根因、第四批验收及 main 合并仍未完成，第四批 main 合并尚未授权。以下逐轮记录保留历史上下文。
+保持未知 stderr 严格失败、原时限和精确 cwd 断言；不能继续重复相同环境矩阵代替归因。该轮提出的固定慢环境、模块命令解析与进度产生对照已在后续 `d2cee0e` 完成预注册及实测（`39816931188`），观察收齐但严格判断失败，具体结果见上方；不得通过抑制 progress 绕过原验收。Windows 根因、第四批验收及 main 合并仍未完成，第四批 main 合并尚未授权。以下逐轮记录保留历史上下文。
 
 全套 CI `39066177739`（`5fe00fd`）已结束为 6/7：四个 desktop、GSSAPI、Linux native 通过；Windows 四轮 Shell 功能断言完成，但在保存 trace 时超出 64 KiB 容量而失败。容量修复 `0906c85` 的 [native 补验 39067079503](https://github.com/mofyer/new-windterm/actions/runs/39067079503) 已完成成功，两平台各 7/7、无额外重复；helpers 分别为 Linux 35 passed / 1 skipped、Windows 34 passed / 2 skipped（各 36 项）。
 
