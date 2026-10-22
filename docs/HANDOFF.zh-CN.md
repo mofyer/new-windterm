@@ -121,6 +121,8 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 
 对同一工件的 8 份 Windows shell trace 只读复核显示，每个 cwd 回车事件之后，首个 `pty_write` 与首个数据回流分别在约 0–4 ms、约 2–4 ms 内出现；18–28 秒的主要间隔发生在 trace 捕获到回车之前。这排除了“回车已进入 WebView 后，ConPTY/PowerShell 执行到首个回流”作为该轮主要延迟段，但 trace 没有 Node WebDriver 调用起点，不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。
 
+提交 `564aa3a` 只在 timing 开关开启时记录 `typeInTerminal` 的 Node 侧输入调用时长，默认行为不变。对应的[真实 WebView 复测 39764709186](https://github.com/mofyer/new-windterm/actions/runs/39764709186) 中，Windows WebView2 与 Linux WebKitGTK native job 均成功；Windows 8 个初次/重开样本的 `cwd-typeInTerminal` 为 62.7–68.5 ms，而 `cwd-send-to-row` 为 21,783.2–30,204.8 ms。同批 Windows trace 的 cwd 回车事件后首个数据回流为 2.7–5.9 ms。该结果把主要间隔进一步收窄到输入调用返回之后、页面事件/回读之前，但没有 Node 与 WebView 共用的跨时钟标记，仍不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。
+
 1. **本批已收口**：WL-1/2/3 为 T35–T37，虚拟串口与独立 GSSAPI 探针已合入、审查、本机门禁及修复版 CI 通过。当前重点转为[路线图](ROADMAP.zh-CN.md)的 P0 实机差异、原生风险和出口评审；历史 worktree 位置见[归档](p0/P0_ARCHIVE_2026-10.zh-CN.md#5-未完成与在途事项)。
 2. **最小原生证据已齐**：[上游架构关键观察](p0/UPSTREAM_ARCHITECTURE_2026-10-15.zh-CN.md)已经成文，A2 SCP、A4 多窗口/活进程及全量兼容留后续对应交付。原生 1 MiB 粘贴完整性与过滤已测；[补充记录](p0/NATIVE_CLOSEOUT_2026-10-15.zh-CN.md)现已有 CUA Raise 后固定负载的可见结束、12 条有序编号及后续恢复截图，重新取得 30 个包含 WebKit 的负载前/中/后样本。不要重复执行负载或展开完整 IME/读屏/VT 调查。后台自动化截图差异没有定根因，本轮正向观察不等于修复。上游已退出，本轮新备份 `.reference/plist-backup-2026-10-15-closeout/` 恢复共用偏好并 cmp 一致；首轮使用 `.reference/plist-backup-2026-10-15/`，两轮各自验证。
    - 负载步骤已由协调者完成。用户对最小听测问项明确回复「标签与终端可达，能朗读，已关闭 VoiceOver」。这是用户回传，未指定朗读的是 HELLO 还是 RECOVERY，不扩写为两者均听测；无须重复本轮操作。

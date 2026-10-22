@@ -455,6 +455,8 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 对同一工件中的 8 份 Windows shell trace 做了只读复核：每个初次/重开样本的 cwd 回车事件之后，首个 `pty_write` 与首个数据回流分别在约 0–4 ms、约 2–4 ms 内出现；18–28 秒的主要间隔发生在 trace 捕获到回车之前。这个结果排除了“回车已进入 WebView 后，ConPTY/PowerShell 执行到首个回流”作为该轮主要延迟段，但 trace 没有 Node WebDriver 调用的起点，不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。下一步仍是针对 Windows 输入/IPC/PTY 边界做最小组件分层复现，不改产品白名单或放宽原断言。
 
+提交 `564aa3a` 只在 timing 开关开启时记录 `typeInTerminal` 的 Node 侧输入调用时长，默认行为不变。对应的[真实 WebView 复测 39764709186](https://github.com/mofyer/new-windterm/actions/runs/39764709186) 中，Windows WebView2 与 Linux WebKitGTK native job 均成功；Windows 8 个初次/重开样本的 `cwd-typeInTerminal` 为 62.7–68.5 ms，而 `cwd-send-to-row` 为 21,783.2–30,204.8 ms。同批 Windows trace 的 cwd 回车事件后首个数据回流为 2.7–5.9 ms。该结果把主要间隔进一步收窄到输入调用返回之后、页面事件/回读之前，但没有 Node 与 WebView 共用的跨时钟标记，仍不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。
+
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
