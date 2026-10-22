@@ -451,7 +451,9 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 | 版本命令发送 → 精确版本行 | 522.8–766.4 ms |
 | `(Get-Location).Path` 发送 → 精确 cwd 行 | 17,814.4–27,672.2 ms |
 
-这把延迟定位到真实 WebView2→产品 PTY→Windows PowerShell 的可观测链路，且与历史 20 秒级目录停滞一致；它仍不区分 Tauri IPC、ConPTY、PowerShell 初始化或环境策略中的具体环节，也不等于根因已确定。Linux WebKitGTK 同轮成功只证明该平台原生 smoke 通过，不外推 Windows 时延结论。下一步仍是针对 Windows 链路做最小组件分层复现，不改产品白名单或放宽原断言。
+这把延迟定位到真实 WebView2→产品 PTY→Windows PowerShell 的可观测链路，且与历史 20 秒级目录停滞一致；它仍不区分 Tauri IPC、ConPTY、PowerShell 初始化或环境策略中的具体环节，也不等于根因已确定。Linux WebKitGTK 同轮成功只证明该平台原生 smoke 通过，不外推 Windows 时延结论。
+
+对同一工件中的 8 份 Windows shell trace 做了只读复核：每个初次/重开样本的 cwd 回车事件之后，首个 `pty_write` 与首个数据回流分别在约 0–4 ms、约 2–4 ms 内出现；18–28 秒的主要间隔发生在 trace 捕获到回车之前。这个结果排除了“回车已进入 WebView 后，ConPTY/PowerShell 执行到首个回流”作为该轮主要延迟段，但 trace 没有 Node WebDriver 调用的起点，不能单独归因于 WebDriver、WebView 输入调度或前端事件循环。下一步仍是针对 Windows 输入/IPC/PTY 边界做最小组件分层复现，不改产品白名单或放宽原断言。
 
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
