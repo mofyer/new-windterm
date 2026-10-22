@@ -12,6 +12,7 @@ import { createTraceRuntime } from './terminal-trace.test.mjs';
 import { environmentQueries, fill, isCwdOutput, isShellVersionOutput, localTerminalShell, typeInTerminal } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
+import { WebDriverError } from './webdriver.mjs';
 
 const BANNER = [
   'host=127.0.0.1',
@@ -193,6 +194,25 @@ test('terminal typing can mark the WebDriver return boundary after input resolve
   };
   await typeInTerminal(ctx, 'marked\u000d', undefined, async () => calls.push('returned'));
   assert.deepEqual(calls, ['sendKeys', 'returned']);
+});
+
+test('terminal typing marks the WebDriver return boundary after actions fallback resolves', async () => {
+  const calls = [];
+  const ctx = {
+    log: () => calls.push('log'),
+    session: {
+      execute: async () => true,
+      findElement: async css => css,
+      sendKeys: async () => {
+        calls.push('sendKeys');
+        throw new WebDriverError({ error: 'element not interactable' });
+      },
+      performKeys: async value => calls.push(`performKeys:${value}`),
+      releaseActions: async () => calls.push('releaseActions'),
+    },
+  };
+  assert.equal(await typeInTerminal(ctx, 'fallback\u000d', undefined, async () => calls.push('returned')), 'actions API');
+  assert.deepEqual(calls, ['sendKeys', 'log', 'performKeys:fallback\u000d', 'releaseActions', 'returned']);
 });
 
 test('parseFixtureBanner reads the ssh_terminal_fixture banner once every field has arrived', () => {
