@@ -47,6 +47,49 @@ export function productEnvironment(source) {
   return result;
 }
 
+function environmentKey(source, wanted) {
+  return Object.keys(source).find(key => key.toUpperCase() === wanted.toUpperCase());
+}
+
+function withoutEnvironmentKey(source, wanted) {
+  const result = { ...source };
+  const key = environmentKey(result, wanted);
+  if (key !== undefined) delete result[key];
+  return result;
+}
+
+/**
+ * Builds the four diagnostic environments without changing the product
+ * whitelist. Each sample is spawned as a fresh process by `sample`.
+ */
+export function diagnosticEnvironments(source) {
+  const inherited = { ...source };
+  const product = productEnvironment(source);
+  const parentModuleKey = environmentKey(source, 'PSModulePath');
+  const productWithParentModulePath = { ...product };
+  if (parentModuleKey !== undefined) productWithParentModulePath.PSModulePath = source[parentModuleKey];
+  return [
+    { mode: 'inherited', env: inherited },
+    { mode: 'product-whitelist', env: product },
+    { mode: 'product-whitelist-parent-psmodulepath', env: productWithParentModulePath },
+    { mode: 'inherited-without-psmodulepath', env: withoutEnvironmentKey(source, 'PSModulePath') },
+  ];
+}
+
+export function diagnosticOrder(environments, iteration) {
+  return iteration % 2 === 0 ? [...environments].reverse() : [...environments];
+}
+
+/** Classifies stderr in memory; raw bytes never enter the returned report. */
+export function classifyStderrChunk(chunk) {
+  const text = Buffer.from(chunk).toString('utf8').replaceAll('\0', '').trim();
+  if (text.length === 0) return 'empty';
+  if (/^(?:At line:\s*\d+|ParserError:|NativeCommandError:)/mi.test(text)
+    || /(^|\n)\s*\+\s+/.test(text)) return 'powershell-error';
+  if (/^(?:WARNING|VERBOSE|DEBUG|INFORMATION|PROGRESS):/mi.test(text)) return 'powershell-stream';
+  return 'unknown';
+}
+
 // Retain only verified schema fields, including a valid prefix on failure.
 // Unexpected output and stderr contents never enter the artifact.
 export function parseMeasurements(text, expectedCwd) {
@@ -117,6 +160,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   let stdout = '';
   let outputBytes = 0;
   let stderrBytes = 0;
+  const stderr = { knownBytes: {}, unknownBytes: 0, unknown: false };
   let failure = null;
   let cleanup;
   let terminationTimer;
@@ -144,7 +188,17 @@ export async function sample(executable, cwd, env, systemRoot, {
     stdout += chunk.toString('utf8'); // Protocol is ASCII: path payloads are base64.
     arrivals.push({ milliseconds: performance.now() - started, bytes: chunk.length });
   });
-  child.stderr.on('data', chunk => { stderrBytes += chunk.length; if (stderrBytes > 16_384) stop('Stderr limit exceeded'); });
+  child.stderr.on('data', chunk => {
+    stderrBytes += chunk.length;
+    const kind = classifyStderrChunk(chunk);
+    if (kind === 'unknown') {
+      stderr.unknown = true;
+      stderr.unknownBytes += chunk.length;
+    } else if (kind !== 'empty') {
+      stderr.knownBytes[kind] = (stderr.knownBytes[kind] ?? 0) + chunk.length;
+    }
+    if (stderrBytes > 16_384) stop('Stderr limit exceeded');
+  });
   child.on('error', () => {
     if (child.pid) {
       // kill() may emit an error while the child remains alive. Keep the
@@ -164,7 +218,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   const measurement = parseMeasurements(stdout, cwd);
   if (exit.code !== 0 || exit.signal || stderrBytes > 0) failure ??= 'Process exit or stderr failure';
   failure ??= measurement.error;
-  return { ...measurement, exit, stderrBytes, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
+  return { ...measurement, exit, stderrBytes, stderr, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
 }
 
 export async function main() {
@@ -177,17 +231,23 @@ export async function main() {
   await mkdir(outputDir, { recursive: true });
   // PowerShell resolves Windows short-name TEMP aliases to the long path.
   const directory = await mkdtemp(join(tmpdir(), 'p1 shell 中文-'));
-  const report = { schema: 1, limitation: 'stdio/-EncodedCommand, not interactive ConPTY; fast results cannot clear native failures', samples: [] };
+  const report = { schema: 2, limitation: 'stdio/-EncodedCommand, not interactive ConPTY; fast results cannot clear native failures', samples: [] };
   try {
     const cwd = await realpath(directory);
-    samples: for (let iteration = 1; iteration <= 3; iteration++) {
-      for (const mode of ['inherited', 'product-whitelist']) {
-        const result = await sample(executable, cwd, mode === 'inherited' ? process.env : cleanEnv, systemRoot);
-        report.samples.push({ mode, iteration, ...result });
+    const environments = diagnosticEnvironments(process.env);
+    samples: for (let iteration = 1; iteration <= 2; iteration++) {
+      const order = diagnosticOrder(environments, iteration);
+      for (let position = 0; position < order.length; position++) {
+        const { mode, env } = order[position];
+        const result = await sample(executable, cwd, env, systemRoot);
+        report.samples.push({ mode, iteration, position: position + 1, firstSample: iteration === 1 && position === 0, ...result });
         // Save every sample, including failure, before continuing; no retries.
         await writeFile(join(outputDir, 'measurements.json'), `${JSON.stringify(report, null, 2)}\n`);
         process.stdout.write(`${mode} ${iteration}: ${result.passed ? 'PASS' : 'FAIL'}\n`);
-        if (result.cleanupSucceeded === false) break samples;
+        if (result.cleanupSucceeded === false) {
+          process.exitCode = 1;
+          break samples;
+        }
       }
     }
   } finally {
@@ -199,7 +259,7 @@ export async function main() {
       await writeFile(join(outputDir, 'measurements.json'), `${JSON.stringify(report, null, 2)}\n`);
     }
   }
-  if (report.samples.length !== 6 || report.samples.some(result => !result.passed)) process.exitCode = 1;
+  if (report.samples.length !== 8 || report.samples.some(result => !result.passed)) process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
