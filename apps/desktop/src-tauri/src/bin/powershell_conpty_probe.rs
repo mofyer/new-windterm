@@ -268,7 +268,9 @@ mod windows_probe {
             .map_err(|_| "PowerShell writer unavailable")?;
         let result = (|| {
             prime(&receiver, writer.as_mut())?;
-            writer.write_all(b"$sw=[Diagnostics.Stopwatch]::StartNew(); $null=(Get-Location).Path; $sw.Stop(); Write-Output ('P1_RESULT|' + $sw.Elapsed.TotalMilliseconds.ToString('R',[Globalization.CultureInfo]::InvariantCulture)); Write-Output 'P1_DONE'\r\n").map_err(|_| "PowerShell command write failed")?;
+            // Build the markers from fragments so ConPTY's command echo cannot
+            // contain the complete framing tokens before PowerShell executes it.
+            writer.write_all(b"$sw=[Diagnostics.Stopwatch]::StartNew(); $null=(Get-Location).Path; $sw.Stop(); $m=('P1_'+'RESULT|'); Write-Output ($m + $sw.Elapsed.TotalMilliseconds.ToString('R',[Globalization.CultureInfo]::InvariantCulture)); Write-Output ('P1_'+'DONE')\r\n").map_err(|_| "PowerShell command write failed")?;
             writer
                 .flush()
                 .map_err(|_| "PowerShell command flush failed")?;
