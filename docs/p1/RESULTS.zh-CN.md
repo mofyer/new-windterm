@@ -417,6 +417,17 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 这只是可复现性和取证改进；本机 macOS 只能运行 schema/helper 测试，不能替代 Windows stdio 实验或真实 ConPTY。尚未据此修改产品白名单、放宽原生 30 秒断言、关闭旧 Shell 停滞，第四批仍未完成验收。
 
+[反向四组实验 39740945170](https://github.com/mofyer/new-windterm/actions/runs/39740945170) 验证精确提交 `96a30660663263bf4e3cf9ae9fd93ee84bedd551`。Windows 2022/2025 两个作业均在 schema/helper 通过后完成 8/8 新进程样本；每个样本三阶段 cwd 匹配、exit 0，stderr 均为 392 字节未知内容，所以严格门禁仍失败。环境差异如下（首次 `Get-Location`，单位毫秒）：
+
+| 环境 | Windows 2022 | Windows 2025 |
+| --- | ---: | ---: |
+| 继承 | 56.3–407.6 | 50.7–263.5 |
+| 产品白名单 | 21,177.0–28,064.6 | 19,605.6–26,389.0 |
+| 白名单 + 父 `PSModulePath` | 29.2–30.0 | 31.8–32.8 |
+| 继承 − `PSModulePath` | 89.8–92.2 | 83.4–83.7 |
+
+这轮支持 `PSModulePath` 与 stdio 首次 cmdlet 延迟存在强关联，并消除了固定执行顺序的混淆；它仍不是产品根因或 ConPTY 证据。未知 stderr 尚未分类，不能把作业失败改写成通过；下一步应在不保存原文的前提下继续分类该流，再用真实 Windows WebView/ConPTY 重现候选环境，之后才评估产品白名单是否需要改动。
+
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
