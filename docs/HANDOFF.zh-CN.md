@@ -109,7 +109,7 @@ X11 转发已有 Rust 探针：采用假 cookie 替换，没有界面；与 Xvfb
 - **辅助功能与上游实机盘点**：协调者已用 CUA 执行有限操作；用户确认系统拼音候选窗与“你好”选字正常，也确认 Local 3 置前台后两条输出正常。临时添加的拼音已移除，输入法列表恢复 ABC 和豆包；用户现已确认最小 VoiceOver 标签与终端可达、能朗读且已关闭，完整读屏仍未验收。
 - **发行**：签名与公证需要凭据。
 - **旧版 Windows 的 ConPTY**：是否随应用分发新版 `conpty.dll` 和 `OpenConsole.exe`，以消除 Server 2022 这一代系统上的句柄泄漏。
-- 当前远端 `p1/integration` HEAD 为 `263658e`；上面的 `b0b8b54` 仅指产品实现基线，后续测试侧 timing、阶段标记与文档提交均已推送。
+- 当前远端 `p1/integration` HEAD 为 `9d8bfc0`；上面的 `b0b8b54` 仅指产品实现基线，后续测试侧 timing、阶段标记、fallback 覆盖、文档与 P2 准备矩阵提交均已推送。
 - **SIXEL**：是否允许在 CSP 中加入 `wasm-unsafe-eval`。
 
 ## 推荐下一步顺序
