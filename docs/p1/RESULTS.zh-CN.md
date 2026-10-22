@@ -439,6 +439,10 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 这证明此前的白名单与继承环境差异可在真实 Windows ConPTY 层复现；但 ConPTY 中仅加回父 `PSModulePath` 仍保持高延迟，不能把 stdio 实验里的 `PSModulePath` 关联当成已锁定因果。它仍不能区分 Tauri/WebView 启动链、PowerShell 模块初始化或其他受控环境差异，也不等于产品场景已经通过。下一步应继续对未知 stderr 做不留原文的分类，并在真实 WebView 场景做最小候选复现；在此之前不改产品白名单、不放宽 30 秒断言、不请求合并第四批。
 
+提交 `8785f0d`、`03ffcb9` 仅增强诊断侧 stderr 取证：按有界行缓冲处理跨 chunk 数据，规范化 BOM/NUL/CSI 控制序列和 CR，并加入长度之外的 SHA-256 指纹；不保存 stderr 原文，未知仍严格失败。Node helper 为 16/16。准确提交 `03ffcb9` 的[复测 39756049365](https://github.com/mofyer/new-windterm/actions/runs/39756049365) 中，两个 stdio 作业的正常样本仍为 392 字节未知 stderr、`knownBytes={}`，且 Windows 2022/2025 的指纹均为 `a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f`；这证明输出在本轮跨平台、跨环境一致，但没有原文就不能判断来源或安全性。Windows 2022 另有一个白名单样本 60 秒超时且无 stderr，仍判失败。
+
+同一复测的直接 ConPTY job：Windows 2022 为 8/8 成功；Windows 2025 为 6/8 成功，首轮白名单与加回父 `PSModulePath` 各有一次 30 秒 marker timeout，反向轮仍取得约 22.95–23.84 秒结果。上一轮 `39749668866` 的 Windows 2025 ConPTY 为 8/8 成功，因此当前应记录为间歇性诊断不稳定，而不是产品行为已回归或已稳定通过。两轮均没有改变产品代码、白名单或 30 秒断言。
+
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
