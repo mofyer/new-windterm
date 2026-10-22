@@ -255,3 +255,23 @@ test('hung tree-kill helper is killed and unreferenced at bounded cleanup deadli
   helper.emit('close', 0);
   assert.equal(report.cleanup.treeKill, 'requested');
 });
+
+test('cleanup kill errors are absorbed without leaking raw error messages', async () => {
+  const process = child();
+  process.pid = 123;
+  process.kill = () => { process.emit('error', new Error('/private/SECRET')); return false; };
+  const helper = child();
+  helper.kill = () => { helper.emit('error', new Error('/private/SECRET')); return false; };
+  let calls = 0;
+  const report = await runProcess('cargo', [], {
+    timeoutMs: 5, platform: 'win32', spawnProcess: () => {
+      if (calls++ === 0) return process;
+      queueMicrotask(() => helper.emit('error', new Error('/private/SECRET')));
+      return helper;
+    },
+  });
+  assert.equal(report.failure, 'timeout');
+  assert.equal(report.cleanup.treeKill, 'failed');
+  assert.equal(report.cleanup.termination, 'unconfirmed');
+  assert.doesNotMatch(JSON.stringify(report), /SECRET|private/);
+});

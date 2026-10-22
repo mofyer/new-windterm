@@ -139,7 +139,7 @@ export function runProcess(command, args, {
           killer = spawnProcess('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
           cleanup.treeKill = 'requested';
           killer.once('close', code => { if (!settled) { cleanup.treeKill = code === 0 ? 'completed' : 'failed'; complete(); } });
-          killer.once('error', () => { if (!settled) { cleanup.treeKill = 'failed'; complete(); } });
+          killer.on('error', () => { if (!settled) { cleanup.treeKill = 'failed'; complete(); } });
         } catch { cleanup.treeKill = 'failed'; complete(); }
       } else {
         try { child?.kill(); } catch { /* retain unconfirmed termination */ }
@@ -156,7 +156,7 @@ export function runProcess(command, args, {
       if (outputBytes > outputLimit) { stop('output-limit'); return; }
       consume(source, chunk);
     });
-    child.once('error', () => stop('spawn-error'));
+    child.on('error', () => stop('spawn-error'));
     child.once('close', code => {
       closed = true;
       exitCode = Number.isInteger(code) ? code : null;
