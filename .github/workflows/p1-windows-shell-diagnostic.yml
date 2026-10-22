@@ -32,7 +32,7 @@ jobs:
           node-version: "26.0.0"
       - name: Validate diagnostic schema
         run: node --test tests/native/powershell-latency-probe.test.mjs
-      - name: Compare four environments in forward and reverse order
+      - name: Compare eight bounded environments in forward and reverse order
         run: node tests/native/powershell-latency-probe.mjs
       - name: Preserve every measurement
         if: always()
