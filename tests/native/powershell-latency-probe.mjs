@@ -6,6 +6,7 @@ import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createStderrStructure } from './stderr-structure.mjs';
 
 export const DIAGNOSTIC_ITERATIONS = 2;
 export const MAX_VARIANTS = 8;
@@ -254,6 +255,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   let stderrBytes = 0;
   const stderr = { knownBytes: {}, unknownBytes: 0, unknown: false, summary: emptyStderrSummary() };
   const stderrHash = createHash('sha256');
+  const stderrStructure = createStderrStructure();
   let stderrLineBuffer = Buffer.alloc(0);
   const classifyStderrLine = line => {
     const bytes = Buffer.from(line);
@@ -295,6 +297,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   child.stderr.on('data', chunk => {
     stderrBytes += chunk.length;
     stderrHash.update(chunk);
+    stderrStructure.push(chunk);
     stderrLineBuffer = Buffer.concat([stderrLineBuffer, chunk]);
     if (stderrLineBuffer.length > 16_384) {
       stderr.unknown = true;
@@ -331,7 +334,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   const measurement = parseMeasurements(stdout, cwd);
   if (exit.code !== 0 || exit.signal || stderrBytes > 0) failure ??= 'Process exit or stderr failure';
   failure ??= measurement.error;
-  return { ...measurement, exit, stderrBytes, stderr: { ...stderr, sha256: stderrBytes ? stderrHash.digest('hex') : null }, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
+  return { ...measurement, exit, stderrBytes, stderr: { ...stderr, structure: stderrStructure.summarize({ complete: closeObserved && !cleanup }), sha256: stderrBytes ? stderrHash.digest('hex') : null }, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
 }
 
 export async function main() {

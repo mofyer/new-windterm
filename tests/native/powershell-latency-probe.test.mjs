@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { summarizeStderrStructure } from './stderr-structure.mjs';
 import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, DIAGNOSTIC_ITERATIONS, MAX_VARIANTS, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample, summarizeStderrChunk } from './powershell-latency-probe.mjs';
 
 const cwd = 'C:\\Temp\\p1 shell 中文-fixture';
@@ -176,6 +177,7 @@ test('successful sample preserves exact Unicode cwd and launches only the contro
       newlineBytes: 0,
       carriageReturnBytes: 0,
     },
+    structure: summarizeStderrStructure(Buffer.alloc(0)),
     sha256: null,
   });
   assert.equal(result.measurements.length, 3);
@@ -276,4 +278,27 @@ test('timeout keeps failure even when taskkill and child close succeed', async (
   assert.equal(result.passed, false);
   assert.equal(result.cleanupSucceeded, true);
   assert.equal(result.failure, '60 second process timeout');
+});
+
+
+test('complete CLIXML structure across chunks does not relax unknown stderr failure', async () => {
+  const child = fakeProcess(109);
+  const stderr = '#< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><S S="Error">SECRET path</S></Objs>';
+  const result = await sample('powershell.exe', cwd, {}, 'C:\\Windows', {
+    spawnProcess: () => {
+      queueMicrotask(() => {
+        child.stdout.write(lines.join('\n'));
+        for (const byte of Buffer.from(stderr)) child.stderr.write(Buffer.from([byte]));
+        child.emit('close', 0, null);
+      });
+      return child;
+    },
+  });
+  assert.equal(result.stderr.structure.status, 'clixml');
+  assert.equal(result.stderr.structure.streams.error, 1);
+  assert.equal(result.stderr.unknown, true);
+  assert.equal(result.stderr.unknownBytes, Buffer.byteLength(stderr));
+  assert.equal(result.passed, false);
+  assert.equal(result.failure, 'Process exit or stderr failure');
+  assert.equal(JSON.stringify(result).includes('SECRET'), false);
 });

@@ -131,6 +131,7 @@ test('stderr overflow retains a capped prefix and full-stream hash but fails', a
   });
   child.stderr.destroy();
   assert.equal(result.failure, 'stderr-limit');
+  assert.equal(result.stderr.structure.status, 'truncated');
   assert.equal(result.stderr.truncated, true);
   assert.equal(result.stderr.capturedBytes, STDERR_CAPTURE_LIMIT);
   assert.equal(result.stderr.shape.bytes, STDERR_CAPTURE_LIMIT);
@@ -138,4 +139,25 @@ test('stderr overflow retains a capped prefix and full-stream hash but fails', a
   assert.equal(result.stderr.sha256, createHash('sha256').update(bytes).digest('hex'));
   assert.deepEqual(result.stderr.classifications, { unknown: 1 });
   assert.equal(JSON.stringify(result).includes('AAAA'), false);
+});
+
+
+test('fixture exposes bounded CLIXML structure while classification remains unknown', async () => {
+  const child = new EventEmitter();
+  child.stderr = new PassThrough();
+  const stderr = '#< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><S S="warning">SECRET</S></Objs>';
+  const result = await runCase('warning', STDERR_CASES.warning, {
+    spawnProcess: () => {
+      queueMicrotask(() => {
+        for (const byte of Buffer.from(stderr)) child.stderr.write(Buffer.from([byte]));
+        child.emit('close', 0);
+      });
+      return child;
+    },
+  });
+  child.stderr.destroy();
+  assert.equal(result.stderr.structure.status, 'clixml');
+  assert.equal(result.stderr.structure.streams.warning, 1);
+  assert.deepEqual(result.stderr.classifications, { unknown: 1 });
+  assert.equal(JSON.stringify(result).includes('SECRET'), false);
 });

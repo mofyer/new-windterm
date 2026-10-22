@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { summarizeStderrStructure } from './stderr-structure.mjs';
 
 export const STDERR_TIMEOUT_MS = 30_000;
 export const STDERR_CAPTURE_LIMIT = 16 * 1024;
@@ -53,7 +54,7 @@ export function runCase(name, command, { spawnProcess = spawn, timeoutMs = STDER
     try {
       child = spawnProcess('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     } catch {
-      resolve({ name, exitCode: null, failure: 'spawn-error', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.alloc(0)), totalBytes: 0, capturedBytes: 0, truncated: false, sha256: null } });
+      resolve({ name, exitCode: null, failure: 'spawn-error', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.alloc(0)), structure: summarizeStderrStructure(Buffer.alloc(0), { complete: false }), totalBytes: 0, capturedBytes: 0, truncated: false, sha256: null } });
       return;
     }
     const chunks = [];
@@ -85,17 +86,17 @@ export function runCase(name, command, { spawnProcess = spawn, timeoutMs = STDER
     });
     child.once('error', () => {
       if (settled) return;
-      finish({ name, exitCode: null, failure: 'spawn-error', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.alloc(0)), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } });
+      finish({ name, exitCode: null, failure: 'spawn-error', stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.alloc(0)), structure: summarizeStderrStructure(Buffer.concat(chunks), { truncated, complete: false }), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } });
     });
     child.once('close', code => {
       if (settled) return;
       const capturedBytes = Buffer.concat(chunks);
       const text = capturedBytes.toString('utf8');
-      finish({ name, exitCode: code, failure: truncated ? 'stderr-limit' : null, stderr: { classifications: { [classify(text)]: 1 }, shape: shape(capturedBytes), totalBytes: bytes, capturedBytes: capturedBytes.length, truncated, sha256: bytes ? hash.digest('hex') : null } });
+      finish({ name, exitCode: code, failure: truncated ? 'stderr-limit' : null, stderr: { classifications: { [classify(text)]: 1 }, shape: shape(capturedBytes), structure: summarizeStderrStructure(capturedBytes, { truncated, complete: code !== null }), totalBytes: bytes, capturedBytes: capturedBytes.length, truncated, sha256: bytes ? hash.digest('hex') : null } });
     });
     const timer = setTimeout(() => {
       const cleanup = { kill: 'failed', termination: 'unconfirmed', localResources: 'released' };
-      const result = { name, exitCode: null, failure: 'timeout', cleanup, stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.concat(chunks)), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } };
+      const result = { name, exitCode: null, failure: 'timeout', cleanup, stderr: { classifications: { unknown: 1 }, shape: shape(Buffer.concat(chunks)), structure: summarizeStderrStructure(Buffer.concat(chunks), { truncated, complete: false }), totalBytes: bytes, capturedBytes: captured, truncated, sha256: bytes ? hash.digest('hex') : null } };
       finish(result, () => {
         try { if (child.kill?.() === true) cleanup.kill = 'requested'; } catch { /* keep cleanup unconfirmed */ }
         // A successful kill call is only a request, not observed termination.
