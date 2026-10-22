@@ -107,6 +107,91 @@ mod tests {
         }
     }
     #[test]
+    fn startup_only_classifies_complete_embedded_ready_without_accepting_it() {
+        let p = format!("P1Q_{NONCE}|");
+        for suffix in ["READY|5.1.1.2", "READY|5.1.0001.2"] {
+            let text = format!("PS>\r\x1b[2K{p}{suffix}\r\n");
+            for cut in 0..=text.len() {
+                let mut parser = Parser::startup(NONCE);
+                parser.push(&text.as_bytes()[..cut]).unwrap();
+                parser.push(&text.as_bytes()[cut..]).unwrap();
+                assert_eq!(parser.ready_counts(), (0, 1));
+                assert!(!parser.version_ok);
+            }
+        }
+        for suffix in [
+            "READY|7.1.1.2",
+            "READY|5.1.1.2junk",
+            "READY|5.1.1.2|extra",
+            "READY|5.1.1",
+            "READY|5.1.1.2\0",
+        ] {
+            let mut parser = Parser::startup(NONCE);
+            parser
+                .push(format!("prompt{p}{suffix}\n").as_bytes())
+                .unwrap();
+            assert_eq!(parser.ready_counts(), (0, 0));
+        }
+        let mut parser = Parser::startup(NONCE);
+        parser
+            .push(format!("prompt{p}READY|5.1.1.2").as_bytes())
+            .unwrap();
+        assert_eq!(parser.ready_counts(), (0, 0));
+        let mut parser = Parser::startup(NONCE);
+        let mut invalid = format!("prompt{p}READY|5.1.1.").into_bytes();
+        invalid.extend_from_slice(&[0xff, b'\n']);
+        parser.push(&invalid).unwrap();
+        assert_eq!(parser.ready_counts(), (0, 0));
+    }
+    #[test]
+    fn startup_strict_ready_is_unique_and_never_accepts_query_records() {
+        let p = format!("P1Q_{NONCE}|");
+        let mut parser = Parser::startup(NONCE);
+        parser
+            .push(format!("{p}READY|5.1.1.2\n").as_bytes())
+            .unwrap();
+        assert!(parser.version_ok);
+        assert_eq!(parser.ready_counts(), (1, 0));
+        assert_eq!(parser.diagnostic().stage, "after-ready");
+        assert_eq!(
+            parser.push(format!("{p}START|1\n").as_bytes()),
+            Err("protocol-error")
+        );
+        assert_eq!(parser.queries, [None, None]);
+        let first = parser.ready_counts();
+        let _ = parser.push(format!("{p}READY|5.1.1.2\n").as_bytes());
+        assert_eq!(parser.ready_counts(), first);
+    }
+    #[test]
+    fn ready_write_evidence_uses_actual_completion_before_the_frozen_cutoff() {
+        let start = std::time::Instant::now();
+        let cutoff = start + Duration::from_secs(5);
+        assert_eq!(
+            ready_write_ms(start, cutoff, Some(start + Duration::from_millis(12))),
+            Some(12.0)
+        );
+        assert_eq!(ready_write_ms(start, cutoff, Some(cutoff)), None);
+        assert_eq!(
+            ready_write_ms(start, cutoff, Some(cutoff + Duration::from_millis(1))),
+            None
+        );
+        assert_eq!(ready_write_ms(start, cutoff, None), None);
+    }
+    #[test]
+    fn startup_schema_has_no_query_fields_or_raw_state() {
+        let mut report = Report::new(Arm::Unqualified);
+        report.startup_only = true;
+        let value: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
+        assert_eq!(value["mode"], "startup-only");
+        assert_eq!(value["schema"], 1);
+        assert_eq!(value["startupComplete"], false);
+        assert_eq!(value["readyWriteCompleted"], false);
+        assert_eq!(value["readyWriteMs"], serde_json::Value::Null);
+        for key in ["arm", "q1Ms", "q2Ms", "cwd1Ok", "hostMs"] {
+            assert!(value.get(key).is_none());
+        }
+    }
+    #[test]
     fn marker_must_be_unique_complete_independent_line() {
         for text in [
             lines().replace(NONCE, "other"),
@@ -311,6 +396,7 @@ mod probe {
         pub stage: &'static str,
         pub reason: Option<&'static str>,
         pub counters: TerminalCounters,
+        ready_counts: (usize, usize),
     }
     impl Diagnostic {
         pub fn record_failure(&mut self, reason: &'static str) {
@@ -333,6 +419,11 @@ mod probe {
         }
     }
     pub struct Report {
+        pub startup_only: bool,
+        pub startup_complete: bool,
+        pub ready_write_ms: Option<f64>,
+        pub strict_ready_count: usize,
+        pub embedded_ready_count: usize,
         pub arm: Arm,
         pub q1: Option<f64>,
         pub q2: Option<f64>,
@@ -355,6 +446,11 @@ mod probe {
     impl Report {
         pub fn new(arm: Arm) -> Self {
             Self {
+                startup_only: false,
+                startup_complete: false,
+                ready_write_ms: None,
+                strict_ready_count: 0,
+                embedded_ready_count: 0,
                 arm,
                 q1: None,
                 q2: None,
@@ -374,6 +470,7 @@ mod probe {
                     stage: "not-started",
                     reason: Some("setup-error"),
                     counters: TerminalCounters::default(),
+                    ready_counts: (0, 0),
                 },
                 kill_requested: None,
                 exit_observed_before_kill: None,
@@ -387,6 +484,9 @@ mod probe {
             };
             let c = self.diagnostic.counters;
             let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
+            if self.startup_only {
+                return format!("{{\"schema\":1,\"mode\":\"startup-only\",\"startupMs\":{},\"wallMs\":{},\"versionOk\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"terminalCounters\":{{\"cr\":{},\"lf\":{},\"csiCursor\":{},\"csiErase\":{},\"markerLines\":{},\"duplicateMarkers\":{},\"embeddedMarkerLines\":{},\"ignoredLines\":{}}},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"strictReadyCount\":{},\"embeddedReadyCount\":{}}}", number(self.startup),number(Some(self.wall)),self.version_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),c.cr,c.lf,c.csi_cursor,c.csi_erase,c.marker_lines,c.duplicate_markers,c.embedded_marker_lines,c.ignored_lines,boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.strict_ready_count,self.embedded_ready_count);
+            }
             format!("{{\"schema\":2,\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"terminalCounters\":{{\"cr\":{},\"lf\":{},\"csiCursor\":{},\"csiErase\":{},\"markerLines\":{},\"duplicateMarkers\":{},\"embeddedMarkerLines\":{},\"ignoredLines\":{}}},\"killRequested\":{},\"exitObservedBeforeKill\":{}}}", self.arm.name(), number(self.q1), number(self.q2), number(self.startup), number(self.host), number(Some(self.wall)), self.version_ok, self.cwd1_ok, self.cwd2_ok, self.exit_code.map_or_else(|| "null".to_owned(), |n| n.to_string()), self.cpr, self.bytes, self.complete, self.cleanup_ok, self.failure.map_or_else(|| "null".to_owned(), |s| format!("\"{s}\"")), self.diagnostic.stage, self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s| format!("\"{s}\"")), c.cr,c.lf,c.csi_cursor,c.csi_erase,c.marker_lines,c.duplicate_markers,c.embedded_marker_lines,c.ignored_lines,boolean(self.kill_requested),boolean(self.exit_observed_before_kill))
         }
     }
@@ -398,6 +498,9 @@ mod probe {
         OscEsc,
     }
     pub struct Parser {
+        startup_only: bool,
+        strict_ready_count: usize,
+        embedded_ready_count: usize,
         prefix: String,
         line: Vec<u8>,
         escape: Escape,
@@ -413,6 +516,9 @@ mod probe {
     impl Parser {
         pub fn new(nonce: &str) -> Self {
             Self {
+                startup_only: false,
+                strict_ready_count: 0,
+                embedded_ready_count: 0,
                 prefix: format!("P1Q_{nonce}|"),
                 line: Vec::new(),
                 escape: Escape::Text,
@@ -426,10 +532,21 @@ mod probe {
                 first_failure: None,
             }
         }
+        pub fn startup(nonce: &str) -> Self {
+            Self {
+                startup_only: true,
+                ..Self::new(nonce)
+            }
+        }
+        pub fn ready_counts(&self) -> (usize, usize) {
+            self.diagnostic().ready_counts
+        }
         pub fn diagnostic(&self) -> Diagnostic {
             self.first_failure.unwrap_or(Diagnostic {
                 stage: if self.await_cursor {
                     "await-cursor"
+                } else if self.startup_only && self.step > 0 {
+                    "after-ready"
                 } else {
                     match self.step {
                         0 => "await-ready",
@@ -443,6 +560,7 @@ mod probe {
                 },
                 reason: None,
                 counters: self.counters,
+                ready_counts: (self.strict_ready_count, self.embedded_ready_count),
             })
         }
         pub fn record_failure(&mut self, reason: &'static str) {
@@ -538,6 +656,25 @@ mod probe {
             Ok(())
         }
         fn consume_line(&mut self) -> Result<(), &'static str> {
+            if self.startup_only {
+                // Classify only LF-terminated complete shapes. A nonce inside
+                // ignored prompt text remains diagnostic evidence, never READY.
+                for offset in 0..self.line.len() {
+                    let candidate = &self.line[offset..];
+                    if let Some(payload) = candidate.strip_prefix(self.prefix.as_bytes()) {
+                        if let Ok(payload) = std::str::from_utf8(payload) {
+                            if payload.strip_prefix("READY|").is_some_and(valid_version) {
+                                if offset == 0 {
+                                    increment(&mut self.strict_ready_count);
+                                } else {
+                                    increment(&mut self.embedded_ready_count);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             if !self.line.starts_with(self.prefix.as_bytes()) {
                 if !self.line.is_empty() {
                     increment(&mut self.counters.ignored_lines);
@@ -573,19 +710,15 @@ mod probe {
             if fields == ["ERROR"] {
                 return self.fail("command-error", "command-error");
             }
+            if self.startup_only && self.step > 0 {
+                return self.fail("unexpected-record", "protocol-error");
+            }
             match self.step {
                 0 => {
                     if fields.len() != 2 || fields[0] != "READY" {
                         return self.fail("unexpected-record", "protocol-error");
                     }
-                    let version: Vec<_> = fields[1].split('.').collect();
-                    if version.len() != 4
-                        || version[0] != "5"
-                        || version[1] != "1"
-                        || version[2..].iter().any(|s| {
-                            s.is_empty() || s.len() > 10 || !s.bytes().all(|b| b.is_ascii_digit())
-                        })
-                    {
+                    if !valid_version(fields[1]) {
                         return self.fail("invalid-version", "protocol-error");
                     }
                     self.version_ok = true;
@@ -635,6 +768,24 @@ mod probe {
             self.step += 1;
             Ok(())
         }
+    }
+    fn valid_version(value: &str) -> bool {
+        let version: Vec<_> = value.split('.').collect();
+        version.len() == 4
+            && version[0] == "5"
+            && version[1] == "1"
+            && version[2..]
+                .iter()
+                .all(|s| !s.is_empty() && s.len() <= 10 && s.bytes().all(|b| b.is_ascii_digit()))
+    }
+    pub fn ready_write_ms(
+        start: Instant,
+        cutoff: Instant,
+        completed: Option<Instant>,
+    ) -> Option<f64> {
+        completed
+            .filter(|at| *at >= start && *at < cutoff)
+            .map(|at| at.duration_since(start).as_secs_f64() * 1000.0)
     }
     fn prefix_assignment(nonce: &str) -> String {
         format!("$p=('P1Q_'+'{}'+'{}'+'|');", &nonce[..16], &nonce[16..])
@@ -710,8 +861,21 @@ mod windows_worker {
         Eof,
         Error,
     }
+    #[derive(Debug)]
+    struct WriteRequest {
+        bytes: Vec<u8>,
+        ready_done: Option<SyncSender<Instant>>,
+    }
+    impl From<Vec<u8>> for WriteRequest {
+        fn from(bytes: Vec<u8>) -> Self {
+            Self {
+                bytes,
+                ready_done: None,
+            }
+        }
+    }
     struct Io {
-        input: SyncSender<Vec<u8>>,
+        input: SyncSender<WriteRequest>,
         output: Receiver<Event>,
         reader_done: Receiver<()>,
         writer_done: Receiver<()>,
@@ -721,7 +885,7 @@ mod windows_worker {
     }
     fn start_io(mut reader: Box<dyn Read + Send>, mut writer: Box<dyn Write + Send>) -> Io {
         let (tx, output) = mpsc::sync_channel(64);
-        let (input, commands) = mpsc::sync_channel::<Vec<u8>>(4);
+        let (input, commands) = mpsc::sync_channel::<WriteRequest>(4);
         // Each completion channel carries one notification only. A receiver
         // may already have timed out; losing that notification is then benign.
         let (rd, reader_done) = mpsc::sync_channel(1);
@@ -768,12 +932,17 @@ mod windows_worker {
         thread::spawn(move || {
             while let Ok(command) = commands.recv() {
                 if writer
-                    .write_all(&command)
+                    .write_all(&command.bytes)
                     .and_then(|()| writer.flush())
                     .is_err()
                 {
                     failed.store(true, Ordering::Relaxed);
                     break;
+                }
+                if let Some(ready_done) = command.ready_done {
+                    // One fixed acknowledgment only. After timeout the receiver
+                    // may be gone; a late write cannot revise the frozen report.
+                    let _ = ready_done.try_send(Instant::now());
                 }
             }
             drop(writer);
@@ -827,7 +996,7 @@ mod windows_worker {
                     let replies = parser.push(&chunk)?;
                     for _ in 0..replies {
                         io.input
-                            .try_send(b"\x1b[1;1R".to_vec())
+                            .try_send(b"\x1b[1;1R".to_vec().into())
                             .map_err(|_| "write-error")?;
                         report.cpr += 1;
                         if report.cpr > 65_536 {
@@ -1032,9 +1201,10 @@ mod windows_worker {
         let path = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
         Ok((values, path))
     }
-    pub fn sample(arm: Arm, cwd: &Path) -> Report {
+    pub fn sample(arm: Arm, cwd: &Path, startup_only: bool) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
+        report.startup_only = startup_only;
         // Before spawn any failed ConPTY construction/drop is still bounded by
         // the supervising Node worker deadline; no shell has been created yet.
         let setup = (|| {
@@ -1070,7 +1240,12 @@ mod windows_worker {
         };
         let io = start_io(reader, writer);
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let mut parser = Parser::new(&nonce);
+        let mut parser = if startup_only {
+            Parser::startup(&nonce)
+        } else {
+            Parser::new(&nonce)
+        };
+        let (ready_ack_tx, ready_ack_rx) = mpsc::sync_channel(1);
         let outcome = (|| {
             let startup = Instant::now();
             let startup_deadline = startup + Duration::from_secs(5);
@@ -1086,7 +1261,10 @@ mod windows_worker {
                     Until::Cursor,
                 )?;
                 io.input
-                    .try_send(ready_script(&nonce).into_bytes())
+                    .try_send(WriteRequest {
+                        bytes: ready_script(&nonce).into_bytes(),
+                        ready_done: startup_only.then_some(ready_ack_tx),
+                    })
                     .map_err(|_| "write-error")?;
                 receive(
                     &io,
@@ -1096,12 +1274,51 @@ mod windows_worker {
                     Until::Ready,
                 )
             })();
+            if startup_only {
+                let mut outcome = ready;
+                let ack = if outcome.is_ok() {
+                    match ready_ack_rx
+                        .recv_timeout(startup_deadline.saturating_duration_since(Instant::now()))
+                    {
+                        Ok(at) => Some(at),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            outcome = Err("startup-timeout");
+                            None
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            outcome = Err("write-error");
+                            None
+                        }
+                    }
+                } else {
+                    ready_ack_rx.try_recv().ok()
+                };
+                let frozen = Instant::now();
+                // This ACK was received before `frozen`; compare its actual
+                // completion with the original deadline, even on equal clock ticks.
+                report.ready_write_ms = ready_write_ms(startup, startup_deadline, ack);
+                if outcome.is_ok()
+                    && (frozen >= startup_deadline || report.ready_write_ms.is_none())
+                {
+                    outcome = Err("startup-timeout");
+                }
+                report.startup = Some(frozen.duration_since(startup).as_secs_f64() * 1000.0);
+                (report.strict_ready_count, report.embedded_ready_count) = parser.ready_counts();
+                report.startup_complete = outcome.is_ok();
+                outcome?;
+                // Exit is cleanup input only, after the startup snapshot. No
+                // directory command or extra startup time is introduced.
+                return io
+                    .input
+                    .try_send(b"exit 0\r\n".to_vec().into())
+                    .map_err(|_| "write-error");
+            }
             report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
             ready?;
             let command = Instant::now();
             let script = query_script(arm, &nonce, cwd.to_str().ok_or("setup-error")?);
             io.input
-                .try_send(script.into_bytes())
+                .try_send(script.into_bytes().into())
                 .map_err(|_| "write-error")?;
             let result = receive(
                 &io,
@@ -1123,7 +1340,11 @@ mod windows_worker {
         if let Some(reason) = report.failure {
             parser.record_failure(reason);
         }
-        let ended = parser.ended;
+        let ended = if startup_only {
+            report.startup_complete
+        } else {
+            parser.ended
+        };
         let cleaned = cleanup(child, master, io, report.failure.is_some(), parser);
         report.bytes = cleaned.bytes;
         report.diagnostic = cleaned.diagnostic;
@@ -1146,7 +1367,85 @@ mod windows_worker {
     #[cfg(test)]
     mod tests {
         use super::*;
-        fn mock_io() -> (Io, SyncSender<Event>, Receiver<Vec<u8>>) {
+        struct FixtureWriter {
+            bytes: Arc<std::sync::Mutex<Vec<u8>>>,
+            flushed: Arc<AtomicBool>,
+            fail_write: bool,
+            fail_flush: bool,
+        }
+        impl Write for FixtureWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if self.fail_write {
+                    return Err(std::io::Error::other("fixture"));
+                }
+                // Partial writes verify that ACK follows all of write_all.
+                let size = bytes.len().min(2);
+                self.bytes.lock().unwrap().extend_from_slice(&bytes[..size]);
+                Ok(size)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                if self.fail_flush {
+                    return Err(std::io::Error::other("fixture"));
+                }
+                self.flushed.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        #[test]
+        fn actual_writer_ack_follows_fifo_all_bytes_and_successful_flush() {
+            let bytes = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let flushed = Arc::new(AtomicBool::new(false));
+            let io = start_io(
+                Box::new(std::io::Cursor::new(Vec::new())),
+                Box::new(FixtureWriter {
+                    bytes: bytes.clone(),
+                    flushed: flushed.clone(),
+                    fail_write: false,
+                    fail_flush: false,
+                }),
+            );
+            let (done, ack) = mpsc::sync_channel(1);
+            io.input.try_send(b"CPR".to_vec().into()).unwrap();
+            let before = Instant::now();
+            io.input
+                .try_send(WriteRequest {
+                    bytes: b"READY".to_vec(),
+                    ready_done: Some(done),
+                })
+                .unwrap();
+            let completed = ack.recv_timeout(Duration::from_secs(1)).unwrap();
+            assert!(completed >= before && completed <= Instant::now());
+            assert!(flushed.load(Ordering::SeqCst));
+            assert_eq!(*bytes.lock().unwrap(), b"CPRREADY");
+            drop(io.input);
+            io.writer_done.recv_timeout(Duration::from_secs(1)).unwrap();
+        }
+        #[test]
+        fn actual_writer_never_acknowledges_failed_write_or_flush() {
+            for fail_write in [false, true] {
+                let io = start_io(
+                    Box::new(std::io::Cursor::new(Vec::new())),
+                    Box::new(FixtureWriter {
+                        bytes: Arc::new(std::sync::Mutex::new(Vec::new())),
+                        flushed: Arc::new(AtomicBool::new(false)),
+                        fail_write,
+                        fail_flush: !fail_write,
+                    }),
+                );
+                let (done, ack) = mpsc::sync_channel(1);
+                io.input
+                    .try_send(WriteRequest {
+                        bytes: b"READY".to_vec(),
+                        ready_done: Some(done),
+                    })
+                    .unwrap();
+                assert!(ack.recv_timeout(Duration::from_secs(1)).is_err());
+                assert!(io.write_failed.load(Ordering::Relaxed));
+                drop(io.input);
+                io.writer_done.recv_timeout(Duration::from_secs(1)).unwrap();
+            }
+        }
+        fn mock_io() -> (Io, SyncSender<Event>, Receiver<WriteRequest>) {
             let (events, output) = mpsc::sync_channel(4);
             let (input, commands) = mpsc::sync_channel(4);
             let (_, reader_done) = mpsc::sync_channel(1);
@@ -1175,9 +1474,14 @@ mod windows_worker {
             events.send(Event::Data(b"n".to_vec())).unwrap();
             let deadline = Instant::now() + Duration::from_millis(100);
             receive(&io, &mut parser, &mut report, deadline, Until::Cursor).unwrap();
-            io.input.try_send(ready_script(nonce).into_bytes()).unwrap();
-            assert_eq!(commands.recv().unwrap(), b"\x1b[1;1R");
-            assert_eq!(commands.recv().unwrap(), ready_script(nonce).as_bytes());
+            io.input
+                .try_send(ready_script(nonce).into_bytes().into())
+                .unwrap();
+            assert_eq!(commands.recv().unwrap().bytes, b"\x1b[1;1R");
+            assert_eq!(
+                commands.recv().unwrap().bytes,
+                ready_script(nonce).as_bytes()
+            );
             assert_eq!(report.cpr, 1);
             assert_eq!(
                 receive(&io, &mut parser, &mut report, Instant::now(), Until::Ready),
@@ -1214,9 +1518,14 @@ mod windows_worker {
 fn main() {
     use std::io::Write;
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let arm = match args.as_slice() {
-        [flag, arm] if flag == "--sample" && arm == "unqualified" => probe::Arm::Unqualified,
-        [flag, arm] if flag == "--sample" && arm == "module-qualified" => probe::Arm::Qualified,
+    let (arm, startup_only) = match args.as_slice() {
+        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true),
+        [flag, arm] if flag == "--sample" && arm == "unqualified" => {
+            (probe::Arm::Unqualified, false)
+        }
+        [flag, arm] if flag == "--sample" && arm == "module-qualified" => {
+            (probe::Arm::Qualified, false)
+        }
         _ => std::process::exit(1),
     };
     let directory = std::env::temp_dir().join(format!(
@@ -1235,10 +1544,11 @@ fn main() {
         Ok(cwd) => {
             // canonicalize yields a Windows verbatim prefix; PowerShell's provider
             // reports an ordinary local path. Strip only that fixed prefix in memory.
-            windows_worker::sample(arm, &cwd)
+            windows_worker::sample(arm, &cwd, startup_only)
         }
         Err(_) => {
             let mut r = probe::Report::new(arm);
+            r.startup_only = startup_only;
             r.cleanup_ok = true;
             r
         }
