@@ -604,3 +604,27 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 所有已启动 worker 的外层清理均为 `termination=observed`、`treeKill=not-requested`、`localResources=released`，Rust 样本 `cleanupOk=true`；这说明本次已观察到退出与清理，不覆盖未触发的外层超时 tree-kill 路径。两份报告经过独立 schema、隐私、顺序及状态/计时一致性核验。文件 SHA-256：2022 为 `22a69f777ac8436bfbe6aac223dadc93ab6759ff96b510aa12ef94a686d7eeac`；2025 为 `a53f29fb7fbdc2e6a18fe11f2a192973e8c3422f02b10a77e9b86eeba863cc0e`。无完整对照结论，无根因归因。
 
 下一步先为协议错误增加不留原文的有限阶段分类/计数，例如固定 `expectedStage` / `protocolReason`、CR/LF/光标移动/清行计数，以及 `killRequested` / `exitObservedBeforeKill`，区分解析停止位置与诊断主动终止；先补终端布局 fixture、界定解析范围并独立审查，再预注册重做对照。只读代码检查提出 CR 被忽略、CSI 光标移动被剥除而未维护屏幕行的候选解析缺口，可能影响合法终端重绘；这是待验证的代码假设，不是本轮已证根因。本轮不追加实验、不修改预注册或放宽门禁。产品启动链本身没有内置 `Get-Location` 查询，目录通过 `CommandBuilder.cwd` 配置；普通 `(Get-Location).Path` 是原生验收场景输入的命令。不能用限定命令直接替换旧验收查询掩盖慢路径，也不能称为产品修复。保留普通查询、首次/重开、中文空格路径、版本、退出及原 30 秒断言；P1 与第四批仍未通过，P2 仅准备，main 不合并。
+
+### ConPTY 协议失败分类诊断（工作流 `39828696609`）
+
+实现已提交推送为 `e3827ea33545c6e8c3922295a9b3bbfc5548977d`，按[本轮执行前预注册](CONPTY_PROTOCOL_DIAGNOSTIC_PLAN.zh-CN.md)在既有 worker/wrapper 增加 schema 2：固定 `expectedStage` / `protocolReason`、八项有限终端计数与 `killRequested` / `exitObservedBeforeKill`。仅提高失败可辨识性，未修改旧协议接受规则、CR/CSI 处理、arm、时限或首失败停止，也不修改旧预注册与产品。首错快照计数与最终 `mergedBytes` 的采集窗口不同；cleanup 未返回时保存入口最后可确认快照，null 清理字段不能解读为未请求终止。
+
+本机完整 native helper **189/189**、wrapper 专项 **41/41**、Rust 专项 **15/15** 通过，Windows cfg 检查与独立审查通过。synthetic 终端 fixture 只证明解析能力与分类规则，不是真实 Windows 原始输出复现；Windows cfg 也不是 Windows 实跑。唯一新运行 [39828696609](https://github.com/mofyer/new-windterm/actions/runs/39828696609) 已 `completed/failure`，两平台失败；两报告均确认 Rust 专项测试及构建 exit 0，采样按首失败停止。
+
+| 平台 / 第一轮 arm | 已验证内部 q1 / q2（ms） | startup / host / wall（ms） | 阶段与结果 |
+| --- | --- | --- | --- |
+| 2022 / unqualified | 28445.5897 / 0.1984 | 3225.1286 / 28869.7066 / 32147.0608 | `after-end`、reason null，完整成功、exit 0 |
+| 2022 / module-qualified | null / null | 5004.2264 / null / 5015.7247 | `await-ready`、`startup-timeout`，exit 1 |
+| 2025 / unqualified | null / null | 5009.8068 / null / 5148.2511 | `await-ready`、`startup-timeout`，exit 1 |
+
+2022 仅两样本，限定 arm 在启动阶段失败；2025 仅首个未限定样本，限定 arm 未执行，两平台反序轮都未运行。两报告三个完成/成功字段均 false，`failure=sample-failed`。本轮两个失败样本都已有一次 CPR 响应入队，但未取得合法 READY，`versionOk=false`、q 与 host 均 null；查询脚本未进入投递阶段，不能拿失败 wall 当目录查询耗时，也不能将此轮启动失败解释成上一轮已确认版本后的协议错误或命令超时。约 5.004/5.010 秒是轮询观察到的启动超时，5 秒期限未放宽。
+
+2022 失败首错快照为 CR/LF 各 2、`csiCursor=4`、`csiErase=0`、`markerLines=0`、`duplicateMarkers=0`、`embeddedMarkerLines=1`、`ignoredLines=2`；最终 `mergedBytes=1014`。这只表明有一条被旧解析器忽略的非空行包含 nonce 前缀，不证明它是完整 READY、真实输出而非回显，或某种重绘就是根因。2025 失败快照八计数均为 0，最终 `mergedBytes=107`；两者窗口不同，不能由零计数推断完全没有输出。成功样本版本/两次 cwd 正确，`markerLines=6`，两个失败样本未取得这些验证。
+
+两个失败样本均 `killRequested=true`、`exitObservedBeforeKill=false`、`cleanupOk=true`，说明诊断终止前实际观察到子进程仍存活；exit 1 不能据此认定脚本自行失败。成功样本为 false/true/true。所有 worker 外层均观察到退出、未请求 tree kill、本地资源释放；不覆盖未触发的外层超时清理路径。有限分类缩小了本轮失败位置，仍没有完整性能对照或根因结论。
+
+两平台 helper 与上传成功，唯一报告已通过独立 schema 2、隐私、顺序、状态/计时及清理字段核验。报告 SHA-256：2022 为 `44a94b4497cf66eb40d903ee7000407af8809fc45e8dac9a45cf291e88f131f7`；2025 为 `641f0dc20c49f243aa2f53d78ded1dece9351633cde30b038cd8b2f4acc3f41f`。下一步先预注册独立 startup-only 诊断，不执行 `Get-Location`：在原 5 秒窗口内记录 READY 脚本实际写入完成布尔值/时点，区分严格行首 READY 与嵌入完整 READY 形状；先补有限 fixture、独立审查，仅增加分类，不作为放行或延长门限，不扩大查询/环境矩阵；本轮不回填成功、不改预注册、不追加运行。
+
+本轮沿用现有 workflow 的 push 触发，已核对该准确 HEAD 只有一个 push 运行，无重复调度，不再使用旧两次推送策略或额外手动触发；每平台仍最多四个 fresh worker、正反两轮，每 worker 两查询，首失败即停止且不追加重试。两 arm 的 READY 启动脚本相同，查询差异只在 READY 后，因此不能把本轮限定 arm 的启动失败归因于限定语法或模块加载。唯一上传文件仍为内容受限 `report.json`，不保存原始终端或构建输出。ConPTY 合流仍不能证明独立 stderr 为空；旧失败、普通原生验收查询及全部门禁保持，P1/第四批未验收，P2 仅准备，main 不合并。
+
+下一轮另一个待预注册候选是模块分析缓存路径变量：Microsoft 说明 Windows PowerShell 5.1 的模块分析缓存保存模块导出命令信息，`PSModuleAnalysisCachePath` 须在 PowerShell 启动前设置；runner-images 固定源码设置该变量，脚本提示缓存预热可改善首次调用约 20 秒的等待。[Microsoft 5.1 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_5.1?view=powershell-5.1#module-analysis-cache)、[runner-images 固定提交](https://github.com/actions/runner-images/blob/416ad027415129c880fc76669a2c063b0a39b4a0/images/windows/scripts/build/Configure-PowerShell.ps1#L12-L20)。产品白名单未保留该变量、既有矩阵未单独检验；当前 runner 的实际值及缓存状态尚未核实，源码及其提示不是本轮根因证据。可另行预注册仅记录存在性布尔值、单变量加回/移除的有限对照，并与协议解析失败隔离，不在本轮临时追加样本或修改产品。

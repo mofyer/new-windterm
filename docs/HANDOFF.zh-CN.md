@@ -28,17 +28,23 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。第三批 Shell 发现/选择及缺失反馈完成实现、本机门禁与本批 CI 后，用户单独确认「合并 main」；2026-10-18 main 已从 `8823be4` 快进至 `780a10e`，并完成推送与远端读回核对。本次授权仅限第三批。
 
-第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已结束并核验的诊断为 `a8e64c7` 上的 ConPTY 限定命令运行 `39824348485`，两平台首失败停止、完整对照未完成；具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
+第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已结束并核验的诊断为 `e3827ea` 上的 ConPTY 协议分类运行 `39828696609`，两平台首失败停止、完整对照未完成；具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
 
 ### 分支
 
-最新实现分两次推送：`0940bc365849cd724041cde204d19ac9e395cb57` 为 `[skip ci]` 的独立 ConPTY 限定命令探针，`a8e64c7260d5dfc306746b9304bbd6a3404eff9c` 为新 workflow、本轮准确被测 HEAD。[主运行 39824348485](https://github.com/mofyer/new-windterm/actions/runs/39824348485) 已 `completed/failure`，两 job 失败、上传成功。本机 native 184/184、wrapper 36/36、Rust 11/11、release bins 3/3 及 Windows cfg clippy/独立审查通过；实际 Windows 两平台的 Rust 专项测试及构建均 exit 0，随后采样首失败停止。
+最新测试侧实现为 `e3827ea33545c6e8c3922295a9b3bbfc5548977d`，按[协议诊断预注册](p1/CONPTY_PROTOCOL_DIAGNOSTIC_PLAN.zh-CN.md)增加 schema 2 的固定阶段/原因、有限终端计数及清理退出时序；原解析接受规则、两 arm、时限和首失败停止不变，未修复解析器或产品。本机完整 native **189/189**、wrapper **41/41**、Rust **15/15** 通过，Windows cfg 检查与独立审查通过；这些与 Windows 实跑分开。唯一新运行 [39828696609](https://github.com/mofyer/new-windterm/actions/runs/39828696609) 已 `completed/failure`，两 job 失败、helper/上传成功，两平台 Rust 测试和构建 exit 0；报告独立 schema 2/隐私/状态核验通过。
+
+本轮 2022 首个 unqualified 完整成功，q1=28445.5897 ms、q2=0.1984 ms；随后 module-qualified 在 `await-ready` 启动超时。2025 首个 unqualified 即同阶段启动超时，限定 arm 未运行；两平台反序轮未执行，三个完成/成功字段 false。两失败均 CPR 1、version false、q/host null，查询脚本未投递；约 5.004/5.010 秒 startup 是轮询超时观测，不放宽 5 秒，不是查询 30 秒超时。2022 失败有 `embeddedMarkerLines=1/markerLines=0`，只能说被忽略行含 nonce 前缀，不能认定完整 READY 或重绘根因；2025 八计数为 0、最终合流 107 字节，窗口不同，不能称没有输出。两失败 kill true/退出前观测 false/cleanup true，exit 1 不能认定脚本自行失败。精确计时与工件 SHA-256 见 [P1 执行记录](p1/RESULTS.zh-CN.md#conpty-协议失败分类诊断工作流-39828696609)。
+
+下一步先预注册独立 startup-only 诊断，不执行目录查询，在原 5 秒窗口内记录 READY 脚本实际写入完成布尔值/时点，并区分严格行首与嵌入完整 READY 形状；先以有限 fixture 和独立审查确认分类，分类不作为放行、不延长门限；模块分析缓存路径变量可作为另一个单变量预注册候选，官方 5.1 与 runner-images 固定源码依据见上述记录，但实际 runner 值/缓存状态未知，不能称根因。本轮不追加实测、不改预注册，不替换旧普通查询或放宽门禁，P1/第四批未验收、P2 仅准备、main 不合并。以下为上一轮限定命令证据。
+
+上一轮实现分两次推送：`0940bc365849cd724041cde204d19ac9e395cb57` 为 `[skip ci]` 的独立 ConPTY 限定命令探针，`a8e64c7260d5dfc306746b9304bbd6a3404eff9c` 为新 workflow、本轮准确被测 HEAD。[主运行 39824348485](https://github.com/mofyer/new-windterm/actions/runs/39824348485) 已 `completed/failure`，两 job 失败、上传成功。本机 native 184/184、wrapper 36/36、Rust 11/11、release bins 3/3 及 Windows cfg clippy/独立审查通过；实际 Windows 两平台的 Rust 专项测试及构建均 exit 0，随后采样首失败停止。
 
 2022 首轮 unqualified 完整成功（q1=15406.5298 ms、q2=0.1818 ms），随后 module-qualified 出现 `protocol-error`，两次 q 均 null；2025 首个 unqualified 即 `command-timeout`、两次 q 均 null，限定 arm 未运行。两平台反序轮都未运行，三个完成/成功字段 false；2022 失败 arm 的约 518 ms wall 不能当成快查询，2025 约 30009.8 ms host 是超时观测而非放宽 30 秒。null 只说明没有合法完整 RESULT；exit 1 可能来自诊断清理终止，不证明脚本自行失败。ConPTY 合流不能判断独立 stderr。两报告独立 schema/隐私/顺序/状态核验通过，计时和文件指纹见 [P1 执行记录](p1/RESULTS.zh-CN.md#真实-conpty-模块限定命令对照工作流-39824348485)。
 
 调度异常保留：同一 HEAD 出现两个 push event，均非手动 dispatch。后创建的 [39824353657](https://github.com/mofyer/new-windterm/actions/runs/39824353657) 已 `completed/cancelled`，两 job 取消、上传成功；组合步骤曾启动，工件停在 `tests=null/build=null/samples=[]`、三个完成/成功字段 false 的初始报告，未完成 Rust 测试、未进入采样，`failure=null` 非通过。只采用先创建主运行的实测，不拼接两个运行，也不改[预注册方案](p1/CONPTY_QUALIFIED_PLAN.zh-CN.md)。
 
-下一步先补不留原文的有限协议阶段/原因分类、终端控制计数与是否请求终止的记录，补终端布局 fixture 并界定解析范围，再独立审查；CR/CSI 重绘处理只是代码候选，尚非本轮已证根因。先定位诊断失败，再预注册重做对照，不立即追加实验。产品仅配置 cwd，没有内置 `Get-Location`；普通查询来自原生验收场景，不能以限定命令替换旧查询掩盖慢路径。旧门禁和失败保留，P1/第四批未通过，P2 仅准备，main 不合并。
+上一轮提出的有限协议阶段/原因分类、终端控制计数与清理时序记录及 fixture 已在上述 `e3827ea` 实现并执行；CR/CSI 重绘处理只是代码候选，尚非本轮已证根因。先定位诊断失败，再预注册重做对照，不立即追加实验。产品仅配置 cwd，没有内置 `Get-Location`；普通查询来自原生验收场景，不能以限定命令替换旧查询掩盖慢路径。旧门禁和失败保留，P1/第四批未通过，P2 仅准备，main 不合并。
 
 上一轮 stdio 阶段实现为 `66e237e8f11034d5c837f7d84ca2b280dff1d9e0`，按[阶段诊断预注册方案](p1/POWERSHELL_PHASE_PLAN.zh-CN.md)增加三 arm、六进程/平台的准备与两次查询分段计时。本机 native helper 148/148、独立专项 19/19 及独立审查通过；[Windows 阶段运行 39819222771](https://github.com/mofyer/new-windterm/actions/runs/39819222771) 已 `completed/failure`，两平台 helper/上传成功，报告独立 schema/边界/隐私核验通过。每平台六样本、16 阶段完整，exit 0、身份/cwd 正确，`experimentComplete=true`、`strictPassed=false`、`stopReason=null`；无超时或清理失败，未触发终止清理不等于该路径已实测。
 
@@ -48,7 +54,7 @@ cold 首次查询约 21–29 秒；精确 `Get-Command` 准备约 21–23 秒，
 
 抑制 progress 将 stderr 从 392 字节变为空，但查询内部耗时仍约 19.5–19.8 秒（2022）和 23.1–23.5 秒（2025），削弱可见 progress 解释全部延迟的假设，未锁根因。禁用自动加载的四次 exit 2、查询耗时/cwd 为 null，不能算性能改善；直接读取内部约 5–8 ms，但首进程 wall 分别为 3.049/4.233 秒。显式进度校准包含 Utility 命令发现与可能的初始化，不是纯序列化成本。该轮仅一次 push 运行，未改白名单、旧门禁或既定协议，未重跑 Rust/八环境矩阵；该轮提出的 cmdlet 发现、模块加载与初始化阶段诊断已在上述 `66e237e` 完成预注册及实测。P1 与第四批仍未通过，P2 仅准备，main 不合并。详细计时及文件指纹见 [P1 执行记录](p1/RESULTS.zh-CN.md#固定白名单的有限因果对照工作流-39816931188)。
 
-- **集成分支 `p1/integration`**：最新核验为上述 `a8e64c7` 的 ConPTY 限定命令诊断 `39824348485`，完整对照未完成；之前 stdio 阶段诊断为 `66e237e` 的 `39819222771`，五 arm 对照为 `d2cee0e` 的 `39816931188`。最近一次旧八环境矩阵仍为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096` 的[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794)，整体失败：fixture 两平台通过，stdio 各 16/16 严格失败；旧 ConPTY 2022 为 16/16、2025 为 15/16，后者首轮产品白名单 marker timeout。后续补强 `81d109a` 不在该旧 Windows 被测提交中，新对照不重写其失败证据。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
+- **集成分支 `p1/integration`**：最新核验为上述 `e3827ea` 的 ConPTY 协议分类诊断 `39828696609`，启动失败、完整对照未完成；上一轮限定命令诊断为 `a8e64c7` 的 `39824348485`，之前 stdio 阶段诊断为 `66e237e` 的 `39819222771`，五 arm 对照为 `d2cee0e` 的 `39816931188`。最近一次旧八环境矩阵仍为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096` 的[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794)，整体失败：fixture 两平台通过，stdio 各 16/16 严格失败；旧 ConPTY 2022 为 16/16、2025 为 15/16，后者首轮产品白名单 marker timeout。后续补强 `81d109a` 不在该旧 Windows 被测提交中，新对照不重写其失败证据。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
 - **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，合并记录 `40405d7` 已审阅、提交并推送，未修改产品代码；第四批尚未合入 main。接手时用远端 refs 核对最新文档提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。

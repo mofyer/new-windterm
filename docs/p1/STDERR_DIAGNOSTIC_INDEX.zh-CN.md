@@ -70,6 +70,14 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 下一步先加有限协议阶段分类/计数，查明诊断为何失败再预注册重做；CR/CSI 重绘处理仅为待验证代码候选。产品没有内置目录查询，不能替换原生验收中的普通 `Get-Location` 掩盖慢路径。旧门禁与失败保持，P1/第四批未通过，P2 仅准备，main 不合并。
 
+## 已结束、对照未完成：ConPTY 协议诊断 `39828696609`
+
+新实现 `e3827ea33545c6e8c3922295a9b3bbfc5548977d` 已提交推送，按[新预注册](CONPTY_PROTOCOL_DIAGNOSTIC_PLAN.zh-CN.md)只增加 schema 2 固定阶段/原因、有限终端计数和清理退出时序，保留旧协议接受规则、两 arm 正反四 worker 上限、原时限与首失败停止。完整 native **189/189**、wrapper **41/41**、本机 Rust **15/15** 及 Windows cfg/独立审查通过，不等于 Windows 实跑。
+
+唯一新运行 [39828696609](https://github.com/mofyer/new-windterm/actions/runs/39828696609) 已 `completed/failure`，两 job 失败、helper/上传成功；两平台 Rust 测试与构建 exit 0。2022 首个 unqualified 完整成功（q1=28445.5897 ms、q2=0.1984 ms），随后限定 arm 在 `await-ready` 发生 `startup-timeout`；2025 首个 unqualified 即同阶段启动超时，限定 arm 未运行。两平台反序轮未执行，三个完成/成功字段 false；失败样本 q/host 为 null、version false、CPR 1，查询脚本未投递，不是本轮查询 30 秒超时。
+
+2022 失败快照 `embeddedMarkerLines=1/markerLines=0`，只证明一条被忽略行含 nonce 前缀，不证明完整 READY、输出而非回显或布局根因；2025 八项计数为 0 而最终合流 107 字节，首错计数与最终字节窗口不同，不能称无输出。两失败均 kill true、退出前观测 false、cleanup true，exit 1 不能称脚本自行失败。两报告独立 schema/隐私/状态核验通过，精确计时与 SHA-256 见 [P1 执行记录](RESULTS.zh-CN.md#conpty-协议失败分类诊断工作流-39828696609)。下一步先预注册无查询的 startup-only 诊断，在原 5 秒窗口记录 READY 实际写入完成/时点，区分行首与嵌入完整 READY 形状；先 fixture 和独立审查，分类不放行、不延长门限；模块分析缓存变量的单变量对照只是另一个待预注册候选，实际 runner 值/状态未知，官方依据见该执行记录，不作为本轮根因。原失败保留，ConPTY 合流仍不能证明 stderr 为空，P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
