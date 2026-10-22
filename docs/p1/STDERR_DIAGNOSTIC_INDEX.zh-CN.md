@@ -58,6 +58,18 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 本轮只执行一次 push 运行，不改预注册方案或旧门禁；精确计时及报告 SHA-256 见 [P1 执行记录](RESULTS.zh-CN.md#命令准备与查询阶段诊断工作流-39819222771)。下一步候选为更窄的自动发现与指定模块解析/导入对照，或真实 ConPTY 有限对照，均先预注册、不直接修改产品。P1 与第四批仍未通过，P2 仅准备，main 不合并。
 
+## 已结束、对照未完成：真实 ConPTY 限定命令 `39824348485`
+
+按[预注册方案](CONPTY_QUALIFIED_PLAN.zh-CN.md)，实现 `0940bc365849cd724041cde204d19ac9e395cb57` 先 `[skip ci]` 推送，新 workflow 单独提交为 `a8e64c7260d5dfc306746b9304bbd6a3404eff9c` 并推送，第二提交是本轮准确被测 HEAD。两次推送原计划安排一次实测，未重跑旧矩阵；额外调度及取消如下。
+
+本机 native helper 184/184、wrapper 36/36、Rust 专项 11/11、release bin 门控 3/3 及 Windows cfg clippy/独立审查通过；这些与平台实跑分开。[主运行 39824348485](https://github.com/mofyer/new-windterm/actions/runs/39824348485) 已 `completed/failure`，两 job 失败、上传成功。两平台 Rust 专项测试及构建 exit 0；2022 只取得首轮两条记录：unqualified 成功 q1=15406.5298 ms、q2=0.1818 ms，module-qualified 为 `protocol-error`、q1/q2=null，随后停止。2025 首轮 unqualified 为 `command-timeout`、q1/q2=null，限定 arm 根本未运行。两平台第二轮均未执行，三个完成/成功字段均 false，首失败停止规则生效。
+
+2022 限定 arm 的 518.1522 ms wall 是失败样本，不能称快查询；2025 的 30009.8372 ms host 是轮询超时观测，原 30 秒窗口未放宽。null 只表示没有完整合法 RESULT，不证明命令没执行；错误后清理可产生 exit 1，不能认定脚本自行失败。合流仍不能判断独立 stderr 是否为空。主运行两份报告独立 schema/隐私/顺序/状态核验通过，精确计时与文件 SHA-256 见 [P1 执行记录](RESULTS.zh-CN.md#真实-conpty-模块限定命令对照工作流-39824348485)。没有完整性能对照或根因结论。
+
+同一 HEAD 意外出现两个 push event 调度，均非手动 dispatch：后创建的 [39824353657](https://github.com/mofyer/new-windterm/actions/runs/39824353657) 已 `completed/cancelled`，两 job 取消、上传成功。其组合步骤曾启动，但两工件均为 `tests=null/build=null/samples=[]` 初始报告，三个完成/成功字段 false；按代码顺序未完成 Rust 测试、未采样，`failure=null` 不是通过。取消工件同指纹见上述执行记录，仅用于取消审计，不拼接主运行证据，不事后修改方案。
+
+下一步先加有限协议阶段分类/计数，查明诊断为何失败再预注册重做；CR/CSI 重绘处理仅为待验证代码候选。产品没有内置目录查询，不能替换原生验收中的普通 `Get-Location` 掩盖慢路径。旧门禁与失败保持，P1/第四批未通过，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：

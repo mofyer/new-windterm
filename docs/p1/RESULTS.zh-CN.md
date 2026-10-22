@@ -582,3 +582,25 @@ ConPTY Windows 2022 产品白名单首次测量为 21.53–29.46 秒，加回父
 本轮在固定条件下观察到：精确 `Get-Command` 的准备阶段承载了约 21–23 秒慢区间，后续查询为毫秒级；显式 Management 导入及其后查询则均较快且 stderr 为空。该差异支持进一步检查命令发现/自动加载路径与显式导入路径的区别，不能把准备耗时拆成纯发现、导入或初始化成本，也不能据此宣布具体模块/变量根因。两个准备 arm 的查询均已预热，机器缓存、执行顺序与负载仍未排除；不能直接将显式导入写入产品启动或据此关闭 ConPTY/WebView2 故障。
 
 两份精确 `measurements.json` 已通过独立 schema、边界及隐私核验，每平台 16 个阶段完整，未包含原文、路径、模块对象或环境值。报告文件 SHA-256：Windows 2022 为 `e889aa4b4bdfe7893abb8e8a383ddc13012aa1b4d460df808deea49e4617aff5`；Windows 2025 为 `a62cab7ff42fd3c4024e394a260bc76941e103e96f0733b4b575cb0721465373`。这是文件指纹，不是 stderr 指纹。本轮预注册条件保持，下一步候选为区分自动发现扫描与指定模块解析/导入，或增加真实 ConPTY 的有限对照；均须先预注册范围与停止条件，不直接改产品，不追加本轮样本或改判。P1 与第四批仍未通过，P2 仅准备，main 不合并。
+
+### 真实 ConPTY 模块限定命令对照（工作流 `39824348485`）
+
+本轮按[执行前预注册方案](CONPTY_QUALIFIED_PLAN.zh-CN.md)完成独立 dev-tools bin、内容受限 wrapper 与双平台 workflow。实现提交 `0940bc365849cd724041cde204d19ac9e395cb57` 以 `[skip ci]` 推送，避免 Cargo 新 bin 注册意外触发旧矩阵；再单独推送 workflow 提交 `a8e64c7260d5dfc306746b9304bbd6a3404eff9c`。本轮被测准确 HEAD 是第二提交；两个推送原计划安排一次新实验，未手动 dispatch，未改旧矩阵/产品；额外 push 调度与取消事实另记如下。
+
+本机完整 native helper **184/184**、wrapper 专项 **36/36**、Rust 专项 **11/11**、release bin 门控 **3/3** 通过，Windows cfg clippy 与独立审查通过。Windows cfg 仅为交叉编译检查，不是 Windows 实跑。主运行 [39824348485](https://github.com/mofyer/new-windterm/actions/runs/39824348485) 已 `completed/failure`，两 job 失败、上传成功；两平台新 bin 的 Rust 专项测试及构建均 exit 0，之后实测按首失败停止规则结束，未完成四样本/平台的对照。
+
+调度与原计划不同：同一 `a8e64c7` 出现两个 push event 运行，均不是手动 dispatch。保留先创建的 `39824348485` 为唯一主运行。后创建的 [39824353657](https://github.com/mofyer/new-windterm/actions/runs/39824353657) 已独立核验为 `completed/cancelled`，两 job 均取消、上传成功。其组合测试/构建/采样步骤确曾启动，不能写成步骤未启动；两份上传文件均是 wrapper 初始报告：`tests=null`、`build=null`、`samples=[]`，`experimentComplete`、`commandSuccess`、`diagnosticPassed` 均为 false，`failure=null`。结合先测试、后构建、再采样的代码顺序，只能确认未完成 Rust 测试、未进入采样；初始 `failure=null` 不代表通过。两文件 SHA-256 均为 `4e85bba9c94adf2aa6c31e085224065a8834cf2159a2728939153aa33feaa068`。不合并两个运行的任何证据，不将额外调度改写为预注册计划；下列实测与工件只取主运行。
+
+固定 PowerShell 5.1、产品白名单、默认 progress，两 arm 分别调用未限定与 `Microsoft.PowerShell.Management\Get-Location`，每进程查询两次，无导入/发现预热。启动在同一 5 秒期限内先完整 CPR/响应入队再 READY；命令总窗口 30 秒、Rust 清理 5 秒、外层 worker 45 秒，首失败即停止该平台，无重试。ConPTY 合流不能判断独立 stderr 是否为空，报告明确 `stderrObservedSeparately=false`，采集完整、命令成功、诊断检查分别记录。唯一工件为 `.artifacts/p1/powershell-conpty-qualified/report.json`，不含原始终端或编译输出；旧失败、P1 未验收与 main 未授权合并边界保持。
+
+| 平台 / 第一轮 arm | 已验证内部 q1 / q2 | startup / host / wall（ms） | 实际结果 |
+| --- | --- | --- | --- |
+| 2022 / unqualified | 15406.5298 / 0.1818 ms | 2180.8673 / 15700.7500 / 17911.3880 | complete、exit 0，版本/两次 cwd/清理正确 |
+| 2022 / module-qualified | null / null | 216.8395 / 292.2649 / 518.1522 | `protocol-error`、exit 1、cleanup true |
+| 2025 / unqualified | null / null | 2596.5489 / 30009.8372 / 32619.5311 | `command-timeout`、exit 1、cleanup true |
+
+Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮未运行；Windows 2025 在首条失败后停止，限定 arm 及第二轮均未运行。两报告的 `experimentComplete`、`commandSuccess`、`diagnosticPassed` 全为 false，`failure=sample-failed`。失败记录确认了 PowerShell 5.1 和一次 CPR 响应，但没有收到完整合法的 RESULT，cwd 标志均 false；q1/q2 为 null 不证明命令未执行。诊断错误后清理会终止子进程，Windows 终止码可能为 1，因此失败记录的 exit 1 不能直接解释为脚本自行报错退出。2022 限定 arm 的约 518 ms wall 是失败样本总耗时，不能称为快速目录查询，也不能与成功 arm 做性能对照；2025 的约 30009.8 ms host 是轮询观察到的超时，不是查询耗时，也不表示放宽原 30 秒窗口。
+
+所有已启动 worker 的外层清理均为 `termination=observed`、`treeKill=not-requested`、`localResources=released`，Rust 样本 `cleanupOk=true`；这说明本次已观察到退出与清理，不覆盖未触发的外层超时 tree-kill 路径。两份报告经过独立 schema、隐私、顺序及状态/计时一致性核验。文件 SHA-256：2022 为 `22a69f777ac8436bfbe6aac223dadc93ab6759ff96b510aa12ef94a686d7eeac`；2025 为 `a53f29fb7fbdc2e6a18fe11f2a192973e8c3422f02b10a77e9b86eeba863cc0e`。无完整对照结论，无根因归因。
+
+下一步先为协议错误增加不留原文的有限阶段分类/计数，例如固定 `expectedStage` / `protocolReason`、CR/LF/光标移动/清行计数，以及 `killRequested` / `exitObservedBeforeKill`，区分解析停止位置与诊断主动终止；先补终端布局 fixture、界定解析范围并独立审查，再预注册重做对照。只读代码检查提出 CR 被忽略、CSI 光标移动被剥除而未维护屏幕行的候选解析缺口，可能影响合法终端重绘；这是待验证的代码假设，不是本轮已证根因。本轮不追加实验、不修改预注册或放宽门禁。产品启动链本身没有内置 `Get-Location` 查询，目录通过 `CommandBuilder.cwd` 配置；普通 `(Get-Location).Path` 是原生验收场景输入的命令。不能用限定命令直接替换旧验收查询掩盖慢路径，也不能称为产品修复。保留普通查询、首次/重开、中文空格路径、版本、退出及原 30 秒断言；P1 与第四批仍未通过，P2 仅准备，main 不合并。
