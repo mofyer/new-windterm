@@ -103,9 +103,12 @@ test('hung helper and kill errors retain bounded failure and release resources',
 });
 
 const measurement = (arm = ARMS[0], overrides = {}) => ({
-  schema: 1, arm, q1Ms: 123, q2Ms: 0.2, startupMs: 44, hostMs: 124, wallMs: 170,
+  schema: 2, arm, q1Ms: 123, q2Ms: 0.2, startupMs: 44, hostMs: 124, wallMs: 170,
   versionOk: true, cwd1Ok: true, cwd2Ok: true, exitCode: 0, cprReplies: 1,
-  mergedBytes: 100, complete: true, cleanupOk: true, failure: null, ...overrides,
+  mergedBytes: 100, complete: true, cleanupOk: true, failure: null,
+  expectedStage: 'after-end', protocolReason: null,
+  terminalCounters: { cr: 3, lf: 3, csiCursor: 0, csiErase: 0, markerLines: 6, duplicateMarkers: 0, embeddedMarkerLines: 0, ignoredLines: 1 },
+  killRequested: false, exitObservedBeforeKill: true, ...overrides,
 });
 const line = value => Buffer.from(`${JSON.stringify(value)}\n`);
 const processResult = (exitCode = 0, failure = null) => ({ exitCode, failure, outputBytes: 0, cleanup: { termination: 'observed', treeKill: 'not-requested', localResources: 'released' } });
@@ -117,8 +120,83 @@ test('fixed sample schema accepts chunked JSON without retaining raw protocol', 
   assert.deepEqual(parser.finish(0), { measurement: measurement(), failure: null });
 });
 
+test('schema 2 rejects unknown diagnostic fields, enums and non-bounded counters without retaining them', () => {
+  const counters = measurement().terminalCounters;
+  const { cr: _cr, ...missingCounter } = counters;
+  for (const overrides of [
+    { expectedStage: '/private/SECRET' }, { protocolReason: '/private/SECRET' },
+    { terminalCounters: { ...counters, path: '/private/SECRET' } }, { terminalCounters: missingCounter },
+    ...[-1, 0.5, 262_145, '/private/SECRET'].map(cr => ({ terminalCounters: { ...counters, cr } })),
+    { killRequested: 'SECRET' }, { exitObservedBeforeKill: 'SECRET' },
+    { killRequested: null, exitObservedBeforeKill: true },
+    { complete: false, failure: 'exit-error', protocolReason: 'exit-error', killRequested: null, exitObservedBeforeKill: null },
+    { killRequested: false, exitObservedBeforeKill: false },
+    { killRequested: false, exitObservedBeforeKill: null },
+  ]) {
+    const parser = createSampleParser(ARMS[0]);
+    assert.equal(parser.write('stdout', line(measurement(ARMS[0], overrides))), false);
+    assert.deepEqual(parser.finish(0), { measurement: null, failure: 'protocol-error' });
+  }
+  const duplicate = JSON.stringify(measurement()).replace('"cr":3', '"cr":3,"cr":3');
+  const parser = createSampleParser(ARMS[0]);
+  assert.equal(parser.write('stdout', Buffer.from(`${duplicate}\n`)), false);
+  assert.deepEqual(parser.finish(0), { measurement: null, failure: 'protocol-error' });
+});
+
+test('first failure context survives cleanup failure and unknown kill history', () => {
+  for (const [killRequested, exitObservedBeforeKill] of [[null, null], [false, true], [true, true], [true, false], [true, null]]) {
+    const value = measurement(ARMS[0], {
+      complete: false, cleanupOk: false, failure: 'cleanup-failed', protocolReason: 'unexpected-record',
+      expectedStage: 'await-result-2', q2Ms: null, cwd2Ok: false, exitCode: null,
+      killRequested, exitObservedBeforeKill,
+      terminalCounters: { ...measurement().terminalCounters, cr: 262_144 },
+    });
+    const parser = createSampleParser(ARMS[0]);
+    assert.equal(parser.write('stdout', line(value)), 'cleanup-failed');
+    assert.deepEqual(parser.finish(null), { measurement: value, failure: null });
+  }
+});
+
+test('setup failures and cursor waits preserve supported diagnostic states', () => {
+  for (const [expectedStage, versionOk, startupMs, protocolReason] of [
+    ['not-started', false, null, 'setup-error'],
+    ['await-cursor', false, 5001, 'startup-timeout'],
+    ['await-cursor', true, 5001, 'startup-timeout'],
+    ['await-ready', false, 5001, 'startup-timeout'],
+  ]) {
+    const value = measurement(ARMS[0], {
+      complete: false, failure: protocolReason, protocolReason, expectedStage, versionOk, startupMs,
+      q1Ms: null, q2Ms: null, cwd1Ok: false, cwd2Ok: false, hostMs: null, exitCode: null,
+      killRequested: expectedStage === 'not-started' ? null : true,
+      exitObservedBeforeKill: expectedStage === 'not-started' ? null : false,
+      terminalCounters: Object.fromEntries(Object.keys(measurement().terminalCounters).map(key => [key, 0])),
+    });
+    const parser = createSampleParser(ARMS[0]);
+    assert.equal(parser.write('stdout', line(value)), true);
+    assert.deepEqual(parser.finish(1), { measurement: value, failure: null });
+  }
+});
+
+test('stage and verified query prefixes cannot contradict each other', () => {
+  for (const overrides of [
+    { expectedStage: 'not-started' }, { expectedStage: 'await-ready' },
+    { expectedStage: 'await-start-1' }, { expectedStage: 'await-result-1' },
+    { expectedStage: 'await-start-2' }, { expectedStage: 'await-result-2' },
+    { expectedStage: 'await-end', q2Ms: null, cwd2Ok: false },
+    { expectedStage: 'after-end', q1Ms: null, cwd1Ok: false, q2Ms: null, cwd2Ok: false },
+    { complete: true, expectedStage: 'await-end', failure: null, protocolReason: null },
+    { protocolReason: null },
+  ]) {
+    const parser = createSampleParser(ARMS[0]);
+    assert.equal(parser.write('stdout', line(measurement(ARMS[0], {
+      complete: false, failure: 'protocol-error', protocolReason: 'unexpected-record', ...overrides,
+    }))), false);
+    assert.equal(parser.finish(1).measurement, null);
+  }
+});
+
 for (const [name, overrides] of Object.entries({
-  extra: { path: '/private/SECRET' }, arm: { arm: 'SECRET' }, version: { schema: 2 },
+  extra: { path: '/private/SECRET' }, arm: { arm: 'SECRET' }, version: { schema: 1 },
   range: { q1Ms: 45_001 }, total: { q1Ms: 20_000, q2Ms: 20_000 },
   negative: { wallMs: -1 }, huge: { wallMs: Infinity }, integer: { cprReplies: 0.5 },
   capacity: { mergedBytes: 256 * 1024 + 4097 }, failure: { failure: 'SECRET' },
@@ -142,7 +220,7 @@ test('unknown stderr, duplicate records, missing newline and malformed bytes fai
     parser => { parser.write('stdout', line(measurement())); parser.write('stdout', line(measurement())); },
     parser => parser.write('stdout', Buffer.from(JSON.stringify(measurement()))),
     parser => parser.write('stdout', Buffer.from('{SECRET}\n')),
-    parser => parser.write('stdout', Buffer.from(JSON.stringify(measurement()).replace('"schema":1', '"schema":1,"schema":1') + '\n')),
+    parser => parser.write('stdout', Buffer.from(JSON.stringify(measurement()).replace('"schema":2', '"schema":2,"schema":2') + '\n')),
     parser => parser.write('stdout', Buffer.alloc(4097, 0xff)),
   ]) {
     const parser = createSampleParser(ARMS[0]);
@@ -154,7 +232,7 @@ test('unknown stderr, duplicate records, missing newline and malformed bytes fai
 });
 
 test('cleanup-failed record requests immediate termination while retaining verified prefix', () => {
-  const value = measurement(ARMS[0], { complete: false, cleanupOk: false, failure: 'cleanup-failed', exitCode: null });
+  const value = measurement(ARMS[0], { complete: false, cleanupOk: false, failure: 'cleanup-failed', protocolReason: 'cleanup-failed', exitCode: null });
   const parser = createSampleParser(ARMS[0]);
   assert.equal(parser.write('stdout', line(value)), 'cleanup-failed');
   assert.deepEqual(parser.finish(null), { measurement: value, failure: null });
@@ -167,7 +245,7 @@ test('exit status must agree with valid worker record', () => {
     assert.equal(parser.finish(exitCode).failure, 'exit-mismatch');
   }
   const parser = createSampleParser(ARMS[0]);
-  parser.write('stdout', line(measurement(ARMS[0], { complete: false, failure: 'command-timeout', q2Ms: null, cwd2Ok: false, exitCode: null })));
+  parser.write('stdout', line(measurement(ARMS[0], { complete: false, failure: 'command-timeout', protocolReason: 'command-timeout', expectedStage: 'await-result-2', q2Ms: null, cwd2Ok: false, exitCode: null })));
   assert.equal(parser.finish(1).failure, null);
 });
 
@@ -216,8 +294,25 @@ test('tests and build precede four exact fresh workers in forward/reverse order'
   assert.equal(report.commandSuccess, true);
   assert.equal(report.diagnosticPassed, true);
   assert.equal(report.stderrObservedSeparately, false);
+  assert.equal(report.version, 2);
   assert.equal(snapshots[0].samples.length, 0);
   assert.equal(snapshots.at(-1).samples.length, 4);
+});
+
+test('historical schema 1 cannot start another worker or enter a schema 2 report', async () => {
+  let calls = 0;
+  const report = await runDiagnostic({ execute: async (_command, args, options) => {
+    calls++;
+    if (calls <= 2) return processResult();
+    assert.equal(options.consume('stdout', line(measurement(args[1], { schema: 1 }))), false);
+    return processResult(1, 'protocol-error');
+  } });
+  assert.equal(calls, 3);
+  assert.equal(report.version, 2);
+  assert.equal(report.failure, 'protocol-error');
+  assert.equal(report.samples.length, 1);
+  assert.equal(report.samples[0].measurement, null);
+  assert.equal(report.experimentComplete, false);
 });
 
 test('failing Rust unit tests prevent build and experiment', async () => {
@@ -243,7 +338,7 @@ test('first failed worker stops platform while retaining earlier successful samp
     calls++;
     if (calls <= 2) return processResult();
     const failed = calls === 4;
-    options.consume('stdout', line(measurement(args[1], failed ? { complete: false, failure: 'command-timeout', q2Ms: null, cwd2Ok: false, exitCode: null } : {})));
+    options.consume('stdout', line(measurement(args[1], failed ? { complete: false, failure: 'command-timeout', protocolReason: 'command-timeout', expectedStage: 'await-result-2', q2Ms: null, cwd2Ok: false, exitCode: null } : {})));
     return processResult(failed ? 1 : 0, failed ? 'process-exit' : null);
   } });
   assert.equal(calls, 4);
@@ -257,7 +352,7 @@ test('cleanup-failed worker preserves classification and no next worker starts',
   let calls = 0;
   const report = await runDiagnostic({ execute: async (_command, args, options) => {
     if (++calls <= 2) return processResult();
-    assert.equal(options.consume('stdout', line(measurement(args[1], { complete: false, cleanupOk: false, failure: 'cleanup-failed' }))), 'cleanup-failed');
+    assert.equal(options.consume('stdout', line(measurement(args[1], { complete: false, cleanupOk: false, failure: 'cleanup-failed', protocolReason: 'cleanup-failed' }))), 'cleanup-failed');
     return processResult(null, 'cleanup-failed');
   } });
   assert.equal(calls, 3);

@@ -12,7 +12,10 @@ export const ARMS = Object.freeze(['unqualified', 'module-qualified']);
 export const SAMPLE_TIMEOUT_MS = 45_000;
 const BIN = 'powershell_conpty_qualified_probe';
 const FAILURES = new Set(['setup-error', 'startup-timeout', 'command-timeout', 'output-limit', 'protocol-error', 'read-error', 'write-error', 'command-error', 'cwd-mismatch', 'exit-error', 'cleanup-failed']);
-const SAMPLE_KEYS = ['schema', 'arm', 'q1Ms', 'q2Ms', 'startupMs', 'hostMs', 'wallMs', 'versionOk', 'cwd1Ok', 'cwd2Ok', 'exitCode', 'cprReplies', 'mergedBytes', 'complete', 'cleanupOk', 'failure'];
+const STAGES = new Set(['not-started', 'await-cursor', 'await-ready', 'await-start-1', 'await-result-1', 'await-start-2', 'await-result-2', 'await-end', 'after-end']);
+const REASONS = new Set(['setup-error', 'startup-timeout', 'command-timeout', 'output-limit', 'line-limit', 'escape-limit', 'invalid-utf8', 'unexpected-record', 'invalid-version', 'invalid-number', 'timing-bound', 'cwd-mismatch', 'command-error', 'incomplete-marker', 'eof-before-complete', 'read-error', 'write-error', 'exit-error', 'cleanup-failed', 'late-cpr']);
+const COUNTER_KEYS = ['cr', 'lf', 'csiCursor', 'csiErase', 'markerLines', 'duplicateMarkers', 'embeddedMarkerLines', 'ignoredLines'];
+const SAMPLE_KEYS = ['schema', 'arm', 'q1Ms', 'q2Ms', 'startupMs', 'hostMs', 'wallMs', 'versionOk', 'cwd1Ok', 'cwd2Ok', 'exitCode', 'cprReplies', 'mergedBytes', 'complete', 'cleanupOk', 'failure', 'expectedStage', 'protocolReason', 'terminalCounters', 'killRequested', 'exitObservedBeforeKill'];
 
 export function createSampleParser(arm) {
   if (!ARMS.includes(arm)) throw new Error('Invalid qualified arm');
@@ -27,9 +30,18 @@ export function createSampleParser(arm) {
     const keys = [...line.matchAll(/"([^"\\]*)"\s*:/g)].map(match => match[1]);
     if (!value || Array.isArray(value) || typeof value !== 'object'
       || Object.keys(value).length !== SAMPLE_KEYS.length || SAMPLE_KEYS.some(key => !Object.hasOwn(value, key))
-      || keys.length !== SAMPLE_KEYS.length || new Set(keys).size !== SAMPLE_KEYS.length
-      || value.schema !== 1 || value.arm !== arm) return reject();
+      || keys.length !== SAMPLE_KEYS.length + COUNTER_KEYS.length || new Set(keys).size !== keys.length
+      || value.schema !== 2 || value.arm !== arm) return reject();
     const number = (input, max) => typeof input === 'number' && Number.isFinite(input) && input >= 0 && input <= max;
+    if (!STAGES.has(value.expectedStage) || (value.protocolReason !== null && !REASONS.has(value.protocolReason))) return reject();
+    const counters = value.terminalCounters;
+    if (!counters || Array.isArray(counters) || typeof counters !== 'object'
+      || Object.keys(counters).length !== COUNTER_KEYS.length
+      || COUNTER_KEYS.some(key => !Object.hasOwn(counters, key) || !Number.isInteger(counters[key]) || !number(counters[key], 262_144))) return reject();
+    if (['killRequested', 'exitObservedBeforeKill'].some(key => value[key] !== null && typeof value[key] !== 'boolean')) return reject();
+    if ((value.killRequested === null && value.exitObservedBeforeKill !== null)
+      || (value.killRequested === false && value.exitObservedBeforeKill !== true)) return reject();
+    if (value.killRequested === null && value.expectedStage !== 'not-started' && value.cleanupOk !== false) return reject();
     for (const key of ['q1Ms', 'q2Ms', 'startupMs', 'hostMs']) {
       if (value[key] !== null && !number(value[key], SAMPLE_TIMEOUT_MS)) return reject();
     }
@@ -39,6 +51,7 @@ export function createSampleParser(arm) {
       || (value.exitCode !== null && (!Number.isInteger(value.exitCode) || !number(value.exitCode, 0xffffffff)))) return reject();
     if (['versionOk', 'cwd1Ok', 'cwd2Ok', 'complete', 'cleanupOk'].some(key => typeof value[key] !== 'boolean')) return reject();
     if (value.failure !== null && !FAILURES.has(value.failure)) return reject();
+    if ((value.failure === null) !== (value.protocolReason === null)) return reject();
     if (!value.cleanupOk && value.failure !== 'cleanup-failed') return reject();
     if ((value.q1Ms !== null) !== value.cwd1Ok || (value.q2Ms !== null) !== value.cwd2Ok) return reject();
     if ((value.q1Ms !== null && (!value.versionOk || value.hostMs === null))
@@ -46,11 +59,24 @@ export function createSampleParser(arm) {
       || (value.hostMs !== null && (!value.versionOk || value.startupMs === null))) return reject();
     if ((value.q1Ms !== null && value.q1Ms > 30_000) || (value.q2Ms !== null && value.q2Ms > 30_000)) return reject();
     if (value.q1Ms !== null && value.q2Ms !== null && value.q1Ms + value.q2Ms > 30_000) return reject();
+    if (value.expectedStage === 'not-started' && (value.versionOk || value.q1Ms !== null || value.q2Ms !== null
+      || value.killRequested !== null || value.exitObservedBeforeKill !== null
+      || value.protocolReason !== 'setup-error' || COUNTER_KEYS.some(key => counters[key] !== 0))) return reject();
+    // await-cursor is a host-side state: the unchanged parser can already have
+    // seen READY in a chunk before a complete CPR request is observed.
+    if (value.expectedStage === 'await-ready' && (value.versionOk || value.q1Ms !== null || value.q2Ms !== null)) return reject();
+    if (['await-start-1', 'await-result-1'].includes(value.expectedStage)
+      && (!value.versionOk || value.q1Ms !== null || value.q2Ms !== null)) return reject();
+    if (['await-start-2', 'await-result-2'].includes(value.expectedStage)
+      && (value.q1Ms === null || value.q2Ms !== null)) return reject();
+    if (['await-end', 'after-end'].includes(value.expectedStage) && (value.q1Ms === null || value.q2Ms === null)) return reject();
     if (value.complete && (!value.versionOk || !value.cwd1Ok || !value.cwd2Ok || !value.cleanupOk || value.failure !== null
       || value.q1Ms === null || value.q2Ms === null || value.startupMs === null || value.hostMs === null
+      || value.expectedStage !== 'after-end' || value.killRequested === null
       || value.startupMs > 5000 || value.hostMs > 30_000 || value.mergedBytes > 256 * 1024)) return reject();
     if (value.failure === null && (!value.complete || !value.cleanupOk || value.exitCode !== 0)) return reject();
-    measurement = Object.fromEntries(SAMPLE_KEYS.map(key => [key, value[key]]));
+    measurement = Object.fromEntries(SAMPLE_KEYS.map(key => [key, key === 'terminalCounters'
+      ? Object.fromEntries(COUNTER_KEYS.map(counter => [counter, counters[counter]])) : value[key]]));
     return value.cleanupOk ? true : 'cleanup-failed';
   };
   return {
@@ -170,7 +196,7 @@ const healthy = process => process.failure === null && process.exitCode === 0
 
 export async function runDiagnostic({ execute = runProcess, timeoutMs = TIMEOUT_MS, onUpdate = async () => {} } = {}) {
   const report = {
-    version: 1, environment: 'product-whitelist', outputMode: 'conpty-merged', stderrObservedSeparately: false,
+    version: 2, environment: 'product-whitelist', outputMode: 'conpty-merged', stderrObservedSeparately: false,
     limitation: 'Bounded interactive ConPTY comparison; diagnostic success is not product acceptance or proof of empty stderr',
     experimentComplete: false, commandSuccess: false, diagnosticPassed: false,
     status: 'fail', failure: null, tests: null, build: null, samples: [],

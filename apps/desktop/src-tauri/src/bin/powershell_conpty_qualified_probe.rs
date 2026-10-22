@@ -25,6 +25,86 @@ mod tests {
         assert!(parser.ended);
         assert!(parser.version_ok);
         assert_eq!(parser.queries, [Some(12.5), Some(0.25)]);
+        let diagnostic = parser.diagnostic();
+        assert_eq!(diagnostic.stage, "after-end");
+        assert_eq!(diagnostic.reason, None);
+        assert_eq!(diagnostic.counters.cr, 6);
+        assert_eq!(diagnostic.counters.marker_lines, 6);
+    }
+    // These are synthetic terminal streams, not captured Windows evidence.
+    #[test]
+    fn synthetic_cursor_and_erase_fixtures_preserve_rejection_rules() {
+        let p = format!("P1Q_{NONCE}|");
+        for (tail, stage, cursor, erase, embedded) in [
+            (
+                format!("{p}START|1\x1b[2;1H{p}RESULT|1|1|true\n"),
+                "await-start-1",
+                1,
+                0,
+                0,
+            ),
+            (
+                format!("PS>\r\x1b[2K{p}START|1\n{p}RESULT|1|1|true\n"),
+                "await-start-1",
+                0,
+                1,
+                1,
+            ),
+        ] {
+            let mut parser = Parser::new(NONCE);
+            parser
+                .push(format!("{p}READY|5.1.1.1\n").as_bytes())
+                .unwrap();
+            assert_eq!(parser.push(tail.as_bytes()), Err("protocol-error"));
+            let d = parser.diagnostic();
+            assert_eq!(d.stage, stage);
+            assert_eq!(d.reason, Some("unexpected-record"));
+            assert_eq!(d.counters.csi_cursor, cursor);
+            assert_eq!(d.counters.csi_erase, erase);
+            assert_eq!(d.counters.embedded_marker_lines, embedded);
+        }
+    }
+    #[test]
+    fn duplicate_redraw_and_cleanup_preserve_first_failure_snapshot() {
+        let p = format!("P1Q_{NONCE}|");
+        let mut parser = Parser::new(NONCE);
+        parser
+            .push(format!("{p}READY|5.1.1.1\n{p}START|1\n").as_bytes())
+            .unwrap();
+        assert_eq!(
+            parser.push(format!("{p}START|1\n").as_bytes()),
+            Err("protocol-error")
+        );
+        let first = parser.diagnostic();
+        assert_eq!(first.stage, "await-result-1");
+        assert_eq!(first.counters.duplicate_markers, 1);
+        let _ = parser.push(b"\r\n\x1b[2J");
+        parser.record_failure("cleanup-failed");
+        assert_eq!(parser.diagnostic(), first);
+    }
+    #[test]
+    fn timeout_context_and_counter_saturation_are_fixed() {
+        let mut parser = Parser::new(NONCE);
+        parser.await_cursor = true;
+        parser.record_failure("startup-timeout");
+        assert_eq!(parser.diagnostic().stage, "await-cursor");
+        assert_eq!(parser.diagnostic().reason, Some("startup-timeout"));
+        let mut parser = Parser::new(NONCE);
+        parser.push(&vec![b'\r'; COUNTER_LIMIT + 1]).unwrap();
+        assert_eq!(parser.diagnostic().counters.cr, COUNTER_LIMIT);
+    }
+    #[test]
+    fn split_synthetic_control_sequences_have_identical_diagnostics() {
+        let input = format!("\x1b[4;1H\x1b[2K{}", lines());
+        let mut whole = Parser::new(NONCE);
+        whole.push(input.as_bytes()).unwrap();
+        for cut in 0..=input.len() {
+            let mut split = Parser::new(NONCE);
+            split.push(&input.as_bytes()[..cut]).unwrap();
+            split.push(&input.as_bytes()[cut..]).unwrap();
+            assert_eq!(split.diagnostic(), whole.diagnostic());
+            assert!(split.ended);
+        }
     }
     #[test]
     fn marker_must_be_unique_complete_independent_line() {
@@ -157,6 +237,12 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
         assert_eq!(value["arm"], "module-qualified");
         assert_eq!(value["cleanupOk"], false);
+        assert_eq!(value["schema"], 2);
+        assert_eq!(value["expectedStage"], "not-started");
+        assert_eq!(value["protocolReason"], "setup-error");
+        assert!(value["killRequested"].is_null());
+        assert!(value["exitObservedBeforeKill"].is_null());
+        assert_eq!(value["terminalCounters"].as_object().unwrap().len(), 8);
         assert!(!report.json().contains("private"));
     }
     #[test]
@@ -205,6 +291,34 @@ mod probe {
     use std::time::{Duration, Instant};
 
     pub const OUTPUT_LIMIT: usize = 256 * 1024;
+    pub const COUNTER_LIMIT: usize = 262_144;
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct TerminalCounters {
+        pub cr: usize,
+        pub lf: usize,
+        pub csi_cursor: usize,
+        pub csi_erase: usize,
+        pub marker_lines: usize,
+        pub duplicate_markers: usize,
+        pub embedded_marker_lines: usize,
+        pub ignored_lines: usize,
+    }
+    fn increment(counter: &mut usize) {
+        *counter = (*counter + 1).min(COUNTER_LIMIT);
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Diagnostic {
+        pub stage: &'static str,
+        pub reason: Option<&'static str>,
+        pub counters: TerminalCounters,
+    }
+    impl Diagnostic {
+        pub fn record_failure(&mut self, reason: &'static str) {
+            if self.reason.is_none() {
+                self.reason = Some(reason);
+            }
+        }
+    }
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Arm {
         Unqualified,
@@ -234,6 +348,9 @@ mod probe {
         pub complete: bool,
         pub cleanup_ok: bool,
         pub failure: Option<&'static str>,
+        pub diagnostic: Diagnostic,
+        pub kill_requested: Option<bool>,
+        pub exit_observed_before_kill: Option<bool>,
     }
     impl Report {
         pub fn new(arm: Arm) -> Self {
@@ -253,6 +370,13 @@ mod probe {
                 complete: false,
                 cleanup_ok: false,
                 failure: Some("setup-error"),
+                diagnostic: Diagnostic {
+                    stage: "not-started",
+                    reason: Some("setup-error"),
+                    counters: TerminalCounters::default(),
+                },
+                kill_requested: None,
+                exit_observed_before_kill: None,
             }
         }
         pub fn json(&self) -> String {
@@ -261,7 +385,9 @@ mod probe {
                     .filter(|n| n.is_finite() && *n >= 0.0)
                     .map_or_else(|| "null".to_owned(), |n| n.to_string())
             };
-            format!("{{\"schema\":1,\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{}}}", self.arm.name(), number(self.q1), number(self.q2), number(self.startup), number(self.host), number(Some(self.wall)), self.version_ok, self.cwd1_ok, self.cwd2_ok, self.exit_code.map_or_else(|| "null".to_owned(), |n| n.to_string()), self.cpr, self.bytes, self.complete, self.cleanup_ok, self.failure.map_or_else(|| "null".to_owned(), |s| format!("\"{s}\"")))
+            let c = self.diagnostic.counters;
+            let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
+            format!("{{\"schema\":2,\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"terminalCounters\":{{\"cr\":{},\"lf\":{},\"csiCursor\":{},\"csiErase\":{},\"markerLines\":{},\"duplicateMarkers\":{},\"embeddedMarkerLines\":{},\"ignoredLines\":{}}},\"killRequested\":{},\"exitObservedBeforeKill\":{}}}", self.arm.name(), number(self.q1), number(self.q2), number(self.startup), number(self.host), number(Some(self.wall)), self.version_ok, self.cwd1_ok, self.cwd2_ok, self.exit_code.map_or_else(|| "null".to_owned(), |n| n.to_string()), self.cpr, self.bytes, self.complete, self.cleanup_ok, self.failure.map_or_else(|| "null".to_owned(), |s| format!("\"{s}\"")), self.diagnostic.stage, self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s| format!("\"{s}\"")), c.cr,c.lf,c.csi_cursor,c.csi_erase,c.marker_lines,c.duplicate_markers,c.embedded_marker_lines,c.ignored_lines,boolean(self.kill_requested),boolean(self.exit_observed_before_kill))
         }
     }
     enum Escape {
@@ -279,6 +405,10 @@ mod probe {
         pub version_ok: bool,
         pub queries: [Option<f64>; 2],
         pub ended: bool,
+        pub await_cursor: bool,
+        counters: TerminalCounters,
+        seen_markers: u8,
+        first_failure: Option<Diagnostic>,
     }
     impl Parser {
         pub fn new(nonce: &str) -> Self {
@@ -290,11 +420,55 @@ mod probe {
                 version_ok: false,
                 queries: [None, None],
                 ended: false,
+                await_cursor: false,
+                counters: TerminalCounters::default(),
+                seen_markers: 0,
+                first_failure: None,
             }
+        }
+        pub fn diagnostic(&self) -> Diagnostic {
+            self.first_failure.unwrap_or(Diagnostic {
+                stage: if self.await_cursor {
+                    "await-cursor"
+                } else {
+                    match self.step {
+                        0 => "await-ready",
+                        1 => "await-start-1",
+                        2 => "await-result-1",
+                        3 => "await-start-2",
+                        4 => "await-result-2",
+                        5 => "await-end",
+                        _ => "after-end",
+                    }
+                },
+                reason: None,
+                counters: self.counters,
+            })
+        }
+        pub fn record_failure(&mut self, reason: &'static str) {
+            if self.first_failure.is_none() {
+                let mut diagnostic = self.diagnostic();
+                diagnostic.record_failure(reason);
+                self.first_failure = Some(diagnostic);
+            }
+        }
+        fn fail<T>(
+            &mut self,
+            reason: &'static str,
+            failure: &'static str,
+        ) -> Result<T, &'static str> {
+            self.record_failure(reason);
+            Err(failure)
         }
         pub fn push(&mut self, bytes: &[u8]) -> Result<usize, &'static str> {
             let mut cpr = 0;
             for &byte in bytes {
+                if byte == b'\r' {
+                    increment(&mut self.counters.cr);
+                }
+                if byte == b'\n' {
+                    increment(&mut self.counters.lf);
+                }
                 match &mut self.escape {
                     Escape::Text => match byte {
                         0x1b => self.escape = Escape::Esc,
@@ -305,7 +479,7 @@ mod probe {
                         }
                         _ => {
                             if self.line.len() >= 16_384 {
-                                return Err("output-limit");
+                                return self.fail("line-limit", "output-limit");
                             }
                             self.line.push(byte);
                         }
@@ -319,13 +493,19 @@ mod probe {
                     }
                     Escape::Csi(sequence) => {
                         if (0x40..=0x7e).contains(&byte) {
+                            if b"ABCDEFGHfade`".contains(&byte) {
+                                increment(&mut self.counters.csi_cursor);
+                            }
+                            if matches!(byte, b'J' | b'K') {
+                                increment(&mut self.counters.csi_erase);
+                            }
                             if byte == b'n' && sequence == b"6" {
                                 cpr += 1;
                             }
                             self.escape = Escape::Text;
                         } else {
                             if sequence.len() >= 64 {
-                                return Err("protocol-error");
+                                return self.fail("escape-limit", "protocol-error");
                             }
                             sequence.push(byte);
                         }
@@ -348,28 +528,55 @@ mod probe {
             }
             Ok(cpr)
         }
-        pub fn finish(&self) -> Result<(), &'static str> {
+        pub fn finish(&mut self) -> Result<(), &'static str> {
             if !self.line.is_empty()
                 && (self.line.starts_with(self.prefix.as_bytes())
                     || self.prefix.as_bytes().starts_with(&self.line))
             {
-                return Err("protocol-error");
+                return self.fail("incomplete-marker", "protocol-error");
             }
             Ok(())
         }
         fn consume_line(&mut self) -> Result<(), &'static str> {
             if !self.line.starts_with(self.prefix.as_bytes()) {
+                if !self.line.is_empty() {
+                    increment(&mut self.counters.ignored_lines);
+                }
+                if self
+                    .line
+                    .windows(self.prefix.len())
+                    .any(|w| w == self.prefix.as_bytes())
+                {
+                    increment(&mut self.counters.embedded_marker_lines);
+                }
                 return Ok(());
             }
-            let line = std::str::from_utf8(&self.line).map_err(|_| "protocol-error")?;
+            increment(&mut self.counters.marker_lines);
+            let Ok(line) = std::str::from_utf8(&self.line) else {
+                return self.fail("invalid-utf8", "protocol-error");
+            };
             let fields: Vec<_> = line[self.prefix.len()..].split('|').collect();
+            let marker = match fields.as_slice() {
+                ["READY", ..] => 1,
+                ["START", "1", ..] => 2,
+                ["RESULT", "1", ..] => 4,
+                ["START", "2", ..] => 8,
+                ["RESULT", "2", ..] => 16,
+                ["END", ..] => 32,
+                ["ERROR", ..] => 64,
+                _ => 0,
+            };
+            if marker != 0 && self.seen_markers & marker != 0 {
+                increment(&mut self.counters.duplicate_markers);
+            }
+            self.seen_markers |= marker;
             if fields == ["ERROR"] {
-                return Err("command-error");
+                return self.fail("command-error", "command-error");
             }
             match self.step {
                 0 => {
                     if fields.len() != 2 || fields[0] != "READY" {
-                        return Err("protocol-error");
+                        return self.fail("unexpected-record", "protocol-error");
                     }
                     let version: Vec<_> = fields[1].split('.').collect();
                     if version.len() != 4
@@ -379,14 +586,14 @@ mod probe {
                             s.is_empty() || s.len() > 10 || !s.bytes().all(|b| b.is_ascii_digit())
                         })
                     {
-                        return Err("protocol-error");
+                        return self.fail("invalid-version", "protocol-error");
                     }
                     self.version_ok = true;
                 }
                 1 | 3 => {
                     let expected = if self.step == 1 { "1" } else { "2" };
                     if fields != ["START", expected] {
-                        return Err("protocol-error");
+                        return self.fail("unexpected-record", "protocol-error");
                     }
                 }
                 2 | 4 => {
@@ -395,32 +602,34 @@ mod probe {
                         || fields[0] != "RESULT"
                         || fields[1] != if index == 0 { "1" } else { "2" }
                     {
-                        return Err("protocol-error");
+                        return self.fail("unexpected-record", "protocol-error");
                     }
                     if fields[3] != "true" {
-                        return Err("cwd-mismatch");
+                        return self.fail("cwd-mismatch", "cwd-mismatch");
                     }
                     if !fields[2].as_bytes().first().is_some_and(u8::is_ascii_digit) {
-                        return Err("protocol-error");
+                        return self.fail("invalid-number", "protocol-error");
                     }
-                    let elapsed: f64 = fields[2].parse().map_err(|_| "protocol-error")?;
+                    let Ok(elapsed) = fields[2].parse::<f64>() else {
+                        return self.fail("invalid-number", "protocol-error");
+                    };
                     if !elapsed.is_finite()
                         || elapsed < 0.0
                         || elapsed + self.queries[0].unwrap_or(0.0) > 30_000.0
                     {
-                        return Err("protocol-error");
+                        return self.fail("timing-bound", "protocol-error");
                     }
                     self.queries[index] = Some(elapsed);
                 }
                 5 => {
                     if fields != ["END"] {
-                        return Err("protocol-error");
+                        return self.fail("unexpected-record", "protocol-error");
                     }
                     self.ended = true;
                 }
                 _ => {
                     self.ended = false;
-                    return Err("protocol-error");
+                    return self.fail("unexpected-record", "protocol-error");
                 }
             }
             self.step += 1;
@@ -598,7 +807,8 @@ mod windows_worker {
         } else {
             "startup-timeout"
         };
-        loop {
+        parser.await_cursor = matches!(until, Until::Cursor);
+        let result = (|| loop {
             report.bytes = io.bytes.load(Ordering::Relaxed);
             if report.bytes > OUTPUT_LIMIT {
                 return Err("output-limit");
@@ -621,6 +831,7 @@ mod windows_worker {
                             .map_err(|_| "write-error")?;
                         report.cpr += 1;
                         if report.cpr > 65_536 {
+                            parser.record_failure("late-cpr");
                             return Err("protocol-error");
                         }
                     }
@@ -637,11 +848,30 @@ mod windows_worker {
                     }
                 }
                 Ok(Event::Error) => return Err("read-error"),
-                Ok(Event::Eof) => return Err("protocol-error"),
+                Ok(Event::Eof) => {
+                    parser.record_failure("eof-before-complete");
+                    return Err("protocol-error");
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => return Err("read-error"),
             }
+        })();
+        if let Err(reason) = result {
+            parser.record_failure(reason);
         }
+        if matches!(until, Until::Cursor) && result.is_ok() {
+            parser.await_cursor = false;
+        }
+        result
+    }
+    struct CleanupOutcome {
+        confirmed: bool,
+        exit: Option<u32>,
+        failure: Option<&'static str>,
+        bytes: usize,
+        diagnostic: Diagnostic,
+        kill_requested: Option<bool>,
+        exit_before_kill: Option<bool>,
     }
     fn cleanup(
         mut child: Box<dyn Child + Send + Sync>,
@@ -649,8 +879,10 @@ mod windows_worker {
         io: Io,
         failed: bool,
         mut parser: Parser,
-    ) -> (bool, Option<u32>, Option<&'static str>, usize) {
+    ) -> CleanupOutcome {
         let final_bytes = io.bytes.clone();
+        let mut fallback_diagnostic = parser.diagnostic();
+        fallback_diagnostic.record_failure("cleanup-failed");
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_millis(4500);
@@ -662,9 +894,17 @@ mod windows_worker {
                     .ok()
                     .flatten()
             };
+            let mut kill_requested = false;
+            let exit_before_kill = if exit.is_some() {
+                Some(true)
+            } else {
+                // Observe without changing the existing failed-sample kill policy.
+                child.try_wait().ok().map(|status| status.is_some())
+            };
             if exit.is_none() {
                 // portable-pty's return value is not termination evidence.
                 // Only the subsequent try_wait observation can confirm exit.
+                kill_requested = true;
                 let _ = child.kill();
                 exit = poll_exit(child.as_mut(), Duration::from_secs(2))
                     .ok()
@@ -690,6 +930,7 @@ mod windows_worker {
                         Event::Data(bytes) => match parser.push(&bytes) {
                             Ok(0) => {}
                             Ok(_) => {
+                                parser.record_failure("late-cpr");
                                 tail_failure.get_or_insert("protocol-error");
                             }
                             Err(reason) => {
@@ -697,6 +938,7 @@ mod windows_worker {
                             }
                         },
                         Event::Error => {
+                            parser.record_failure("read-error");
                             tail_failure.get_or_insert("read-error");
                         }
                         Event::Eof => {}
@@ -719,29 +961,45 @@ mod windows_worker {
             }
             let bytes = io.bytes.load(Ordering::Relaxed);
             if bytes > OUTPUT_LIMIT {
+                parser.record_failure("output-limit");
                 tail_failure.get_or_insert("output-limit");
             }
             if io.read_failed.load(Ordering::Relaxed) {
+                parser.record_failure("read-error");
                 tail_failure.get_or_insert("read-error");
             }
             if io.write_failed.load(Ordering::Relaxed) {
+                parser.record_failure("write-error");
                 tail_failure.get_or_insert("write-error");
             }
             // The supervising sample may already have reached its deadline.
             // One late fixed notification may be discarded safely.
-            let _ = tx.send((
-                cleanup_confirmed(exit.is_some(), reader, writer, master_closed),
+            let confirmed = cleanup_confirmed(exit.is_some(), reader, writer, master_closed);
+            if !confirmed {
+                parser.record_failure("cleanup-failed");
+            } else if exit != Some(0) {
+                parser.record_failure("exit-error");
+            }
+            let _ = tx.send(CleanupOutcome {
+                confirmed,
                 exit,
-                tail_failure,
+                failure: tail_failure,
                 bytes,
-            ));
+                diagnostic: parser.diagnostic(),
+                kill_requested: Some(kill_requested),
+                exit_before_kill,
+            });
         });
-        rx.recv_timeout(Duration::from_secs(5)).unwrap_or((
-            false,
-            None,
-            Some("cleanup-failed"),
-            final_bytes.load(Ordering::Relaxed),
-        ))
+        rx.recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| CleanupOutcome {
+                confirmed: false,
+                exit: None,
+                failure: Some("cleanup-failed"),
+                bytes: final_bytes.load(Ordering::Relaxed),
+                diagnostic: fallback_diagnostic,
+                kill_requested: None,
+                exit_before_kill: None,
+            })
     }
     fn environment() -> Result<(BTreeMap<OsString, OsString>, PathBuf), &'static str> {
         let source: BTreeMap<_, _> = env::vars_os().collect();
@@ -862,21 +1120,26 @@ mod windows_worker {
         report.cwd2_ok = report.q2.is_some();
         report.bytes = io.bytes.load(Ordering::Relaxed);
         report.failure = outcome.err();
-        let ended = parser.ended;
-        let (confirmed, exit, tail_failure, final_bytes) =
-            cleanup(child, master, io, report.failure.is_some(), parser);
-        report.bytes = final_bytes;
-        if report.failure.is_none() {
-            report.failure = tail_failure;
+        if let Some(reason) = report.failure {
+            parser.record_failure(reason);
         }
-        report.cleanup_ok = confirmed;
-        report.exit_code = exit;
-        if !confirmed {
+        let ended = parser.ended;
+        let cleaned = cleanup(child, master, io, report.failure.is_some(), parser);
+        report.bytes = cleaned.bytes;
+        report.diagnostic = cleaned.diagnostic;
+        report.kill_requested = cleaned.kill_requested;
+        report.exit_observed_before_kill = cleaned.exit_before_kill;
+        if report.failure.is_none() {
+            report.failure = cleaned.failure;
+        }
+        report.cleanup_ok = cleaned.confirmed;
+        report.exit_code = cleaned.exit;
+        if !cleaned.confirmed {
             report.failure = Some("cleanup-failed");
-        } else if exit != Some(0) {
+        } else if cleaned.exit != Some(0) {
             report.failure.get_or_insert("exit-error");
         }
-        report.complete = ended && report.failure.is_none() && confirmed;
+        report.complete = ended && report.failure.is_none() && cleaned.confirmed;
         report.wall = started.elapsed().as_secs_f64() * 1000.0;
         report
     }
@@ -920,6 +1183,8 @@ mod windows_worker {
                 receive(&io, &mut parser, &mut report, Instant::now(), Until::Ready),
                 Err("startup-timeout")
             );
+            assert_eq!(parser.diagnostic().stage, "await-ready");
+            assert_eq!(parser.diagnostic().reason, Some("startup-timeout"));
         }
         #[test]
         fn incomplete_cursor_request_never_enqueues_shell_input() {
@@ -938,6 +1203,8 @@ mod windows_worker {
                 Err("startup-timeout")
             );
             assert!(commands.try_recv().is_err());
+            assert_eq!(parser.diagnostic().stage, "await-cursor");
+            assert_eq!(parser.diagnostic().reason, Some("startup-timeout"));
             assert_eq!(report.cpr, 0);
         }
     }
@@ -978,6 +1245,7 @@ fn main() {
     };
     if report.cleanup_ok && std::fs::remove_dir(&directory).is_err() {
         report.failure = Some("setup-error");
+        report.diagnostic.record_failure("setup-error");
         report.complete = false;
     }
     let output_ok = {
