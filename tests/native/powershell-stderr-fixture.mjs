@@ -17,8 +17,11 @@ export const STDERR_CASES = Object.freeze({
 });
 
 export const EXPECTED = Object.freeze({
-  warning: { classification: 'powershell-stream', exitCode: 0 },
-  error: { classification: 'powershell-error', exitCode: 0 },
+  // Windows PowerShell 5.1 emits host-wrapped warning/error records for these
+  // commands. The wrapper is deliberately retained as unknown evidence until
+  // its structure is separately decoded; this fixture must not bless it.
+  warning: { classification: 'unknown', exitCode: 0 },
+  error: { classification: 'unknown', exitCode: 1 },
   empty: { classification: 'empty', exitCode: 0 },
   unknown: { classification: 'unknown', exitCode: 0 },
 });
