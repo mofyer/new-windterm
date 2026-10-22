@@ -443,6 +443,16 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 同一复测的直接 ConPTY job：Windows 2022 为 8/8 成功；Windows 2025 为 6/8 成功，首轮白名单与加回父 `PSModulePath` 各有一次 30 秒 marker timeout，反向轮仍取得约 22.95–23.84 秒结果。上一轮 `39749668866` 的 Windows 2025 ConPTY 为 8/8 成功，因此当前应记录为间歇性诊断不稳定，而不是产品行为已回归或已稳定通过。两轮均没有改变产品代码、白名单或 30 秒断言。
 
+提交 `b0b8b54` 增加显式 workflow 选项 `windows_webview_timing`，只在真实 native WebView runner 中记录单调时钟差值，不记录终端原文；默认关闭，生产代码与默认 native 输出不变。带 `native_only=true`、`windows_shell_repeats=3`、`windows_webview_timing=true` 的[真实 WebView 复测 39759997877](https://github.com/mofyer/new-windterm/actions/runs/39759997877) 在 Linux WebKitGTK 和 Windows WebView2 两个 job 均成功。Windows 基础场景加三次重复共 8 个初次/重开样本，PowerShell `5.1.20348.5622` 身份与精确中文 cwd 均通过：
+
+| Windows WebView2 计时 | 样本范围 |
+| --- | ---: |
+| `open → 本机 shell 已启动` | 83.7–114.0 ms |
+| 版本命令发送 → 精确版本行 | 522.8–766.4 ms |
+| `(Get-Location).Path` 发送 → 精确 cwd 行 | 17,814.4–27,672.2 ms |
+
+这把延迟定位到真实 WebView2→产品 PTY→Windows PowerShell 的可观测链路，且与历史 20 秒级目录停滞一致；它仍不区分 Tauri IPC、ConPTY、PowerShell 初始化或环境策略中的具体环节，也不等于根因已确定。Linux WebKitGTK 同轮成功只证明该平台原生 smoke 通过，不外推 Windows 时延结论。下一步仍是针对 Windows 链路做最小组件分层复现，不改产品白名单或放宽原断言。
+
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
 - 本批不交付任意启动参数、启动后命令、持久化、WSL、Git Bash/Cygwin 或 Clink；完整 T34、P1、164 项功能对齐与发行验收均未完成，P0 不重开。
