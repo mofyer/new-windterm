@@ -27,6 +27,8 @@ mod windows_probe {
     const SAMPLE_DEADLINE: Duration = Duration::from_secs(30);
     const STARTUP_DEADLINE: Duration = Duration::from_secs(5);
     const OUTPUT_LIMIT: usize = 256 * 1024;
+    const ITERATIONS: usize = 2;
+    const MAX_VARIANTS: usize = 8;
 
     #[derive(Clone)]
     struct Variant {
@@ -64,6 +66,20 @@ mod windows_probe {
         result
     }
 
+    fn with_source_keys(
+        base: &BTreeMap<OsString, OsString>,
+        source: &BTreeMap<OsString, OsString>,
+        names: &[&str],
+    ) -> BTreeMap<OsString, OsString> {
+        let mut result = base.clone();
+        for name in names {
+            if let Some(key) = find_key(source, name) {
+                result.insert(OsString::from(name), source[key].clone());
+            }
+        }
+        result
+    }
+
     fn product_env(
         source: &BTreeMap<OsString, OsString>,
     ) -> Result<BTreeMap<OsString, OsString>, String> {
@@ -95,6 +111,48 @@ mod windows_probe {
         if let Some(key) = find_key(source, "PSModulePath") {
             product_with_parent.insert(OsString::from("PSModulePath"), source[key].clone());
         }
+        let system_path = with_source_keys(
+            &product,
+            source,
+            &[
+                "ProgramData",
+                "ProgramFiles",
+                "ProgramFiles(x86)",
+                "ProgramW6432",
+                "CommonProgramFiles",
+                "CommonProgramFiles(x86)",
+                "CommonProgramW6432",
+                "windir",
+            ],
+        );
+        let identity = with_source_keys(
+            &product,
+            source,
+            &[
+                "USERNAME",
+                "USERDOMAIN",
+                "USERDOMAIN_ROAMINGPROFILE",
+                "LOGONSERVER",
+                "SESSIONNAME",
+                "PUBLIC",
+            ],
+        );
+        let process_runtime = with_source_keys(
+            &product,
+            source,
+            &[
+                "PATHEXT",
+                "OS",
+                "PROCESSOR_ARCHITECTURE",
+                "PROCESSOR_ARCHITEW6432",
+                "PROCESSOR_IDENTIFIER",
+                "PROCESSOR_LEVEL",
+                "PROCESSOR_REVISION",
+                "NUMBER_OF_PROCESSORS",
+            ],
+        );
+        let mut explicit_empty_psmodulepath = product.clone();
+        explicit_empty_psmodulepath.insert(OsString::from("PSModulePath"), OsString::new());
         Ok(vec![
             Variant {
                 name: "inherited",
@@ -111,6 +169,22 @@ mod windows_probe {
             Variant {
                 name: "inherited-without-psmodulepath",
                 env: remove_key(source, "PSModulePath"),
+            },
+            Variant {
+                name: "product-whitelist-system-path",
+                env: system_path,
+            },
+            Variant {
+                name: "product-whitelist-identity",
+                env: identity,
+            },
+            Variant {
+                name: "product-whitelist-process-runtime",
+                env: process_runtime,
+            },
+            Variant {
+                name: "product-whitelist-explicit-empty-psmodulepath",
+                env: explicit_empty_psmodulepath,
             },
         ])
     }
@@ -299,8 +373,11 @@ mod windows_probe {
         let path = powershell_path(&source)?;
         let directory = tempfile_dir()?;
         let variants = variants(&source)?;
+        if variants.len() > MAX_VARIANTS {
+            return Err("PowerShell diagnostic variant limit exceeded".into());
+        }
         let mut failed = false;
-        for iteration in 1..=2 {
+        for iteration in 1..=ITERATIONS {
             let order: Vec<_> = if iteration % 2 == 0 {
                 variants.iter().rev().collect()
             } else {

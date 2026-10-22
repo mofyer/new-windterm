@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample } from './powershell-latency-probe.mjs';
+import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, DIAGNOSTIC_ITERATIONS, MAX_VARIANTS, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample } from './powershell-latency-probe.mjs';
 
 const cwd = 'C:\\Temp\\p1 shell 中文-fixture';
 const encoded = Buffer.from(cwd).toString('base64');
@@ -56,23 +56,48 @@ test('environment whitelist matches product source and never mutates inherited s
 });
 
 test('diagnostic environments isolate PSModulePath and preserve source', () => {
-  const source = { SystemRoot: 'C:\\Windows', PATH: 'path', ComSpec: 'cmd', USERPROFILE: 'profile', TEMP: 'temp', TMP: 'tmp', APPDATA: 'app', LOCALAPPDATA: 'local', PSModulePath: 'parent-modules' };
+  const source = {
+    SystemRoot: 'C:\\Windows', PATH: 'path', ComSpec: 'cmd', USERPROFILE: 'profile', TEMP: 'temp', TMP: 'tmp', APPDATA: 'app', LOCALAPPDATA: 'local', PSModulePath: 'parent-modules',
+    ProgramData: 'program-data', 'ProgramFiles(x86)': 'program-files-x86', USERNAME: 'user', USERDOMAIN: 'domain', PUBLIC: 'public', PATHEXT: '.COM;.EXE', OS: 'Windows_NT', PROCESSOR_ARCHITECTURE: 'AMD64', NUMBER_OF_PROCESSORS: '8', SECRET: 'hidden',
+  };
   const original = { ...source };
   const environments = diagnosticEnvironments(source);
   assert.deepEqual(environments.map(item => item.mode), [
     'inherited', 'product-whitelist', 'product-whitelist-parent-psmodulepath', 'inherited-without-psmodulepath',
+    'product-whitelist-system-path', 'product-whitelist-identity', 'product-whitelist-process-runtime', 'product-whitelist-explicit-empty-psmodulepath',
   ]);
   assert.equal(environments[0].env.PSModulePath, 'parent-modules');
   assert.equal(environments[1].env.PSModulePath, undefined);
   assert.equal(environments[2].env.PSModulePath, 'parent-modules');
   assert.equal(environments[3].env.PSModulePath, undefined);
+  assert.equal(environments[4].env.ProgramData, 'program-data');
+  assert.equal(environments[4].env.SECRET, undefined);
+  assert.equal(environments[5].env.USERNAME, 'user');
+  assert.equal(environments[5].env.PUBLIC, 'public');
+  assert.equal(environments[5].env.SECRET, undefined);
+  assert.equal(environments[6].env.PATHEXT, '.COM;.EXE');
+  assert.equal(environments[6].env.NUMBER_OF_PROCESSORS, '8');
+  assert.equal(environments[6].env.SECRET, undefined);
+  assert.equal(environments[7].env.PSModulePath, '');
   assert.deepEqual(source, original);
   assert.deepEqual(diagnosticOrder(environments, 1).map(item => item.mode), [
     'inherited', 'product-whitelist', 'product-whitelist-parent-psmodulepath', 'inherited-without-psmodulepath',
+    'product-whitelist-system-path', 'product-whitelist-identity', 'product-whitelist-process-runtime', 'product-whitelist-explicit-empty-psmodulepath',
   ]);
   assert.deepEqual(diagnosticOrder(environments, 2).map(item => item.mode), [
+    'product-whitelist-explicit-empty-psmodulepath', 'product-whitelist-process-runtime', 'product-whitelist-identity', 'product-whitelist-system-path',
     'inherited-without-psmodulepath', 'product-whitelist-parent-psmodulepath', 'product-whitelist', 'inherited',
   ]);
+});
+
+test('bounded matrix keeps only mode names in its report inputs', () => {
+  const source = { SystemRoot: 'C:\\Windows', PATH: 'path', SECRET: 'never-record' };
+  const environments = diagnosticEnvironments(source);
+  assert.equal(environments.length, 8);
+  assert.equal(JSON.stringify(environments.map(({ mode }) => mode)).includes('never-record'), false);
+  assert.equal(DIAGNOSTIC_ITERATIONS, 2);
+  assert.equal(MAX_VARIANTS, 8);
+  assert.equal(environments.length * DIAGNOSTIC_ITERATIONS, 16);
 });
 
 test('stderr classification keeps only bounded type counts and marks unknown content', () => {

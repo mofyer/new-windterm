@@ -7,6 +7,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+export const DIAGNOSTIC_ITERATIONS = 2;
+export const MAX_VARIANTS = 8;
+
 // No cmdlet executes before the first Get-Location measurement.
 export const POWERSHELL_SCRIPT = `
 $ErrorActionPreference = 'Stop'
@@ -59,8 +62,17 @@ function withoutEnvironmentKey(source, wanted) {
   return result;
 }
 
+function withSourceKeys(base, source, names) {
+  const result = { ...base };
+  for (const name of names) {
+    const key = environmentKey(source, name);
+    if (key !== undefined) result[name] = source[key];
+  }
+  return result;
+}
+
 /**
- * Builds the four diagnostic environments without changing the product
+ * Builds the bounded diagnostic environments without changing the product
  * whitelist. Each sample is spawned as a fresh process by `sample`.
  */
 export function diagnosticEnvironments(source) {
@@ -69,11 +81,27 @@ export function diagnosticEnvironments(source) {
   const parentModuleKey = environmentKey(source, 'PSModulePath');
   const productWithParentModulePath = { ...product };
   if (parentModuleKey !== undefined) productWithParentModulePath.PSModulePath = source[parentModuleKey];
+  const systemPath = withSourceKeys(product, source, [
+    'ProgramData', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432',
+    'CommonProgramFiles', 'CommonProgramFiles(x86)', 'CommonProgramW6432', 'windir',
+  ]);
+  const identity = withSourceKeys(product, source, [
+    'USERNAME', 'USERDOMAIN', 'USERDOMAIN_ROAMINGPROFILE', 'LOGONSERVER', 'SESSIONNAME', 'PUBLIC',
+  ]);
+  const processRuntime = withSourceKeys(product, source, [
+    'PATHEXT', 'OS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_ARCHITEW6432',
+    'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL', 'PROCESSOR_REVISION', 'NUMBER_OF_PROCESSORS',
+  ]);
+  const explicitEmptyPsmodulepath = { ...product, PSModulePath: '' };
   return [
     { mode: 'inherited', env: inherited },
     { mode: 'product-whitelist', env: product },
     { mode: 'product-whitelist-parent-psmodulepath', env: productWithParentModulePath },
     { mode: 'inherited-without-psmodulepath', env: withoutEnvironmentKey(source, 'PSModulePath') },
+    { mode: 'product-whitelist-system-path', env: systemPath },
+    { mode: 'product-whitelist-identity', env: identity },
+    { mode: 'product-whitelist-process-runtime', env: processRuntime },
+    { mode: 'product-whitelist-explicit-empty-psmodulepath', env: explicitEmptyPsmodulepath },
   ];
 }
 
@@ -246,11 +274,20 @@ export async function main() {
   await mkdir(outputDir, { recursive: true });
   // PowerShell resolves Windows short-name TEMP aliases to the long path.
   const directory = await mkdtemp(join(tmpdir(), 'p1 shell 中文-'));
-  const report = { schema: 2, limitation: 'stdio/-EncodedCommand, not interactive ConPTY; fast results cannot clear native failures', samples: [] };
+  const report = {
+    schema: 3,
+    limitation: 'stdio/-EncodedCommand, not interactive ConPTY; fast results cannot clear native failures',
+    variantModes: [],
+    limits: { iterations: DIAGNOSTIC_ITERATIONS, maxVariants: MAX_VARIANTS, processTimeoutMs: 60_000 },
+    samples: [],
+  };
+  let stopReason = null;
   try {
     const cwd = await realpath(directory);
     const environments = diagnosticEnvironments(process.env);
-    samples: for (let iteration = 1; iteration <= 2; iteration++) {
+    if (environments.length > MAX_VARIANTS) throw new Error('Diagnostic variant limit exceeded');
+    report.variantModes = environments.map(({ mode }) => mode);
+    samples: for (let iteration = 1; iteration <= DIAGNOSTIC_ITERATIONS; iteration++) {
       const order = diagnosticOrder(environments, iteration);
       for (let position = 0; position < order.length; position++) {
         const { mode, env } = order[position];
@@ -260,6 +297,7 @@ export async function main() {
         await writeFile(join(outputDir, 'measurements.json'), `${JSON.stringify(report, null, 2)}\n`);
         process.stdout.write(`${mode} ${iteration}: ${result.passed ? 'PASS' : 'FAIL'}\n`);
         if (result.cleanupSucceeded === false) {
+          stopReason = 'cleanup failure';
           process.exitCode = 1;
           break samples;
         }
@@ -270,11 +308,28 @@ export async function main() {
       await rm(directory, { recursive: true, force: true });
     } catch {
       report.directoryCleanupFailed = true;
+      stopReason ??= 'temporary directory cleanup failure';
       process.exitCode = 1;
       await writeFile(join(outputDir, 'measurements.json'), `${JSON.stringify(report, null, 2)}\n`);
     }
   }
-  if (report.samples.length !== 8 || report.samples.some(result => !result.passed)) process.exitCode = 1;
+  if (report.samples.length !== report.variantModes.length * DIAGNOSTIC_ITERATIONS) {
+    stopReason ??= 'sample count did not reach bounded matrix';
+    process.exitCode = 1;
+  }
+  if (report.samples.some(result => !result.passed)) {
+    stopReason ??= 'one or more samples failed';
+    process.exitCode = 1;
+  }
+  await writeFile(join(outputDir, 'summary.json'), `${JSON.stringify({
+    schema: 1,
+    variantModes: report.variantModes,
+    iterations: DIAGNOSTIC_ITERATIONS,
+    expectedSamples: report.variantModes.length * DIAGNOSTIC_ITERATIONS,
+    samples: report.samples.length,
+    failedSamples: report.samples.filter(result => !result.passed).length,
+    stopReason,
+  }, null, 2)}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
