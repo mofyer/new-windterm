@@ -10,8 +10,15 @@ export interface WorkspaceTerminal {
   readonly vt: VtAdapters;
 }
 
+export type WorkspaceInputSource = "user" | "reply";
+export type WorkspaceInputSourceHook = (source: WorkspaceInputSource, active: boolean) => void;
+
 /** Keep every workspace terminal on the same tested width provider and VT adapters. */
-export function createWorkspaceSession(theme?: ITheme, vt: VtAdapterOptions = {}): WorkspaceTerminal {
+export function createWorkspaceSession(
+  theme?: ITheme,
+  vt: VtAdapterOptions = {},
+  onInputSource?: WorkspaceInputSourceHook,
+): WorkspaceTerminal {
   const terminal = new Terminal({
     cursorBlink: true,
     fontFamily: '"SFMono-Regular", Menlo, Monaco, "Cascadia Code", monospace',
@@ -25,6 +32,21 @@ export function createWorkspaceSession(theme?: ITheme, vt: VtAdapterOptions = {}
   });
   terminal.loadAddon(new Unicode11Addon());
   terminal.unicode.activeVersion = "11";
+  // xterm's public onData event omits its wasUserInput flag. Preserve that
+  // explicit parser/reply source before adapters capture terminal.input.
+  type CoreDataService = { triggerDataEvent: (data: string, wasUserInput?: boolean) => void };
+  const coreService = (terminal as unknown as { _core?: { coreService?: CoreDataService } })._core?.coreService;
+  if (!coreService) throw new Error("xterm core data service unavailable");
+  const triggerDataEvent = coreService.triggerDataEvent.bind(coreService);
+  coreService.triggerDataEvent = (data: string, wasUserInput = false) => {
+    const source: WorkspaceInputSource = wasUserInput ? "user" : "reply";
+    onInputSource?.(source, true);
+    try {
+      return triggerDataEvent(data, wasUserInput);
+    } finally {
+      onInputSource?.(source, false);
+    }
+  };
   return { terminal, vt: attachVtAdapters(terminal, vt) };
 }
 

@@ -122,6 +122,27 @@ test('terminal replies produced before the native ID arrive are sent once it exi
   expect(reply).toMatch(/^\x1b\[\d+;\d+R$/);
 });
 
+test('user key, paste and insertText before the native ID are never replayed', async ({ page }) => {
+  await installIpc(page);
+  await page.locator('.terminal-pane:visible textarea').focus();
+  await page.keyboard.type('KEY-EARLY');
+  await page.locator('.terminal-pane:visible textarea').evaluate(el => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', 'PASTE-EARLY');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    const input = new InputEvent('input', { inputType: 'insertText', data: 'INSERT-EARLY', bubbles: true });
+    el.dispatchEvent(input);
+  });
+  // A protocol reply is explicitly marked by terminal.input(data, false) and
+  // remains the only pre-open input eligible for the bounded early FIFO.
+  await page.evaluate(() => (window as any).qaIpc.channel.onmessage({ kind: 'data', id: 'test-pty', sequence: 1, data: [27, 91, 54, 110] }));
+  await expect.poll(() => page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_ack').length)).toBe(1);
+  await ready(page);
+  const writes = await page.evaluate(() => (window as any).qaIpc.calls.filter((c: any) => c.command === 'pty_write'));
+  expect(writes).toHaveLength(1);
+  expect(String.fromCharCode(...writes[0].data)).toMatch(/^\x1b\[\d+;\d+R$/);
+});
+
 
 async function typeInput(page: Page, text: string) {
   await page.locator('.terminal-pane:visible textarea').focus();

@@ -23,6 +23,7 @@ type PtyEvent =
   | { kind: "exit"; id: string; code: number | null }
   | { kind: "error"; id: string; message: string };
 type Mode = "demo" | "pty" | "ssh" | "net";
+type InputSource = "user" | "reply";
 type Session = {
   key: number;
   name: string;
@@ -384,14 +385,14 @@ function inputQueue(s: () => Session) {
     },
   });
 }
-function queueInput(s: Session, bytes: Uint8Array) {
+function queueInput(s: Session, bytes: Uint8Array, source: InputSource = "user") {
   if (s.ptyId) {
     sendInput(s, bytes);
     return;
   }
-  // Only a local shell needs early input (ConPTY's cursor query). Keystrokes
-  // typed while an SSH connection authenticates are not replayed remotely.
-  if (s.mode !== "pty" || s.disposed || s.ended || s.closing) return;
+  // Only a local shell's explicit terminal reply is safe to replay. User
+  // input must never sit in the early FIFO and execute after a delayed open.
+  if (source !== "reply" || s.mode !== "pty" || s.disposed || s.ended || s.closing) return;
   if (s.earlyBytes + bytes.length > EARLY_INPUT_LIMIT) {
     toast("会话仍在启动，输入暂未发送；请稍后重试。");
     return;
@@ -421,8 +422,11 @@ function createSession(name: string, mode: Mode, options?: LaunchOptions): Sessi
   $("#terminals").append(element);
   // Set once the session exists, so a notice can never touch `s` before its declaration.
   let owner: Session | undefined;
+  let replyInputDepth = 0;
   const { terminal, vt } = createWorkspaceSession(colors(), {
     onNotice: (notice) => { if (owner && !owner.disposed) toast(`「${owner.name}」${describeVtNotice(notice)}`); },
+  }, (source, active) => {
+    if (source === "reply") replyInputDepth += active ? 1 : -1;
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
@@ -462,7 +466,7 @@ function createSession(name: string, mode: Mode, options?: LaunchOptions): Sessi
   activeKey = s.key;
   terminal.onData((data) => {
     if (mode === "demo") demoInput(s, data);
-    else queueInput(s, encoder.encode(data));
+    else queueInput(s, encoder.encode(data), replyInputDepth > 0 ? "reply" : "user");
   });
   terminal.onBinary((data) => {
     if (mode !== "demo")
