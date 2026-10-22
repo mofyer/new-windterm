@@ -409,13 +409,13 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 
 本轮支持环境策略与首次 cmdlet 延迟存在明显关联，但继承环境先执行、白名单随后执行，顺序和缓存未控制；stdio/EncodedCommand 与交互 ConPTY 不同，尚未定位具体变量或初始化机制，也不能解释历史 30 秒停滞。产品启动路径和原场景断言未改，整批验收仍未完成。
 
-下一步最小诊断：先在内存中对有界 stderr 作结构分类，只保存已知流类型计数及未知标志，不保存内容或路径；未知仍判失败。然后仅在诊断中比较继承、白名单、白名单加入父 PSModulePath、继承移除 PSModulePath 四组，反转区组顺序、每样本新进程，首样本单列。PSModulePath 只是候选因子，未证实；锁定因子后还须在 ConPTY 验证，不能直接修改产品白名单或提高原 30 秒断言。Windows 新实验结果见下文，但尚未取得 ConPTY 证据。
+下一步最小诊断：先在内存中对有界 stderr 作结构分类，只保存已知流类型计数及未知标志，不保存内容或路径；未知仍判失败。然后仅在诊断中比较继承、白名单、白名单加入父 PSModulePath、继承移除 PSModulePath 四组，反转区组顺序、每样本新进程，首样本单列。PSModulePath 只是候选因子，未证实；锁定因子后还须在 ConPTY 验证，不能直接修改产品白名单或提高原 30 秒断言。Windows 新实验结果见下文。
 
-### 诊断实验实现（仅测试侧，未取得 Windows 新证据）
+### 诊断实验实现与直接 ConPTY 复现（仅测试侧）
 
 当前 `p1/integration` 已将上述实验落到 `tests/native/powershell-latency-probe.mjs`：每轮以新进程比较继承环境、产品白名单、白名单加回父 `PSModulePath`、继承环境移除 `PSModulePath` 四组，第二轮反向排列，第一项另标 `firstSample`。stderr 只在内存中按已知 PowerShell 流/错误类型累计字节数，并记录未知标志；报告不保存 stderr 内容，未知 stderr 继续使样本失败，原 60 秒进程期限和严格退出检查保持不变。对应 Node helper 已覆盖环境隔离、正反顺序、stderr 隐私与未知失败语义。
 
-这只是可复现性和取证改进；本机 macOS 只能运行 schema/helper 测试，不能替代 Windows stdio 实验或真实 ConPTY。尚未据此修改产品白名单、放宽原生 30 秒断言、关闭旧 Shell 停滞，第四批仍未完成验收。
+这只是可复现性和取证改进；本机 macOS 只能运行 schema/helper 测试，不能替代 Windows 实验。尚未据此修改产品白名单、放宽原生 30 秒断言、关闭旧 Shell 停滞，第四批仍未完成验收。
 
 [反向四组实验 39740945170](https://github.com/mofyer/new-windterm/actions/runs/39740945170) 验证精确提交 `96a30660663263bf4e3cf9ae9fd93ee84bedd551`。Windows 2022/2025 两个作业均在 schema/helper 通过后完成 8/8 新进程样本；每个样本三阶段 cwd 匹配、exit 0，stderr 均为 392 字节未知内容，所以严格门禁仍失败。环境差异如下（首次 `Get-Location`，单位毫秒）：
 
@@ -427,6 +427,17 @@ Windows native 基础场景为 6/7、额外诊断为 0/3。四轮 Shell 均完�
 | 继承 − `PSModulePath` | 89.8–92.2 | 83.4–83.7 |
 
 这轮支持 `PSModulePath` 与 stdio 首次 cmdlet 延迟存在强关联，并消除了固定执行顺序的混淆；它仍不是产品根因或 ConPTY 证据。未知 stderr 尚未分类，不能把作业失败改写成通过；下一步应在不保存原文的前提下继续分类该流，再用真实 Windows WebView/ConPTY 重现候选环境，之后才评估产品白名单是否需要改动。
+
+提交 `6746cf5` 新增仅 `dev-tools` 可用的 `powershell_conpty_probe`，直接通过 `portable-pty` 创建 Windows ConPTY，沿用四组环境、正反顺序和每样本新进程；`a73fbf5` 修正 ConPTY 控制序列解析，`eea39b7` 修正命令回显抢先匹配 marker 的探针 framing。它不改产品白名单或 `local_shell.rs`。准确提交 `eea39b7` 的[诊断工作流 39749668866](https://github.com/mofyer/new-windterm/actions/runs/39749668866) 中，Windows Server 2022/2025 各 8/8 ConPTY 样本均 `PASS`、exit 0；整条工作流仍因原 stdio job 的 392 字节未知 stderr 严格检查失败，不能记作整体通过。
+
+| 直接 ConPTY 测量 | Windows 2022，首次 Get-Location | Windows 2025，首次 Get-Location |
+| --- | ---: | ---: |
+| 继承 | 53.9–281.8 ms | 35.2–165.9 ms |
+| 产品白名单 | 26,259.7–28,182.8 ms | 11,294.0–15,891.9 ms |
+| 白名单 + 父 `PSModulePath` | 20,808.8–20,837.7 ms | 11,004.3–11,100.1 ms |
+| 继承 − `PSModulePath` | 54.0–54.8 ms | 34.8–35.3 ms |
+
+这证明此前的白名单与继承环境差异可在真实 Windows ConPTY 层复现；但 ConPTY 中仅加回父 `PSModulePath` 仍保持高延迟，不能把 stdio 实验里的 `PSModulePath` 关联当成已锁定因果。它仍不能区分 Tauri/WebView 启动链、PowerShell 模块初始化或其他受控环境差异，也不等于产品场景已经通过。下一步应继续对未知 stderr 做不留原文的分类，并在真实 WebView 场景做最小候选复现；在此之前不改产品白名单、不放宽 30 秒断言、不请求合并第四批。
 
 - 原生探针已独立复核并集成，本机全套门禁与 macOS 原生操作已完成且本机独立复核 PASS；Linux native 首轮空输入失败已由第二轮 7/7 实际验证关闭。第二轮整体仍因 Windows 旧第六场景失败而未通过，根因诊断和最终综合验收未完成，两轮失败证据保留。
 - Zsh 系统 `zshenv`、PowerShell 历史行为、固定 Shell 候选范围、Windows 本地盘符目录规则和 cwd/可执行文件 TOCTOU 限制继续保留。PowerShell 7 仍未完成实际启动验收；locale 变量可传递不等于所有 locale 行为已验证。
