@@ -44,7 +44,7 @@ P2 的正式前置条件是 P1 的数据流和状态模型稳定。当前 P1 仍
 | ID | 协议/目标 | 最小场景 | 必须覆盖的结果 | 现有路径与证据目标 |
 | --- | --- | --- | --- | --- |
 | C01 | SSH v2 | 首次信任、交互 PTY、窗口变化、退出、断线/重连 | 指纹确认后连接；指纹变化阻断；断线有状态；重连不重放输入 | `tests/fixtures/ssh-terminal/`、`apps/desktop/src-tauri/tests/ssh_terminal.rs`；先 L1/L2，再 L3 |
-| C02 | Telnet | 协商、UTF-8/二进制字节、NAWS、断线 | 未知选项拒绝且不循环；协商后尺寸更新；真实 telnetd 错误可见 | `apps/desktop/src-tauri/tests/net_terminal.rs`、`apps/desktop/src-tauri/tests/telnetd_interop.rs` 与 `apps/desktop/src-tauri/tests/support/telnetd.rs`；L1 已有，L2/L3 待补 |
+| C02 | Telnet | 协商、UTF-8/二进制字节、NAWS、断线 | 未知选项拒绝且不循环；协商后尺寸更新；真实 telnetd 错误可见 | `apps/desktop/src-tauri/tests/net_terminal.rs`、`apps/desktop/src-tauri/tests/telnetd_interop.rs` 与 `apps/desktop/src-tauri/tests/support/telnetd.rs`；L1 与 L2 loopback 已有，L3 待补 |
 | C03 | Raw TCP | 0x00–0xFF 双向流、半关闭、对端关闭 | 字节不变；FIN/错误状态可见；不把二进制误当文本命令 | `apps/desktop/src-tauri/tests/net_terminal.rs`；L1 已有，真实服务 L2 待补 |
 | C04 | 串口 | 设备枚举、参数、读写、拔插恢复 | 设备权限/占用/断开有明确反馈；参数真正作用于设备；重连不丢状态 | `apps/desktop/src-tauri/tests/serial_virtual_pair.rs` 仅为虚拟 PTY L1；真实 USB 串口、COM 端口和拔插必须 L4 |
 
@@ -55,7 +55,7 @@ P2 的正式前置条件是 P1 的数据流和状态模型稳定。当前 P1 仍
 | C05 | 认证后自动执行 | 显式开启、正常执行、命令失败、断线重连 | 顺序可见；失败不吞掉；重连是否执行有明确策略；不重放用户此前输入 | 隔离 SSH 服务端日志 + L3 UI 状态；当前未关闭 |
 | C06 | ControlMaster | 主连接、从连接、主连接退出、并发关闭 | 复用关系可见；从连接独立退出；主连接结束后从连接得到明确错误 | `docs/p0/CONTROLMASTER_ADR.zh-CN.md` 作为设计输入；需 L2/L3 |
 | C09 | SSH agent | agent 存在/不存在、选钥、取消 | 不读取未授权密钥；agent 不可用时不回退成静默成功；取消清理连接 | `tests/fixtures/ssh-terminal/agent-client.test.mjs`、`apps/desktop/src-tauri/tests/ssh_agent_openssh.rs`；L2/L3 |
-| C10 | agent forwarding | 明确开启/关闭、远端签名、会话结束 | 默认拒绝；开启前有警告；关闭后通道失效；私钥不离开本机 | `apps/desktop/src-tauri/tests/ssh_agent_forwarding.rs` + OpenSSH agent fixture；L1/L2 已有探针，L3 待补 |
+| C10 | agent forwarding | 明确开启/关闭、远端签名、会话结束 | 默认拒绝；开启前有警告；关闭后通道失效；私钥不离开本机 | `apps/desktop/src-tauri/tests/ssh_agent_forwarding.rs`（L1 russh 探针）与 `apps/desktop/src-tauri/tests/ssh_agent_openssh.rs`/OpenSSH agent fixture（L2 loopback）；L3 待补 |
 | C11 | 密码认证 | 正误密码、取消、可选保存、再次登录 | 错误可区分；取消不继续尝试；秘密不进入日志/历史；保存由安全存储授权 | `apps/desktop/src-tauri/tests/ssh_terminal.rs` 的认证测试；L3 安全存储待补 |
 | C12 | 公钥认证 | 无口令/带口令、错误密钥、拒绝 | 口令只在需要时提示；错误密钥不重试越权；凭据不落普通配置 | `apps/desktop/src-tauri/tests/ssh_terminal.rs`、`tests/fixtures/ssh-terminal/rust-client.test.mjs`；L2/L3 |
 | C13 | keyboard-interactive | 多轮提示、隐藏输入、错误/取消 | 提示顺序保留；隐藏输入不回显；取消终止认证而非回退 | `apps/desktop/src-tauri/tests/ssh_kbdint.rs`；L1/L2，产品 UI 仍待验收 |
