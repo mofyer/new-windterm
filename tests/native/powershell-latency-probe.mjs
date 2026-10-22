@@ -1,6 +1,7 @@
 // Diagnostic only: stdio + -EncodedCommand is not interactive ConPTY. A fast
 // result cannot clear the native shell failure; a slow result can narrow it.
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, win32 } from 'node:path';
@@ -81,8 +82,13 @@ export function diagnosticOrder(environments, iteration) {
 }
 
 /** Classifies stderr in memory; raw bytes never enter the returned report. */
+export function normalizeStderrText(value) {
+  return value.toString().replace(/^\uFEFF/, '').replaceAll('\0', '')
+    .replaceAll(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').replaceAll('\r', '').trim();
+}
+
 export function classifyStderrChunk(chunk) {
-  const text = Buffer.from(chunk).toString('utf8').replaceAll('\0', '').trim();
+  const text = normalizeStderrText(Buffer.from(chunk, 'utf8'));
   if (text.length === 0) return 'empty';
   if (/^(?:At line:\s*\d+|ParserError:|NativeCommandError:)/mi.test(text)
     || /(^|\n)\s*\+\s+/.test(text)) return 'powershell-error';
@@ -161,6 +167,14 @@ export async function sample(executable, cwd, env, systemRoot, {
   let outputBytes = 0;
   let stderrBytes = 0;
   const stderr = { knownBytes: {}, unknownBytes: 0, unknown: false };
+  const stderrHash = createHash('sha256');
+  let stderrLineBuffer = '';
+  const classifyStderrLine = line => {
+    const kind = classifyStderrChunk(Buffer.from(line));
+    const bytes = Buffer.byteLength(line);
+    if (kind === 'unknown') { stderr.unknown = true; stderr.unknownBytes += bytes; }
+    else if (kind !== 'empty') stderr.knownBytes[kind] = (stderr.knownBytes[kind] ?? 0) + bytes;
+  };
   let failure = null;
   let cleanup;
   let terminationTimer;
@@ -190,13 +204,12 @@ export async function sample(executable, cwd, env, systemRoot, {
   });
   child.stderr.on('data', chunk => {
     stderrBytes += chunk.length;
-    const kind = classifyStderrChunk(chunk);
-    if (kind === 'unknown') {
-      stderr.unknown = true;
-      stderr.unknownBytes += chunk.length;
-    } else if (kind !== 'empty') {
-      stderr.knownBytes[kind] = (stderr.knownBytes[kind] ?? 0) + chunk.length;
-    }
+    stderrHash.update(chunk);
+    stderrLineBuffer += chunk.toString('utf8');
+    if (stderrLineBuffer.length > 16_384) { stderr.unknown = true; stderr.unknownBytes += Buffer.byteLength(stderrLineBuffer); stderrLineBuffer = ''; }
+    const lines = stderrLineBuffer.split(/\n/);
+    stderrLineBuffer = lines.pop() ?? '';
+    for (const line of lines) classifyStderrLine(line);
     if (stderrBytes > 16_384) stop('Stderr limit exceeded');
   });
   child.on('error', () => {
@@ -215,10 +228,11 @@ export async function sample(executable, cwd, env, systemRoot, {
   clearTimeout(terminationTimer);
   const treeKilled = cleanup ? await cleanup : null;
   const cleanupSucceeded = cleanup ? treeKilled && closeObserved : null;
+  if (stderrLineBuffer) classifyStderrLine(stderrLineBuffer);
   const measurement = parseMeasurements(stdout, cwd);
   if (exit.code !== 0 || exit.signal || stderrBytes > 0) failure ??= 'Process exit or stderr failure';
   failure ??= measurement.error;
-  return { ...measurement, exit, stderrBytes, stderr, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
+  return { ...measurement, exit, stderrBytes, stderr: { ...stderr, sha256: stderrBytes ? stderrHash.digest('hex') : null }, outputBytes, arrivals, wallMilliseconds: performance.now() - started, passed: failure === null, failure, cleanupSucceeded };
 }
 
 export async function main() {

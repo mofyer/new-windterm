@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample } from './powershell-latency-probe.mjs';
+import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample } from './powershell-latency-probe.mjs';
 
 const cwd = 'C:\\Temp\\p1 shell 中文-fixture';
 const encoded = Buffer.from(cwd).toString('base64');
@@ -80,6 +80,7 @@ test('stderr classification keeps only bounded type counts and marks unknown con
   assert.equal(classifyStderrChunk(Buffer.from('At line: 1 char: 2\r\n+ x')), 'powershell-error');
   assert.equal(classifyStderrChunk(Buffer.from('SECRET stderr text')), 'unknown');
   assert.equal(classifyStderrChunk(Buffer.from('\0\r\n')), 'empty');
+  assert.equal(normalizeStderrText('\uFEFF\u001b[31mWARNING: progress\r\n'), 'WARNING: progress');
 });
 
 test('static script does not invoke a cmdlet ahead of first measurement', () => {
@@ -111,7 +112,7 @@ test('successful sample preserves exact Unicode cwd and launches only the contro
   });
   assert.equal(result.passed, true);
   assert.equal(result.cleanupSucceeded, null);
-  assert.deepEqual(result.stderr, { knownBytes: {}, unknownBytes: 0, unknown: false });
+  assert.deepEqual(result.stderr, { knownBytes: {}, unknownBytes: 0, unknown: false, sha256: null });
   assert.equal(result.measurements.length, 3);
 });
 
@@ -131,6 +132,7 @@ test('stderr report does not retain raw content and unknown stderr remains a fai
   assert.equal(result.passed, false);
   assert.equal(result.stderr.unknown, true);
   assert.equal(result.stderr.unknownBytes, 18);
+  assert.match(result.stderr.sha256, /^[0-9a-f]{64}$/);
   assert.ok(!JSON.stringify(result).includes('SECRET'));
 });
 
