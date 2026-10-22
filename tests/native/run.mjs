@@ -19,6 +19,10 @@ import { parseShellRepeats, scenarioCounts, scenarioPlan } from './runner-config
 
 // Validate before starting any fixture, driver or application.
 const shellRepeats = parseShellRepeats(process.env.P1_NATIVE_SHELL_REPEATS);
+const webviewTiming = process.env.P1_NATIVE_WEBVIEW_TIMING ?? '0';
+if (!/^(?:0|1)$/.test(webviewTiming)) {
+  throw new Error('P1_NATIVE_WEBVIEW_TIMING must be 0 or 1');
+}
 
 if (process.platform === 'darwin') {
   console.log('skipped: tauri-driver does not support macOS');
@@ -99,6 +103,7 @@ try {
 
   const ctx = {
     session, platform: process.platform, fixture, log,
+    webviewTiming: webviewTiming === '1',
     screenshot: async (name) => writeFile(join(config.out, `${name}.png`), await session.screenshot()),
     writeText: (name, text) => writeFile(join(config.out, name), text),
   };

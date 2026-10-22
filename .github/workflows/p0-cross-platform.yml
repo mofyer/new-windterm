@@ -28,6 +28,10 @@ on:
         description: "Extra Windows shell diagnostics after the seven base scenarios (integer 0..10)"
         type: number
         default: 0
+      windows_webview_timing:
+        description: "Record bounded Windows WebView shell timing evidence"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -390,6 +394,7 @@ jobs:
         if: runner.os == 'Windows'
         env:
           P1_NATIVE_SHELL_REPEATS: ${{ inputs.windows_shell_repeats || 0 }}
+          P1_NATIVE_WEBVIEW_TIMING: ${{ inputs.windows_webview_timing && '1' || '0' }}
           P0_NATIVE_TAURI_DRIVER: ${{ runner.temp }}/native-tools/bin/tauri-driver
           P0_NATIVE_SSH_FIXTURE: apps/desktop/src-tauri/target/debug/ssh_terminal_fixture
         run: P0_NATIVE_OUT="$RUNNER_TEMP/p0-native" node tests/native/run.mjs

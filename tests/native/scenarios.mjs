@@ -412,6 +412,10 @@ async function localStartup(ctx, shell) {
     : `printf 'P1_SHELL=%s\\n' "$BASH_VERSION"`;
   const artifact = shell ? `${ctx.artifactPrefix ?? ''}06-local-terminal-shell` : '05-local-terminal-cwd';
   const identities = [];
+  const timings = [];
+  const recordTiming = (phaseName, event, started) => {
+    if (ctx.webviewTiming) timings.push({ phase: phaseName, event, milliseconds: performance.now() - started });
+  };
   let selected;
   async function queryCwd() {
     if (shell === 'powershell') {
@@ -421,12 +425,17 @@ async function localStartup(ctx, shell) {
       await typeInTerminal(ctx, `chcp 65001${Keys.ENTER}`);
     }
     if (shell) {
+      const versionStarted = ctx.webviewTiming ? performance.now() : 0;
       await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`);
       const identity = await waitForRow(ctx, row => isShellVersionOutput(row, shell), `actual ${shell} version expansion`);
+      recordTiming(phase, 'version-send-to-row', versionStarted);
       identities.push(identity.row);
     }
+    const cwdStarted = ctx.webviewTiming ? performance.now() : 0;
     await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
-    return waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual shell cwd output');
+    const result = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual shell cwd output');
+    recordTiming(phase, 'cwd-send-to-row', cwdStarted);
+    return result;
   }
   let expected;
   let filled;
@@ -469,17 +478,21 @@ async function localStartup(ctx, shell) {
       });
     }
     if (tracing) await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.arm());
+    const initialOpenStarted = ctx.webviewTiming ? performance.now() : 0;
     await clickCss(session, '#local-start');
     await waitFor(async () => (await tabCount(session)) === before + 1, { description: 'custom cwd local tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'custom cwd PTY startup');
+    recordTiming('initial cwd query', 'open-to-ready', initialOpenStarted);
     phase = 'initial cwd query';
     const initial = await queryCwd();
     await typeInTerminal(ctx, `exit 7${Keys.ENTER}`);
     await waitForSessionState(ctx, '已退出 · code 7', 'custom cwd shell exit');
     if (tracing) await inPage(session, () => window.__P1_NATIVE_SHELL_TRACE__.arm());
+    const reopenedOpenStarted = ctx.webviewTiming ? performance.now() : 0;
     await clickCss(session, '#local-reopen');
     await waitFor(async () => (await tabCount(session)) === before + 2, { description: 'reopened custom cwd tab' });
     await waitForSessionState(ctx, '本机 shell 已启动', 'reopened custom cwd PTY startup');
+    recordTiming('reopened cwd query', 'open-to-ready', reopenedOpenStarted);
     phase = 'reopened cwd query';
     const reopened = await queryCwd();
     if (shell && identities[0] !== identities[1]) throw new Error('reopened shell version changed');
@@ -494,13 +507,14 @@ async function localStartup(ctx, shell) {
     const remainingTabs = await tabCount(session);
     succeeded = true;
     return { directory, expected, filled, shell, selected, identities, query, initialCwd: initial.row, reopenedCwd: reopened.row,
-      remainingTabs };
+      ...(ctx.webviewTiming ? { timings } : {}), remainingTabs };
   } catch (error) {
     // The runner captures after this function returns, when finally has already
     // closed the terminal. Preserve the actual failing shell before cleanup.
     try {
       await ctx.writeText(`${artifact}-failure.json`, `${JSON.stringify({
-        directory, expected, filled, shell, selected, identities, query, phase, error: String(error?.stack ?? error),
+        directory, expected, filled, shell, selected, identities, query, phase,
+        ...(ctx.webviewTiming ? { timings } : {}), error: String(error?.stack ?? error),
         status: await statusLine(session), rows: await terminalRows(session),
       }, null, 2)}\n`);
     } catch (captureError) {
