@@ -67,6 +67,11 @@ path = "src/bin/powershell_conpty_probe.rs"
 required-features = ["dev-tools"]
 
 [[bin]]
+name = "powershell_conpty_qualified_probe"
+path = "src/bin/powershell_conpty_qualified_probe.rs"
+required-features = ["dev-tools"]
+
+[[bin]]
 name = "ssh_probe"
 path = "src/bin/ssh_probe.rs"
 required-features = ["dev-tools"]
