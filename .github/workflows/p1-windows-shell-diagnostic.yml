@@ -10,6 +10,8 @@ on:
       - rust-toolchain.toml
       - tests/native/powershell-latency-probe.mjs
       - tests/native/powershell-latency-probe.test.mjs
+      - tests/native/powershell-stderr-fixture.mjs
+      - tests/native/powershell-stderr-fixture.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -31,9 +33,19 @@ jobs:
         with:
           node-version: "26.0.0"
       - name: Validate diagnostic schema
-        run: node --test tests/native/powershell-latency-probe.test.mjs
+        run: node --test tests/native/powershell-latency-probe.test.mjs tests/native/powershell-stderr-fixture.test.mjs
       - name: Compare eight bounded environments in forward and reverse order
         run: node tests/native/powershell-latency-probe.mjs
+      - name: Run isolated PowerShell stderr fixture
+        if: always()
+        run: node tests/native/powershell-stderr-fixture.mjs
+      - name: Preserve sanitized stderr fixture report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: powershell-stderr-fixture-${{ matrix.os }}
+          path: .artifacts/p1/powershell-stderr-fixture/
+          if-no-files-found: error
       - name: Preserve every measurement
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
