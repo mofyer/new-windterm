@@ -557,3 +557,28 @@ ConPTY Windows 2022 产品白名单首次测量为 21.53–29.46 秒，加回父
 两份 artifact 各仅包含精确 `measurements.json`，独立 schema 与隐私核验通过，未包含原文、错误文本、环境值或路径。文件 SHA-256：Windows 2022 为 `7504def2caf105402efa3ac83aeb656f16cf17292537047e1b883a3691e04231`；Windows 2025 为 `4e42c2b71c3b2c9cef5474a7f2be02dfdcaf638a5f737aeaf9f622146e052a2e`。这些是报告文件指纹，不是 stderr 指纹。
 
 下一步限定为 cmdlet 发现、模块加载与初始化阶段的预注册诊断候选，先定义有限干预及停止条件，再执行；本轮预注册方案不按结果改判。既定协议、产品白名单和旧门禁保持；stdio 证据不外推 ConPTY/WebView2，Windows 根因与第四批验收仍未完成，P1 未通过，P2 仅可准备，main 不合并。
+
+### 命令准备与查询阶段诊断（工作流 `39819222771`）
+
+准确提交 `66e237e8f11034d5c837f7d84ca2b280dff1d9e0` 已提交并推送至 `p1/integration`，新增独立 `powershell-phase-probe.mjs`、专项测试、双平台阶段工作流及[执行前预注册方案](POWERSHELL_PHASE_PLAN.zh-CN.md)。本机完整 native helper **148/148 通过**，独立阶段专项复跑 **19/19 通过**，实现与方案独立审查通过；这些是本地验证。该准确 HEAD 的[Windows 阶段运行 39819222771](https://github.com/mofyer/new-windterm/actions/runs/39819222771) 已 `completed/failure`，两平台 helper 与工件上传成功，两个报告均已取得。
+
+本轮固定 PowerShell 5.1、产品白名单与默认 progress，三个 arm（无准备、精确 `Get-Command` 准备、显式 Management 模块导入准备），各在准备后执行两个独立计时的 `Get-Location`；每平台正反两轮、六个新进程，单进程总期限 60 秒。准备耗时包含固定身份校验，查询计时不含后续编码/父进程 cwd 校验；阶段之和不作为 wall。发现/导入均可能产生预热，不能相减求纯发现或初始化成本。
+
+任意异常、非零退出、身份/cwd/协议/容量/清理或非允许 stderr 结构错误即停止该平台，无 command-not-found 继续例外，无追加重试；完整 progress-only 结构仅允许继续采集，任何非空 stderr 仍严格失败。首次 push 只触发新阶段工作流，未重跑 Rust、旧八环境矩阵或上一轮五 arm，未重复手动 dispatch；仅上传精确 `.artifacts/p1/powershell-phase/measurements.json`。
+
+两平台各六个预定样本完整、exit 0，所有查询 cwd 与准备身份校验均成立；`experimentComplete=true`、`strictPassed=false`、`stopReason=null`。无超时、截断、协议或清理失败，`cleanupSucceeded=null` 仅表示未触发终止清理。每平台 cold/discover 四个样本仍有 392 字节、16 节点、深度 5、仅 progress=1 的有限 CLIXML，指纹仍为 `a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f`，严格判断失败；两个 import 样本 stderr 为空，样本严格判断通过，但不改变整个实验失败。
+
+| 阶段或样本总耗时 | Windows 2022，第 1 / 2 轮 | Windows 2025，第 1 / 2 轮 |
+| --- | --- | --- |
+| cold `query-1` | 29.322 / 21.396 秒 | 28.074 / 22.752 秒 |
+| discover 准备（含身份校验） | 21.381 / 21.281 秒 | 22.738 / 22.699 秒 |
+| discover 后 `query-1` | 2.600 / 2.358 ms | 2.592 / 3.007 ms |
+| import 准备（含身份校验） | 48.665 / 44.236 ms | 59.024 / 49.369 ms |
+| import 后 `query-1` | 2.575 / 2.516 ms | 2.598 / 2.583 ms |
+| import 整个进程 wall | 248.247 / 243.965 ms | 276.046 / 265.583 ms |
+
+所有 arm 的第二次查询均为 0.232–0.374 ms。阶段内部 elapsed 不包含协议写出，查询计时不包含后续编码/父进程 cwd 校验，阶段之和不等于 wall；例如首轮 cold 的 wall 为 32.445 秒（2022）和 29.961 秒（2025），高于内部首查区间。
+
+本轮在固定条件下观察到：精确 `Get-Command` 的准备阶段承载了约 21–23 秒慢区间，后续查询为毫秒级；显式 Management 导入及其后查询则均较快且 stderr 为空。该差异支持进一步检查命令发现/自动加载路径与显式导入路径的区别，不能把准备耗时拆成纯发现、导入或初始化成本，也不能据此宣布具体模块/变量根因。两个准备 arm 的查询均已预热，机器缓存、执行顺序与负载仍未排除；不能直接将显式导入写入产品启动或据此关闭 ConPTY/WebView2 故障。
+
+两份精确 `measurements.json` 已通过独立 schema、边界及隐私核验，每平台 16 个阶段完整，未包含原文、路径、模块对象或环境值。报告文件 SHA-256：Windows 2022 为 `e889aa4b4bdfe7893abb8e8a383ddc13012aa1b4d460df808deea49e4617aff5`；Windows 2025 为 `a62cab7ff42fd3c4024e394a260bc76941e103e96f0733b4b575cb0721465373`。这是文件指纹，不是 stderr 指纹。本轮预注册条件保持，下一步候选为区分自动发现扫描与指定模块解析/导入，或增加真实 ConPTY 的有限对照；均须先预注册范围与停止条件，不直接改产品，不追加本轮样本或改判。P1 与第四批仍未通过，P2 仅准备，main 不合并。
