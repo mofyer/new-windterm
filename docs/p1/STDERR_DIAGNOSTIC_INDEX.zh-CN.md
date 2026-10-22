@@ -78,6 +78,14 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 2022 失败快照 `embeddedMarkerLines=1/markerLines=0`，只证明一条被忽略行含 nonce 前缀，不证明完整 READY、输出而非回显或布局根因；2025 八项计数为 0 而最终合流 107 字节，首错计数与最终字节窗口不同，不能称无输出。两失败均 kill true、退出前观测 false、cleanup true，exit 1 不能称脚本自行失败。两报告独立 schema/隐私/状态核验通过，精确计时与 SHA-256 见 [P1 执行记录](RESULTS.zh-CN.md#conpty-协议失败分类诊断工作流-39828696609)。下一步先预注册无查询的 startup-only 诊断，在原 5 秒窗口记录 READY 实际写入完成/时点，区分行首与嵌入完整 READY 形状；先 fixture 和独立审查，分类不放行、不延长门限；模块分析缓存变量的单变量对照只是另一个待预注册候选，实际 runner 值/状态未知，官方依据见该执行记录，不作为本轮根因。原失败保留，ConPTY 合流仍不能证明 stderr 为空，P1/第四批未验收，P2 仅准备，main 不合并。
 
+## 已结束、诊断失败：ConPTY startup-only `39833719372`
+
+按[启动诊断预注册](CONPTY_STARTUP_PLAN.zh-CN.md)，实现 `7aadab600a7c89d4235df239c9c0bf4b12723e66` 使用 `[skip ci]` 推送后，单独推送新 workflow，准确被测 HEAD 为 `fc3ff2d199a6ec87749afc164a5f9eff917abdb9`。本机完整 native **237/237**、startup 专项 **48/48**、Rust **19/19** 及 Windows cfg/独立审查通过；这些与 Windows 实跑分开。唯一 push 运行 [39833719372](https://github.com/mofyer/new-windterm/actions/runs/39833719372) 已 `completed/failure`，两平台 job 失败，helper/Rust 测试/构建通过。
+
+2022 首样本 startup/complete 均成功；第二样本实际 write/flush 在 6.2963 ms 完成，但 strict READY 0、完整 embedded READY 1，仍 `await-ready/startup-timeout`。2025 首样本严格 READY 与写入确认在原窗内完成，`startupComplete=true`，随后 `after-ready/exit-error`、exit 3221225786；不能记为启动失败。第二样本未运行，所以聚合 `startupSuccess=false` 不否定已取得的单样本启动成功。两平台 `experimentComplete/startupSuccess/diagnosticPassed` 均 false，首失败停止、无追加样本。工件独立 schema/隐私/状态核验通过；精确数值与文件 hash 见 [P1 执行记录](RESULTS.zh-CN.md#conpty-startup-only-写入与-ready-分类诊断工作流-39833719372)。
+
+本轮无查询、无新环境 arm，原 5 秒门限保持，嵌入形状只分类不放行。下一步先离线核定 xterm 行边界/CR/CSI fixture，并独立审计退出写入确认/输入端关闭生命周期；2025 kill false 不能排除 cleanup 影响，退出码不能证明终止原因。之后如需实测另行预注册，本轮不改不重跑。ConPTY 合流不证明 stderr 为空，没有查询性能或产品根因结论，旧失败与未验收边界保持。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：

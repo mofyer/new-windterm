@@ -628,3 +628,27 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 本轮沿用现有 workflow 的 push 触发，已核对该准确 HEAD 只有一个 push 运行，无重复调度，不再使用旧两次推送策略或额外手动触发；每平台仍最多四个 fresh worker、正反两轮，每 worker 两查询，首失败即停止且不追加重试。两 arm 的 READY 启动脚本相同，查询差异只在 READY 后，因此不能把本轮限定 arm 的启动失败归因于限定语法或模块加载。唯一上传文件仍为内容受限 `report.json`，不保存原始终端或构建输出。ConPTY 合流仍不能证明独立 stderr 为空；旧失败、普通原生验收查询及全部门禁保持，P1/第四批未验收，P2 仅准备，main 不合并。
 
 下一轮另一个待预注册候选是模块分析缓存路径变量：Microsoft 说明 Windows PowerShell 5.1 的模块分析缓存保存模块导出命令信息，`PSModuleAnalysisCachePath` 须在 PowerShell 启动前设置；runner-images 固定源码设置该变量，脚本提示缓存预热可改善首次调用约 20 秒的等待。[Microsoft 5.1 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_5.1?view=powershell-5.1#module-analysis-cache)、[runner-images 固定提交](https://github.com/actions/runner-images/blob/416ad027415129c880fc76669a2c063b0a39b4a0/images/windows/scripts/build/Configure-PowerShell.ps1#L12-L20)。产品白名单未保留该变量、既有矩阵未单独检验；当前 runner 的实际值及缓存状态尚未核实，源码及其提示不是本轮根因证据。可另行预注册仅记录存在性布尔值、单变量加回/移除的有限对照，并与协议解析失败隔离，不在本轮临时追加样本或修改产品。
+
+### ConPTY startup-only 写入与 READY 分类诊断（工作流 `39833719372`）
+
+按[启动诊断预注册](CONPTY_STARTUP_PLAN.zh-CN.md)，实现与方案提交 `7aadab600a7c89d4235df239c9c0bf4b12723e66` 使用 `[skip ci]` 推送，避免同 Rust 文件触发旧 qualified 矩阵；随后仅推送独立 startup workflow，准确被测 HEAD 为 `fc3ff2d199a6ec87749afc164a5f9eff917abdb9`。本机完整 native helper **237/237**、startup wrapper 专项 **48/48**、Rust 专项 **19/19** 通过，Windows cfg 与独立审查通过；交叉编译与 synthetic fixture 不等于 Windows 实跑。唯一 push 运行 [39833719372](https://github.com/mofyer/new-windterm/actions/runs/39833719372) 已 `completed/failure`，两 job 失败；两平台 helper、Rust 测试与构建通过，实际采样随后按首失败停止。
+
+已复核实现提交 `7aadab6` 没有运行，准确 workflow HEAD 只有上述一个 push 运行，无重复调度或额外 dispatch。本轮每平台最多两个同构 fresh worker，固定产品白名单与 PowerShell 5.1，不执行 `Get-Location` 或其他查询/模块预热，不混入缓存变量矩阵；同一 5 秒窗口内 CPR 响应先于 READY，外层 45 秒总保护覆盖此前 setup。实际 write/flush 完成时点与宿主收到确认分别解释，严格 READY 与 ACK 均在原 deadline 前确认才记 `startupComplete=true`；嵌入完整 READY 只计数、不放行。整体 `complete` 还要求退出与清理成功，报告分别汇总 `startupSuccess`、`experimentComplete`、`diagnosticPassed`，第二 worker 启动后失败也保留已取得的启动成功证据。首失败停止，不追加重试。
+
+| 平台 / 样本序号 | 实际 READY write/flush 时点（ms） | startup / wall（ms） | strict / embedded READY | 实际结果 |
+| --- | --- | --- | --- | --- |
+| 2022 / 1 | 146.6556 | 4483.0913 / 4577.8201 | 1 / 0 | `startupComplete=true`、`complete=true`，exit 0 |
+| 2022 / 2 | 6.2963 | 5004.5062 / 5015.0771 | 0 / 1 | `await-ready`、`startup-timeout`，startup/complete false，exit 1 |
+| 2025 / 1 | 12.6397 | 4459.7464 / 4477.8013 | 1 / 0 | `startupComplete=true`、`complete=false`，`after-ready` / `exit-error`，exit 3221225786 |
+
+三个样本均 `readyWriteCompleted=true`、CPR 1、`cleanupOk=true`。2022 第二样本的脚本实际写入/flush 早于原 5 秒 deadline，但没有严格行首 READY；`embeddedReadyCount=1` 只证明 ANSI 剥离后的 LF 终结行中，在非零 offset 出现完整 nonce + `READY|5.1.a.b` 后缀，仍未放行。其首错计数为 CR/LF 各 2、CSI cursor 4、erase 0、marker 0、duplicate 0、embedded marker 1、ignored 2；最终合流 1014 字节。它比上一轮“只含 nonce 前缀”的观测更具体，但没有保存行内容或控制序列参数，不能据此确定屏幕布局、回显或解析根因。约 5004.5 ms 是轮询超时观测，不放宽原 5 秒限制。
+
+2025 首样本已在原窗口内完成严格 READY 与写入确认，必须记为启动成功后的退出异常，不能称启动失败或查询超时。其 `killRequested=false`、`exitObservedBeforeKill=true`，说明诊断清理未调用 kill 且先已观察到退出；这只排除显式 child.kill，不排除清理关闭输入端的时序影响，只凭 exit 3221225786 不能归因终止来源或底层机制。2022 成功样本同为 false/true；2022 超时样本为 true/false，exit 1 可由诊断清理终止产生，不能认定脚本自行失败。三个 worker 外层均观察到退出、本地资源释放、未请求 tree kill；这不覆盖未触发的外层终止路径。
+
+2022 保留两样本，2025 首错后停止、第二样本未运行。两报告 `experimentComplete`、`startupSuccess`、`diagnosticPassed` 均 false，`failure=sample-failed`；2025 聚合 `startupSuccess=false` 因未完成两个预定启动，不抹去首样本 `startupComplete=true`。没有完整双平台启动验收，更无目录查询或产品修复结论。
+
+两报告已通过独立 21 键 schema、八计数边界、隐私、样本顺序/首停、状态聚合与清理字段核验。文件 SHA-256：2022 为 `f2059d53e451756369382778bcd171897cefbe66575e40c3c05da45e1b007bd5`；2025 为 `e7494b7cb6edf928a7086dd672549198cde86287596f7b3504a39f98ceaed42d`。报告结构核验通过不等于诊断通过，本轮预注册不按结果改判。
+
+下一步分开处理两类现象，先离线验证：2022 用既有 xterm 的固定合成 fixture 核定行边界、CR/CSI 处理能力，再评估严格解析修复，不能直接把“包含完整 READY”改为通过；2025 审计 `exit 0` 的实际 write/flush 确认与 writer 关闭先后，建立有界生命周期 fixture。当前实现只将 `exit 0` 入队而无专门 ACK，cleanup 先 `drop(io.input)` 再等待退出，writer 排空后关闭输入端；这是待验证的生命周期候选，不是本次退出原因已定。任何下一次 CI 均另行预注册，本轮不改不重跑，也不承诺新增计数或环境矩阵。模块分析缓存仍为独立后续候选，不能把它与 READY/退出异常混为同一根因。
+
+唯一上传 `.artifacts/p1/powershell-conpty-startup/report.json`，原文、nonce、路径、环境值和构建输出不落工件。ConPTY 合流不能证明独立 stderr 为空；本轮不评价查询耗时、不回填旧失败、不修改产品或原生普通查询门禁。P1/第四批未验收，P2 仅准备，main 不合并。
