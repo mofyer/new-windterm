@@ -52,13 +52,14 @@ async function clickCss(session, css) {
 }
 
 /** Focuses xterm's input textarea, then types; falls back to the actions API if a driver refuses the hidden element. */
-export async function typeInTerminal(ctx, text) {
+export async function typeInTerminal(ctx, text, onTiming) {
   const focused = await inPage(ctx.session, (css) => {
     const area = document.querySelector(css);
     area?.focus();
     return !!area && document.activeElement === area;
   }, TEXTAREA);
   if (!focused) throw new Error('the focused terminal textarea did not take focus');
+  const started = onTiming ? performance.now() : 0;
   try {
     await ctx.session.sendKeys(await ctx.session.findElement(TEXTAREA), text);
     return 'element send keys';
@@ -68,6 +69,8 @@ export async function typeInTerminal(ctx, text) {
     await ctx.session.performKeys(text);
     await ctx.session.releaseActions();
     return 'actions API';
+  } finally {
+    if (onTiming) onTiming(performance.now() - started);
   }
 }
 
@@ -416,6 +419,9 @@ async function localStartup(ctx, shell) {
   const recordTiming = (phaseName, event, started) => {
     if (ctx.webviewTiming) timings.push({ phase: phaseName, event, milliseconds: performance.now() - started });
   };
+  const recordTypeTiming = (event, milliseconds) => {
+    if (ctx.webviewTiming) timings.push({ phase, event, milliseconds });
+  };
   let selected;
   async function queryCwd() {
     if (shell === 'powershell') {
@@ -426,13 +432,13 @@ async function localStartup(ctx, shell) {
     }
     if (shell) {
       const versionStarted = ctx.webviewTiming ? performance.now() : 0;
-      await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`);
+      await typeInTerminal(ctx, `${versionQuery}${Keys.ENTER}`, milliseconds => recordTypeTiming('version-typeInTerminal', milliseconds));
       const identity = await waitForRow(ctx, row => isShellVersionOutput(row, shell), `actual ${shell} version expansion`);
       recordTiming(phase, 'version-send-to-row', versionStarted);
       identities.push(identity.row);
     }
     const cwdStarted = ctx.webviewTiming ? performance.now() : 0;
-    await typeInTerminal(ctx, `${query}${Keys.ENTER}`);
+    await typeInTerminal(ctx, `${query}${Keys.ENTER}`, milliseconds => recordTypeTiming('cwd-typeInTerminal', milliseconds));
     const result = await waitForRow(ctx, row => isCwdOutput(row, expected, ctx.platform), 'actual shell cwd output');
     recordTiming(phase, 'cwd-send-to-row', cwdStarted);
     return result;

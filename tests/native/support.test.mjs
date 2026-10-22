@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { createTraceRuntime } from './terminal-trace.test.mjs';
-import { environmentQueries, fill, isCwdOutput, isShellVersionOutput, localTerminalShell } from './scenarios.mjs';
+import { environmentQueries, fill, isCwdOutput, isShellVersionOutput, localTerminalShell, typeInTerminal } from './scenarios.mjs';
 import { driverUrl, parseDriverVersion, parseRegVersion } from './msedgedriver.mjs';
 import { freePort, parseFixtureBanner, resolveExecutable, spawnLogged, startSshFixture, stopProcess, stopSshFixture } from './processes.mjs';
 
@@ -162,6 +162,24 @@ test('empty form values clear and read back without sending empty WebDriver text
       ? ['clear', 'execute']
       : ['clear', 'execute', 'fallback log', 'execute', 'input']);
   }
+});
+
+test('terminal typing timing is opt-in and records only elapsed milliseconds', async () => {
+  const calls = [];
+  const ctx = {
+    session: {
+      execute: async () => true,
+      findElement: async css => css,
+      sendKeys: async (_id, value) => calls.push(value),
+    },
+  };
+  assert.equal(await typeInTerminal(ctx, 'probe\u000d'), 'element send keys');
+  assert.deepEqual(calls, ['probe\u000d']);
+  const events = [];
+  assert.equal(await typeInTerminal(ctx, 'timed\u000d', milliseconds => events.push(milliseconds)), 'element send keys');
+  assert.equal(events.length, 1);
+  assert.equal(typeof events[0], 'number');
+  assert.ok(events[0] >= 0);
 });
 
 test('parseFixtureBanner reads the ssh_terminal_fixture banner once every field has arrived', () => {
