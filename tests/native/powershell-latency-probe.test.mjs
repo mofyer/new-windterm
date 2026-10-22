@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, DIAGNOSTIC_ITERATIONS, MAX_VARIANTS, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample } from './powershell-latency-probe.mjs';
+import { classifyStderrChunk, diagnosticEnvironments, diagnosticOrder, DIAGNOSTIC_ITERATIONS, MAX_VARIANTS, normalizeStderrText, parseMeasurements, POWERSHELL_SCRIPT, productEnvironment, sample, summarizeStderrChunk } from './powershell-latency-probe.mjs';
 
 const cwd = 'C:\\Temp\\p1 shell 中文-fixture';
 const encoded = Buffer.from(cwd).toString('base64');
@@ -108,6 +108,28 @@ test('stderr classification keeps only bounded type counts and marks unknown con
   assert.equal(normalizeStderrText('\uFEFF\u001b[31mWARNING: progress\r\n'), 'WARNING: progress');
 });
 
+test('stderr shape summary keeps structure without retaining content', () => {
+  const summary = summarizeStderrChunk(Buffer.from('SECRET stderr text\r\n'));
+  assert.deepEqual(summary, {
+    chunks: 1,
+    bytes: 20,
+    validUtf8Bytes: 20,
+    invalidUtf8Bytes: 0,
+    asciiBytes: 20,
+    printableBytes: 18,
+    controlBytes: 0,
+    escapeBytes: 0,
+    nulBytes: 0,
+    newlineBytes: 1,
+    carriageReturnBytes: 1,
+  });
+  const binary = summarizeStderrChunk(Buffer.from([0xff, 0x00, 0x1b, 0x0a]));
+  assert.equal(binary.invalidUtf8Bytes, 4);
+  assert.equal(binary.nulBytes, 1);
+  assert.equal(binary.escapeBytes, 1);
+  assert.equal(JSON.stringify(summary).includes('SECRET'), false);
+});
+
 test('static script does not invoke a cmdlet ahead of first measurement', () => {
   const prefix = POWERSHELL_SCRIPT.slice(0, POWERSHELL_SCRIPT.indexOf('$path = (Get-Location).Path'));
   assert.ok(prefix.includes('$ExecutionContext.SessionState.Path.CurrentLocation.Path'));
@@ -137,7 +159,25 @@ test('successful sample preserves exact Unicode cwd and launches only the contro
   });
   assert.equal(result.passed, true);
   assert.equal(result.cleanupSucceeded, null);
-  assert.deepEqual(result.stderr, { knownBytes: {}, unknownBytes: 0, unknown: false, sha256: null });
+  assert.deepEqual(result.stderr, {
+    knownBytes: {},
+    unknownBytes: 0,
+    unknown: false,
+    summary: {
+      chunks: 0,
+      bytes: 0,
+      validUtf8Bytes: 0,
+      invalidUtf8Bytes: 0,
+      asciiBytes: 0,
+      printableBytes: 0,
+      controlBytes: 0,
+      escapeBytes: 0,
+      nulBytes: 0,
+      newlineBytes: 0,
+      carriageReturnBytes: 0,
+    },
+    sha256: null,
+  });
   assert.equal(result.measurements.length, 3);
 });
 
@@ -158,6 +198,9 @@ test('stderr report does not retain raw content and unknown stderr remains a fai
   assert.equal(result.stderr.unknown, true);
   assert.equal(result.stderr.unknownBytes, 18);
   assert.match(result.stderr.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(result.stderr.summary.bytes, 18);
+  assert.equal(result.stderr.summary.chunks, 1);
+  assert.equal(result.stderr.summary.invalidUtf8Bytes, 0);
   assert.ok(!JSON.stringify(result).includes('SECRET'));
 });
 

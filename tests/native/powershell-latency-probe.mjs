@@ -124,6 +124,64 @@ export function classifyStderrChunk(chunk) {
   return 'unknown';
 }
 
+/**
+ * Returns a bounded shape summary for an stderr chunk without retaining text.
+ * Counts are deliberately structural so an unknown stream remains a failure
+ * while repeated runs can be compared without exposing its contents.
+ */
+export function summarizeStderrChunk(chunk) {
+  const bytes = Buffer.from(chunk);
+  let validUtf8 = true;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    validUtf8 = false;
+  }
+  const summary = {
+    chunks: 1,
+    bytes: bytes.length,
+    validUtf8Bytes: validUtf8 ? bytes.length : 0,
+    invalidUtf8Bytes: validUtf8 ? 0 : bytes.length,
+    asciiBytes: 0,
+    printableBytes: 0,
+    controlBytes: 0,
+    escapeBytes: 0,
+    nulBytes: 0,
+    newlineBytes: 0,
+    carriageReturnBytes: 0,
+  };
+  for (const byte of bytes) {
+    if (byte < 0x80) summary.asciiBytes++;
+    if (byte >= 0x20 && byte !== 0x7f) summary.printableBytes++;
+    if ((byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) || byte === 0x7f) summary.controlBytes++;
+    if (byte === 0x1b) summary.escapeBytes++;
+    if (byte === 0x00) summary.nulBytes++;
+    if (byte === 0x0a) summary.newlineBytes++;
+    if (byte === 0x0d) summary.carriageReturnBytes++;
+  }
+  return summary;
+}
+
+function emptyStderrSummary() {
+  return {
+    chunks: 0,
+    bytes: 0,
+    validUtf8Bytes: 0,
+    invalidUtf8Bytes: 0,
+    asciiBytes: 0,
+    printableBytes: 0,
+    controlBytes: 0,
+    escapeBytes: 0,
+    nulBytes: 0,
+    newlineBytes: 0,
+    carriageReturnBytes: 0,
+  };
+}
+
+function addStderrSummary(target, source) {
+  for (const key of Object.keys(source)) target[key] += source[key];
+}
+
 // Retain only verified schema fields, including a valid prefix on failure.
 // Unexpected output and stderr contents never enter the artifact.
 export function parseMeasurements(text, expectedCwd) {
@@ -194,14 +252,18 @@ export async function sample(executable, cwd, env, systemRoot, {
   let stdout = '';
   let outputBytes = 0;
   let stderrBytes = 0;
-  const stderr = { knownBytes: {}, unknownBytes: 0, unknown: false };
+  const stderr = { knownBytes: {}, unknownBytes: 0, unknown: false, summary: emptyStderrSummary() };
   const stderrHash = createHash('sha256');
-  let stderrLineBuffer = '';
+  let stderrLineBuffer = Buffer.alloc(0);
   const classifyStderrLine = line => {
-    const kind = classifyStderrChunk(Buffer.from(line));
-    const bytes = Buffer.byteLength(line);
-    if (kind === 'unknown') { stderr.unknown = true; stderr.unknownBytes += bytes; }
-    else if (kind !== 'empty') stderr.knownBytes[kind] = (stderr.knownBytes[kind] ?? 0) + bytes;
+    const bytes = Buffer.from(line);
+    const kind = classifyStderrChunk(bytes);
+    if (kind === 'unknown') {
+      stderr.unknown = true;
+      stderr.unknownBytes += bytes.length;
+      addStderrSummary(stderr.summary, summarizeStderrChunk(bytes));
+    }
+    else if (kind !== 'empty') stderr.knownBytes[kind] = (stderr.knownBytes[kind] ?? 0) + bytes.length;
   };
   let failure = null;
   let cleanup;
@@ -233,12 +295,20 @@ export async function sample(executable, cwd, env, systemRoot, {
   child.stderr.on('data', chunk => {
     stderrBytes += chunk.length;
     stderrHash.update(chunk);
-    stderrLineBuffer += chunk.toString('utf8');
-    if (stderrLineBuffer.length > 16_384) { stderr.unknown = true; stderr.unknownBytes += Buffer.byteLength(stderrLineBuffer); stderrLineBuffer = ''; }
-    const lines = stderrLineBuffer.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-    if (!lines.length || !lines.at(-1)?.endsWith('\n')) stderrLineBuffer = lines.pop() ?? '';
-    else stderrLineBuffer = '';
-    for (const line of lines) classifyStderrLine(line);
+    stderrLineBuffer = Buffer.concat([stderrLineBuffer, chunk]);
+    if (stderrLineBuffer.length > 16_384) {
+      stderr.unknown = true;
+      stderr.unknownBytes += stderrLineBuffer.length;
+      addStderrSummary(stderr.summary, summarizeStderrChunk(stderrLineBuffer));
+      stderrLineBuffer = Buffer.alloc(0);
+    }
+    let newline;
+    let start = 0;
+    while ((newline = stderrLineBuffer.indexOf(0x0a, start)) !== -1) {
+      classifyStderrLine(stderrLineBuffer.subarray(start, newline + 1));
+      start = newline + 1;
+    }
+    if (start > 0) stderrLineBuffer = stderrLineBuffer.subarray(start);
     if (stderrBytes > 16_384) stop('Stderr limit exceeded');
   });
   child.on('error', () => {
@@ -257,7 +327,7 @@ export async function sample(executable, cwd, env, systemRoot, {
   clearTimeout(terminationTimer);
   const treeKilled = cleanup ? await cleanup : null;
   const cleanupSucceeded = cleanup ? treeKilled && closeObserved : null;
-  if (stderrLineBuffer) classifyStderrLine(stderrLineBuffer);
+  if (stderrLineBuffer.length > 0) classifyStderrLine(stderrLineBuffer);
   const measurement = parseMeasurements(stdout, cwd);
   if (exit.code !== 0 || exit.signal || stderrBytes > 0) failure ??= 'Process exit or stderr failure';
   failure ??= measurement.error;
