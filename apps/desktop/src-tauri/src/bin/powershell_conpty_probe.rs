@@ -216,10 +216,17 @@ mod windows_probe {
     fn parse_inner_milliseconds(output: &[u8]) -> Result<f64, String> {
         let text = String::from_utf8_lossy(output);
         let prefix = "P1_RESULT|";
-        let line = text
-            .lines()
-            .find_map(|line| line.trim().strip_prefix(prefix))
-            .ok_or("PowerShell result marker missing")?;
+        // ConPTY may wrap the prompt/command in cursor-control sequences, so
+        // the marker is not guaranteed to begin a logical text line.
+        let start = text
+            .find(prefix)
+            .ok_or("PowerShell result marker missing")?
+            + prefix.len();
+        let line = text[start..]
+            .split(['\r', '\n', '\u{1b}'])
+            .next()
+            .unwrap_or_default()
+            .trim();
         let value = line
             .parse::<f64>()
             .map_err(|_| "PowerShell result timing invalid")?;
