@@ -31,6 +31,54 @@ mod tests {
         assert_eq!(diagnostic.counters.cr, 6);
         assert_eq!(diagnostic.counters.marker_lines, 6);
     }
+    #[test]
+    fn shared_layout_fixtures_preserve_real_parser_results_at_every_split() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../tests/fixtures/conpty-startup-layout.json"
+        ))
+        .unwrap();
+        let nonce = fixtures["nonce"].as_str().unwrap();
+        for case in fixtures["cases"].as_array().unwrap() {
+            let input = case["input"].as_str().unwrap().as_bytes();
+            for cut in (0..=input.len()).map(Some).chain(std::iter::once(None)) {
+                let chunks: Vec<&[u8]> = match cut {
+                    Some(at) => vec![&input[..at], &input[at..]],
+                    None => input.chunks(1).collect(),
+                };
+                let mut parser = Parser::startup(nonce);
+                let result = chunks
+                    .into_iter()
+                    .try_for_each(|chunk| parser.push(chunk).map(|_| ()))
+                    .and_then(|()| parser.finish());
+                let expected = &case["parser"];
+                let (strict, embedded) = parser.ready_counts();
+                assert_eq!(
+                    parser.version_ok,
+                    expected["versionOk"].as_bool().unwrap(),
+                    "{} split {cut:?}",
+                    case["id"]
+                );
+                assert_eq!(
+                    strict,
+                    expected["strictReadyCount"].as_u64().unwrap() as usize,
+                    "{} split {cut:?}",
+                    case["id"]
+                );
+                assert_eq!(
+                    embedded,
+                    expected["embeddedReadyCount"].as_u64().unwrap() as usize,
+                    "{} split {cut:?}",
+                    case["id"]
+                );
+                assert_eq!(
+                    parser.diagnostic().reason,
+                    expected["reason"].as_str(),
+                    "{} split {cut:?}: {result:?}",
+                    case["id"]
+                );
+            }
+        }
+    }
     // These are synthetic terminal streams, not captured Windows evidence.
     #[test]
     fn synthetic_cursor_and_erase_fixtures_preserve_rejection_rules() {
@@ -837,16 +885,21 @@ mod probe {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod windows_worker {
     use super::probe::*;
-    use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+    use portable_pty::Child;
+    #[cfg(windows)]
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    #[cfg(windows)]
     use std::{
         collections::BTreeMap,
         env,
         ffi::OsString,
-        io::{Read, Write},
         path::{Path, PathBuf},
+    };
+    use std::{
+        io::{Read, Write},
         sync::{
             atomic::{AtomicBool, AtomicUsize, Ordering},
             mpsc::{self, Receiver, SyncSender, TrySendError},
@@ -1042,11 +1095,38 @@ mod windows_worker {
         kill_requested: Option<bool>,
         exit_before_kill: Option<bool>,
     }
-    fn cleanup(
+    // The write ACK and child exit share the existing graceful-exit window.
+    // Keeping the sender alive also keeps the writer/ConPTY input handle alive.
+    fn startup_exit(
+        input: &SyncSender<WriteRequest>,
+        child: &mut dyn Child,
+        deadline: Instant,
+    ) -> (Option<u32>, Option<&'static str>) {
+        let (done, ack) = mpsc::sync_channel(1);
+        if input
+            .try_send(WriteRequest {
+                bytes: b"exit 0\r\n".to_vec(),
+                ready_done: Some(done),
+            })
+            .is_err()
+        {
+            return (None, Some("write-error"));
+        }
+        match ack.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(at) if at < deadline && Instant::now() < deadline => {}
+            _ => return (None, Some("write-error")),
+        }
+        match poll_exit(child, deadline.saturating_duration_since(Instant::now())) {
+            Ok(exit) => (exit, None),
+            Err(_) => (None, Some("exit-error")),
+        }
+    }
+    fn cleanup<M: Send + 'static>(
         mut child: Box<dyn Child + Send + Sync>,
-        master: Box<dyn MasterPty + Send>,
+        master: M,
         io: Io,
         failed: bool,
+        startup_only: bool,
         mut parser: Parser,
     ) -> CleanupOutcome {
         let final_bytes = io.bytes.clone();
@@ -1055,13 +1135,34 @@ mod windows_worker {
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_millis(4500);
-            drop(io.input);
-            let mut exit = if failed {
-                None
+            let mut tail_failure = None;
+            let mut exit = if startup_only && !failed {
+                let (exit, failure) = startup_exit(
+                    &io.input,
+                    child.as_mut(),
+                    Instant::now() + Duration::from_millis(500),
+                );
+                tail_failure = failure;
+                if let Some(reason) = failure {
+                    parser.record_failure(reason);
+                }
+                exit
             } else {
-                poll_exit(child.as_mut(), Duration::from_millis(500))
-                    .ok()
-                    .flatten()
+                // Preserve the original qualified-sample and failed-startup policy.
+                None
+            };
+            let input = if startup_only && !failed {
+                Some(io.input)
+            } else {
+                drop(io.input);
+                exit = if failed {
+                    None
+                } else {
+                    poll_exit(child.as_mut(), Duration::from_millis(500))
+                        .ok()
+                        .flatten()
+                };
+                None
             };
             let mut kill_requested = false;
             let exit_before_kill = if exit.is_some() {
@@ -1079,6 +1180,9 @@ mod windows_worker {
                     .ok()
                     .flatten();
             }
+            // Startup-only input stays open through exit observation or the
+            // bounded kill fallback, then releases the writer for cleanup.
+            drop(input);
             let (closed_tx, closed) = mpsc::sync_channel(1);
             thread::spawn(move || {
                 drop(master);
@@ -1087,7 +1191,6 @@ mod windows_worker {
             let mut reader = false;
             let mut writer = false;
             let mut master_closed = false;
-            let mut tail_failure = None;
             while Instant::now() < deadline {
                 reader |= io.reader_done.try_recv().is_ok();
                 writer |= io.writer_done.try_recv().is_ok();
@@ -1170,6 +1273,7 @@ mod windows_worker {
                 exit_before_kill: None,
             })
     }
+    #[cfg(windows)]
     fn environment() -> Result<(BTreeMap<OsString, OsString>, PathBuf), &'static str> {
         let source: BTreeMap<_, _> = env::vars_os().collect();
         let mut values = BTreeMap::new();
@@ -1201,6 +1305,7 @@ mod windows_worker {
         let path = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
         Ok((values, path))
     }
+    #[cfg(windows)]
     pub fn sample(arm: Arm, cwd: &Path, startup_only: bool) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
@@ -1306,12 +1411,9 @@ mod windows_worker {
                 (report.strict_ready_count, report.embedded_ready_count) = parser.ready_counts();
                 report.startup_complete = outcome.is_ok();
                 outcome?;
-                // Exit is cleanup input only, after the startup snapshot. No
-                // directory command or extra startup time is introduced.
-                return io
-                    .input
-                    .try_send(b"exit 0\r\n".to_vec().into())
-                    .map_err(|_| "write-error");
+                // Exit is sent and acknowledged in the existing cleanup budget,
+                // after this frozen startup snapshot. No query is introduced.
+                return Ok(());
             }
             report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
             ready?;
@@ -1345,7 +1447,14 @@ mod windows_worker {
         } else {
             parser.ended
         };
-        let cleaned = cleanup(child, master, io, report.failure.is_some(), parser);
+        let cleaned = cleanup(
+            child,
+            master,
+            io,
+            report.failure.is_some(),
+            startup_only,
+            parser,
+        );
         report.bytes = cleaned.bytes;
         report.diagnostic = cleaned.diagnostic;
         report.kill_requested = cleaned.kill_requested;
@@ -1367,6 +1476,236 @@ mod windows_worker {
     #[cfg(test)]
     mod tests {
         use super::*;
+        #[derive(Debug, Default)]
+        struct LifecycleState {
+            bytes: std::sync::Mutex<Vec<u8>>,
+            flushed: AtomicBool,
+            input_closed: AtomicBool,
+            child_ready: AtomicBool,
+            running_notice: std::sync::Mutex<Option<SyncSender<()>>>,
+            child_observed: AtomicBool,
+            closed_before_exit: AtomicBool,
+            killed: AtomicBool,
+        }
+        struct LifecycleWriter {
+            state: Arc<LifecycleState>,
+            fail_flush: bool,
+            flush_gate: Option<Receiver<()>>,
+        }
+        impl Write for LifecycleWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                let size = bytes.len().min(2);
+                self.state
+                    .bytes
+                    .lock()
+                    .unwrap()
+                    .extend_from_slice(&bytes[..size]);
+                Ok(size)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                if let Some(gate) = self.flush_gate.take() {
+                    gate.recv_timeout(Duration::from_secs(1))
+                        .map_err(|_| std::io::Error::other("fixture gate"))?;
+                }
+                if self.fail_flush {
+                    return Err(std::io::Error::other("fixture flush"));
+                }
+                self.state.flushed.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        impl Drop for LifecycleWriter {
+            fn drop(&mut self) {
+                self.state.input_closed.store(true, Ordering::SeqCst);
+            }
+        }
+        #[derive(Debug)]
+        struct LifecycleChild(Arc<LifecycleState>);
+        impl portable_pty::ChildKiller for LifecycleChild {
+            fn kill(&mut self) -> std::io::Result<()> {
+                self.0.killed.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+                Box::new(Self(self.0.clone()))
+            }
+        }
+        impl Child for LifecycleChild {
+            fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
+                let killed = self.0.killed.load(Ordering::SeqCst);
+                // Child progress is independent of writer closure. Observe the
+                // ordering, without simulating a Windows exit cause or code.
+                if !killed && !self.0.child_ready.load(Ordering::SeqCst) {
+                    if let Some(notice) = self.0.running_notice.lock().unwrap().take() {
+                        let _ = notice.try_send(());
+                    }
+                    return Ok(None);
+                }
+                self.0.child_observed.store(true, Ordering::SeqCst);
+                self.0
+                    .closed_before_exit
+                    .store(self.0.input_closed.load(Ordering::SeqCst), Ordering::SeqCst);
+                Ok(Some(portable_pty::ExitStatus::with_exit_code(u32::from(
+                    killed,
+                ))))
+            }
+            fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
+                panic!("unbounded wait forbidden")
+            }
+            fn process_id(&self) -> Option<u32> {
+                None
+            }
+            #[cfg(windows)]
+            fn as_raw_handle(&self) -> Option<std::os::windows::io::RawHandle> {
+                None
+            }
+        }
+        fn lifecycle_io(
+            state: &Arc<LifecycleState>,
+            fail_flush: bool,
+            flush_gate: Option<Receiver<()>>,
+        ) -> Io {
+            start_io(
+                Box::new(std::io::Cursor::new(Vec::new())),
+                Box::new(LifecycleWriter {
+                    state: state.clone(),
+                    fail_flush,
+                    flush_gate,
+                }),
+            )
+        }
+        fn ready_parser() -> Parser {
+            let nonce = "0123456789abcdef0123456789abcdef";
+            let mut parser = Parser::startup(nonce);
+            parser
+                .push(format!("P1Q_{nonce}|READY|5.1.1.1\r\n").as_bytes())
+                .unwrap();
+            parser
+        }
+        #[test]
+        fn old_input_drop_can_precede_independent_child_exit_observation() {
+            let state = Arc::new(LifecycleState::default());
+            let io = lifecycle_io(&state, false, None);
+            io.input.try_send(b"exit 0\r\n".to_vec().into()).unwrap();
+            // A permitted old scheduling: writer drains before child is polled.
+            drop(io.input);
+            io.writer_done.recv_timeout(Duration::from_secs(1)).unwrap();
+            assert!(state.flushed.load(Ordering::SeqCst));
+            assert!(!state.child_observed.load(Ordering::SeqCst));
+            state.child_ready.store(true, Ordering::SeqCst);
+            assert!(LifecycleChild(state.clone()).try_wait().unwrap().is_some());
+            assert!(state.closed_before_exit.load(Ordering::SeqCst));
+        }
+        #[test]
+        fn startup_cleanup_acknowledges_exit_and_retains_input_until_exit() {
+            let state = Arc::new(LifecycleState::default());
+            state.child_ready.store(true, Ordering::SeqCst);
+            let io = lifecycle_io(&state, false, None);
+            let cleaned = cleanup(
+                Box::new(LifecycleChild(state.clone())),
+                (),
+                io,
+                false,
+                true,
+                ready_parser(),
+            );
+            assert!(cleaned.confirmed);
+            assert_eq!(cleaned.exit, Some(0));
+            assert_eq!(cleaned.failure, None);
+            assert_eq!(cleaned.kill_requested, Some(false));
+            assert_eq!(cleaned.exit_before_kill, Some(true));
+            assert!(state.flushed.load(Ordering::SeqCst));
+            assert_eq!(*state.bytes.lock().unwrap(), b"exit 0\r\n");
+            assert!(!state.closed_before_exit.load(Ordering::SeqCst));
+            assert!(state.input_closed.load(Ordering::SeqCst));
+            assert_eq!(cleaned.diagnostic.reason, None);
+            assert_eq!(cleaned.bytes, 0);
+        }
+        #[test]
+        fn startup_cleanup_keeps_input_open_while_child_progress_is_pending() {
+            let state = Arc::new(LifecycleState::default());
+            let (notice, running) = mpsc::sync_channel(1);
+            *state.running_notice.lock().unwrap() = Some(notice);
+            let io = lifecycle_io(&state, false, None);
+            let child_state = state.clone();
+            let worker = thread::spawn(move || {
+                cleanup(
+                    Box::new(LifecycleChild(child_state)),
+                    (),
+                    io,
+                    false,
+                    true,
+                    ready_parser(),
+                )
+            });
+            running.recv_timeout(Duration::from_secs(1)).unwrap();
+            let closed_while_running = state.input_closed.load(Ordering::SeqCst);
+            assert!(state.flushed.load(Ordering::SeqCst));
+            state.child_ready.store(true, Ordering::SeqCst);
+            let cleaned = worker.join().unwrap();
+            assert!(!closed_while_running);
+            assert!(!state.closed_before_exit.load(Ordering::SeqCst));
+            assert!(cleaned.confirmed);
+            assert_eq!(cleaned.exit, Some(0));
+            assert_eq!(cleaned.kill_requested, Some(false));
+            assert!(state.input_closed.load(Ordering::SeqCst));
+        }
+        #[test]
+        fn failed_exit_flush_keeps_first_reason_and_uses_bounded_kill() {
+            let state = Arc::new(LifecycleState::default());
+            let io = lifecycle_io(&state, true, None);
+            let cleaned = cleanup(
+                Box::new(LifecycleChild(state.clone())),
+                (),
+                io,
+                false,
+                true,
+                ready_parser(),
+            );
+            assert!(cleaned.confirmed);
+            assert_eq!(cleaned.failure, Some("write-error"));
+            assert_eq!(cleaned.diagnostic.reason, Some("write-error"));
+            assert_eq!(cleaned.kill_requested, Some(true));
+            assert_eq!(cleaned.exit, Some(1));
+        }
+        #[test]
+        fn startup_exit_without_child_exit_uses_original_bounded_fallback() {
+            let state = Arc::new(LifecycleState::default());
+            let io = lifecycle_io(&state, false, None);
+            let before = Instant::now();
+            let cleaned = cleanup(
+                Box::new(LifecycleChild(state.clone())),
+                (),
+                io,
+                false,
+                true,
+                ready_parser(),
+            );
+            assert!(before.elapsed() < Duration::from_secs(2));
+            assert!(cleaned.confirmed);
+            assert_eq!(cleaned.kill_requested, Some(true));
+            assert_eq!(cleaned.exit, Some(1));
+            assert!(!state.closed_before_exit.load(Ordering::SeqCst));
+        }
+        #[test]
+        fn startup_exit_ack_timeout_cannot_wait_for_late_flush() {
+            let state = Arc::new(LifecycleState::default());
+            let (release, gate) = mpsc::sync_channel(1);
+            let io = lifecycle_io(&state, false, Some(gate));
+            let before = Instant::now();
+            let result = startup_exit(
+                &io.input,
+                &mut LifecycleChild(state.clone()),
+                before + Duration::from_millis(5),
+            );
+            assert_eq!(result, (None, Some("write-error")));
+            assert!(before.elapsed() < Duration::from_millis(500));
+            assert!(!state.child_observed.load(Ordering::SeqCst));
+            release.send(()).unwrap();
+            drop(io.input);
+            io.writer_done.recv_timeout(Duration::from_secs(1)).unwrap();
+            assert!(state.flushed.load(Ordering::SeqCst));
+        }
         struct FixtureWriter {
             bytes: Arc<std::sync::Mutex<Vec<u8>>>,
             flushed: Arc<AtomicBool>,
@@ -1489,6 +1828,17 @@ mod windows_worker {
             );
             assert_eq!(parser.diagnostic().stage, "await-ready");
             assert_eq!(parser.diagnostic().reason, Some("startup-timeout"));
+        }
+        #[test]
+        fn qualified_command_deadline_still_reports_command_timeout() {
+            let (io, _, _) = mock_io();
+            let mut parser = Parser::new("0123456789abcdef0123456789abcdef");
+            let mut report = Report::new(Arm::Unqualified);
+            assert_eq!(
+                receive(&io, &mut parser, &mut report, Instant::now(), Until::End),
+                Err("command-timeout")
+            );
+            assert_eq!(parser.diagnostic().reason, Some("command-timeout"));
         }
         #[test]
         fn incomplete_cursor_request_never_enqueues_shell_input() {
