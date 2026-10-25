@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "nonce": "0123456789abcdef0123456789abcdef",
+  "cols": 100,
+  "rows": 4,
+  "cases": [
+    {
+      "id": "independent-ready",
+      "input": "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": true,
+        "strictReadyCount": 1,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "plain-prefix",
+      "input": "PS> P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "PS> P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "cr-overwrite",
+      "input": "PS> \rP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "cr-erase",
+      "input": "old prompt\r\u001b[2KP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "cursor-next-row",
+      "input": "PS> \u001b[2;1HP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "PS> ",
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 2
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "cursor-first-column",
+      "input": "PS> \u001b[1GP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "color-independent",
+      "input": "\u001b[32mP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\u001b[0m\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": true,
+        "strictReadyCount": 1,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "echo-not-record",
+      "input": "PS> Write-Output 'P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1'\r\n",
+      "screen": {
+        "lines": [
+          "PS> Write-Output 'P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1'",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "duplicate-ready",
+      "input": "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\nP1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 2
+        }
+      },
+      "parser": {
+        "versionOk": true,
+        "strictReadyCount": 2,
+        "embeddedReadyCount": 0,
+        "reason": "unexpected-record"
+      }
+    },
+    {
+      "id": "hidden-osc",
+      "input": "\u001b]0;P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\u0007\r\n",
+      "screen": {
+        "lines": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "hidden-osc-st",
+      "input": "\u001b]0;P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\u001b\\\r\n",
+      "screen": {
+        "lines": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "invalid-suffix",
+      "input": "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1|extra\r\n",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1|extra",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": "unexpected-record"
+      }
+    },
+    {
+      "id": "embedded-invalid-suffix",
+      "input": "PS> P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1|extra\r\n",
+      "screen": {
+        "lines": [
+          "PS> P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1|extra",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "erased-before-lf",
+      "input": "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1\r\u001b[2K\r\n",
+      "screen": {
+        "lines": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      "parser": {
+        "versionOk": true,
+        "strictReadyCount": 1,
+        "embeddedReadyCount": 0,
+        "reason": null
+      }
+    },
+    {
+      "id": "unterminated-ready",
+      "input": "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+      "screen": {
+        "lines": [
+          "P1Q_0123456789abcdef0123456789abcdef|READY|5.1.1.1",
+          "",
+          "",
+          ""
+        ],
+        "cursor": {
+          "x": 50,
+          "y": 0
+        }
+      },
+      "parser": {
+        "versionOk": false,
+        "strictReadyCount": 0,
+        "embeddedReadyCount": 0,
+        "reason": "incomplete-marker"
+      }
+    }
+  ]
+}
