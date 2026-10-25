@@ -94,7 +94,13 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 准确 HEAD `7d4d7bb2c0f192743aaf4038e7d71fb8a19e9f94` 的唯一 [push 运行 40160768631](https://github.com/mofyer/new-windterm/actions/runs/40160768631) 按[新预注册](CONPTY_EXIT_VALIDATION_PLAN.zh-CN.md)完成，整体 `failure`：2022 job 成功、两样本 startup/complete true、exit 0，三个聚合字段 true；2025 首样完整成功，第二样本 READY write 6.1119 ms 已确认但 strict 0/embedded 1，`await-ready/startup-timeout`，三个聚合字段 false。两平台 helper、Rust 专项测试/构建、报告上传成功，工件已独立 schema/隐私/顺序/聚合/清理核验；精确计时与文件 hash 见 [执行记录](RESULTS.zh-CN.md#conpty-退出修复的-windows-验证工作流-40160768631)。
 
-本次三个进入成功启动后退出路径的样本均 exit 0，提供有限修复后证据；2025 第二样本未进入该路径，不能据此称退出修复无效，也不能把三个成功当历史根因证明或双平台通过。READY 写入字段不是退出 ACK，kill false 不排除所有系统影响。旧失败、原 5 秒启动/500 ms 共用退出/30 秒查询及 stderr 门禁不变，无重试或补样本。下一步仅评估独立定界帧，先离线验证防回显、控制字符串隔离与分块等边界，另行审查/预注册；方案未实现，本轮不接受嵌入 marker、不修改产品。P1/第四批未验收，P2 仅准备，main 不合并。
+本次三个进入成功启动后退出路径的样本均 exit 0，提供有限修复后证据；2025 第二样本未进入该路径，不能据此称退出修复无效，也不能把三个成功当历史根因证明或双平台通过。READY 写入字段不是退出 ACK，kill false 不排除所有系统影响。旧失败、原 5 秒启动/500 ms 共用退出/30 秒查询及 stderr 门禁不变，无重试或补样本。下一步仅评估独立定界帧，先离线验证防回显、控制字符串隔离与分块等边界，另行审查/预注册；该轮结束时方案未实现，后续新模式见下节，本轮不接受嵌入 marker、不修改产品。P1/第四批未验收，P2 仅准备，main 不合并。
+
+## 已结束、前置测试失败：READY frame 独立诊断 `40161857832`
+
+按[独立预注册](CONPTY_FRAMED_PLAN.zh-CN.md)，parser/xterm `9b25ab6` 与宿主/Node `3fcf5d0` 先 `[skip ci]` 推送，随后仅新 workflow 推送为准确 HEAD `b0ee3324ead6f18f243ab949837dde43fa0af86f`。唯一 [push 运行 40161857832](https://github.com/mofyer/new-windterm/actions/runs/40161857832) 已 `completed/failure`：两平台均 `tests-failed`，Cargo test exit 101 / `process-exit`，`build=null`、`samples=[]`、三个聚合字段 false。helper/工具链/报告上传成功，两份工件已独立核验；没有运行 PowerShell worker，不是 frame 协议实测失败。本机 native 293/293、Rust 55/55（含 parser 19/19）、新 wrapper 56/56、xterm frame fixture 6/6 及 check/clippy/fmt/Windows cfg/独立审查通过；离线和类型检查不等于 Windows 实测。
+
+新 `startup-framed` 用连续字节的 nonce frame 与原 5 秒内 READY writer ACK 双确认，独立 19 键 schema；旧模式的严格 LF 行规则与旧失败不改。CPR FIFO/入队后 arm、实际脚本回显隔离、控制字符串隔离、重复/残缺尾部及原预算均已离线验证。本轮无查询、无产品环境变更，每平台最多两个 worker、首失败停止，不追加重试。两平台 tests 输出字节为 22846/22814，进程均观察到退出、未请求 tree kill、本地资源释放；这些不是 worker cleanup 结果。原始输出未落工件，exit 101 不能区分编译错误或测试断言失败。下一步另开局部取证定位此前置失败，不预写原因、不重跑本轮或改冻结代码；文件 SHA-256 及完整状态见[执行记录](RESULTS.zh-CN.md#conpty-ready-frame-独立诊断工作流-40161857832)。这不解除 stderr 或普通目录查询门禁；P1/第四批未验收，P2 仅准备，main 不合并。
 
 ## 历史矩阵停止条件与后续取证边界
 

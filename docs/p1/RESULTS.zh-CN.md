@@ -686,4 +686,25 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 
 两份报告已独立核验准确 SHA/run、schema/隐私、顺序/首停、状态聚合与清理字段。SHA-256：2022 为 `7bfb06cae36f706b31df0662833a500bcd280128a1e249680e72fa5e4fb847b1`；2025 为 `12454eb038c6b6ed8c79a0aa4eb1e765bb495a2444ff7ce69403afd4667ed220`。唯一上传内容受限的 `report.json`，终端与构建原文不落工件；ConPTY 合流仍不能证明独立 stderr 为空。历史各轮结论保持，不拼接不同提交的样本或把有限成功作为根因证明。
 
-下一步集中评估独立定界帧的 READY 方案，先离线验证防回显、控制字符串隔离、分块及重复/畸形帧，再独立审查并另行预注册；该方案尚未实现，本轮不改严格行首接受、不临时放行 embedded、不追加查询或环境矩阵。退出修复获得有限真实样本证据，启动行边界仍阻塞整轮；普通目录查询、首次/重开、中文空格 cwd、原 30 秒及 stderr 门禁保持。P1/第四批未验收，P2 仅准备，main 未合并。
+下一步集中评估独立定界帧的 READY 方案，先离线验证防回显、控制字符串隔离、分块及重复/畸形帧，再独立审查并另行预注册；该轮结束时方案尚未实现；后续新模式见下节，本轮不改严格行首接受、不临时放行 embedded、不追加查询或环境矩阵。退出修复获得有限真实样本证据，启动行边界仍阻塞整轮；普通目录查询、首次/重开、中文空格 cwd、原 30 秒及 stderr 门禁保持。P1/第四批未验收，P2 仅准备，main 未合并。
+
+### ConPTY READY frame 独立诊断（工作流 `40161857832`）
+
+按[新模式预注册](CONPTY_FRAMED_PLAN.zh-CN.md)，parser 与 xterm fixture 集成提交为 `9b25ab64b1eea23107e170dc3a316e960ed9dcbf`，宿主、Node wrapper 与方案为 `3fcf5d078af00195fb41ee55933362f6140af19a`；实现第一推使用 `[skip ci]`。新 workflow 第二推的准确被测 HEAD 为 `b0ee3324ead6f18f243ab949837dde43fa0af86f`，唯一 push [运行 40161857832](https://github.com/mofyer/new-windterm/actions/runs/40161857832) 已 `completed/failure`，两平台均在前置 Cargo test 步骤失败。helper、工具链安装与报告上传成功；未进行额外 dispatch、重试或补样本。
+
+新 `--startup-framed` 使用独立 schema 1/mode `startup-framed` 的固定 19 键报告。完整 nonce 绑定 frame 不出现在实际输入脚本回显中；CPR 回复先入 writer FIFO，READY 脚本入队成功后才 arm，合法完整 frame 与实际 write/flush ACK 均须在原同一 5 秒内确认。frame 是连续输出事件，不以 LF 或屏幕独立行判断，实际插入控制字符仍拒绝；新模式没有旧模式 16 KiB 行语义，使用最长 97 ASCII frame、有限 UTF-8/64 字节 escape 状态及 256 KiB 总输出预算。退出沿用已修复的 ACK 与 child exit 共用 500 ms、保留输入直到退出观测或有界终止；cleanup 4.5/5 秒、worker 外层 45 秒保持。startup 的 `versionOk/frameCount` 冻结，cleanup 继续拒绝重复/不完整 frame 和控制序列，不补写启动成功。nonce 不认证已知 nonce 且主动生成 frame 的进程。
+
+作者和独立审查已通过本机全 native **293/293**、Rust 专项 **55/55**（含 parser **19/19**）、新 Node wrapper **56/56**、真实 xterm frame fixture **6/6**、Rust check/clippy/fmt 与 Windows cfg 检查。脚本回显覆盖所有切分点及逐字节，宿主测试覆盖 CPR/FIFO/arm、首错快照和 cleanup 尾部失败；这些离线检查不替代实际 Windows 结果。
+
+本轮预注册每平台最多两个 fresh worker、首失败停止，无查询、无环境矩阵或模块预热；实际两平台都在 Cargo test 前置检查失败，因此 worker 运行数为 **0**，不能把上限记成已完成样本。
+
+| 平台 | 报告 failure | tests exit / failure | tests outputBytes | build / samples | experimentComplete / startupSuccess / diagnosticPassed |
+| --- | --- | --- | --- | --- | --- |
+| Windows 2022 | `tests-failed` | `101 / process-exit` | 22846 | `null / []` | false / false / false |
+| Windows 2025 | `tests-failed` | `101 / process-exit` | 22814 | `null / []` | false / false / false |
+
+两平台 tests 进程 cleanup 均为 `termination=observed`、`treeKill=not-requested`、`localResources=released`。这只是前置 Cargo 进程退出/资源释放的证据，不是 PowerShell worker 的 cleanup 实测。`build=null` 表示 wrapper 的独立 cargo build 步骤未运行；cargo test 本身也可能包含编译过程，不能由此推断完全没有编译。没有任何 startup/frame/READY ACK/退出测量，不能称为启动超时、frame 协议失败或退出修复失败。`exitCode=101` 和输出字节数不能区分 Cargo 编译错误、测试断言失败或其他前置测试原因；原始编译/测试输出未写入工件，因此本轮尚不能定因。
+
+两份内容受限 `powershell-conpty-framed-windows-{2022,2025}/report.json` 已独立核验准确 run/SHA、精确结构/隐私、前置失败停止、聚合与 cleanup。SHA-256：2022 为 `2fa333b5d2f3fb9865d8096879b9e885187933ceb1dd6a4b43357b4d24003441`；2025 为 `3d2c0e09b221e2796e67cd68e07fa6e50edcb122f9122d0886cbe7164c8d0e47`。报告结构核验通过不等于诊断通过，也不以本机或 Windows cfg 通过覆盖实际平台失败。
+
+下一步只定位 Windows Cargo test 前置失败，另开局部取证，不预写原因、不重跑本轮或修改冻结代码/预注册来补成功。旧 `--sample` schema 2 与 `--startup-only` schema 1 的接受规则/结果保留，不倒推旧 embedded 已通过，不改产品白名单或原生普通查询。ConPTY 合流仍不能证明独立 stderr 为空；P1/第四批未验收，P2 仅准备，main 不合并。

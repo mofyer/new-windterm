@@ -20,7 +20,7 @@
 
 2026-10-11 至 10-13 的进度、方案、过程和结论，以及在途任务所在的 worktree，归档在 [P0 工作归档](p0/P0_ARCHIVE_2026-10.zh-CN.md)。
 
-## 当前仓库状态（2026-10-23，P0 已关闭，P1 第四批实施中）
+## 当前仓库状态（2026-10-25，P0 已关闭，P1 第四批实施中）
 
 P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。第一批修复本地终端失败/退出状态及显式重新打开，配套浏览器竞态和原生场景；第二批已交付启动目录配置，后续继续按切片推进。当前计划与新代码证据见 [P1 计划](p1/PLAN.zh-CN.md) 和 [P1 执行记录](p1/RESULTS.zh-CN.md)。下列 P0 记录保留作历史依据，P0 不再重开；P1 新批次合并 main 仍需用户确认。
 
@@ -28,15 +28,19 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 用户随后明确选择「先定位并修复回收问题，再合并」；该条件已通过独立验证，第一批已快进合并并推送 main（`a35582f` → `165fceb`），补合并记录后为 `bdcbb3e`。2026-10-18 第二批 T34 启动目录完成验收后，用户单独确认「合并 main」，已快进合并并推送（`bdcbb3e` → `cf700c2`），合并记录为 `8823be4`。第三批 Shell 发现/选择及缺失反馈完成实现、本机门禁与本批 CI 后，用户单独确认「合并 main」；2026-10-18 main 已从 `8823be4` 快进至 `780a10e`，并完成推送与远端读回核对。本次授权仅限第三批。
 
-第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已结束并核验的诊断为 `7d4d7bb` 上的退出修复验证 `40160768631`，2022 两样本完整成功，2025 首样成功、第二样本 READY 超时，整轮仍失败；具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
+第四批会话环境变量与 locale 已实现，环境配置实现基点为 `bea905f`，当时本机全量门禁、macOS 有限原生验收及本机独立复核通过；后续 `85ce71b` / `b3716ad` 还修改了前端早期输入门控，定向 145 项浏览器/stub 回归通过，不能继续把整个产品代码称为与 `bea905f` 相同。Windows 旧 Shell 场景的目录查询停滞仍未归因，后续测试追踪修复不等于该故障修复。最新已结束并核验的诊断为 `b0ee332` 上的独立 READY frame 运行 `40161857832`，两平台均在 Cargo test 前置步骤失败，build 为 null、samples 为空，未运行 worker；上一轮退出验证 `40160768631` 的有限成功和 READY 超时结论保留；具体结果和下一步见下文及 [P1 执行记录](p1/RESULTS.zh-CN.md)。第三批已批准并合并；第四批尚未获 main 合并批准，须完成验收后单独取得用户确认。
 
 ### 分支
+
+独立 `--startup-framed` 诊断已经集成：parser/xterm 为 `9b25ab6`，宿主/Node/预注册为 `3fcf5d0`，实现第一推使用 `[skip ci]`；新 workflow 第二推的准确 HEAD 为 `b0ee3324ead6f18f243ab949837dde43fa0af86f`。唯一 push [运行 40161857832](https://github.com/mofyer/new-windterm/actions/runs/40161857832) 已 `completed/failure`。两平台均 `tests-failed`，Cargo test exit 101、`process-exit`；`build=null`、`samples=[]`、三个聚合字段 false，未构建独立 worker、未进入采样，不能称为 frame 协议失败。内容受限报告未保存原始输出，无法区分编译错误或测试断言失败。新模式按连续字节 frame 及 writer ACK 确认启动，不依赖 LF/可视行；旧模式与旧失败结论保留。
+
+本机全 native **293/293**、Rust 专项 **55/55**（包含 parser **19/19**）、新 wrapper **56/56**、真实 xterm frame fixture **6/6**、check/clippy/fmt/Windows cfg 及独立审查通过。原 5 秒启动、500 ms 退出 ACK+退出共窗、4.5/5 秒 cleanup、45 秒外层预算保持。Windows cfg 与离线 fixture 不等于 Windows 实测。两平台 helper/工具链/报告上传成功，工件独立核验通过；Cargo test 进程均已观察到退出、未请求 tree kill、本地资源释放。下一步仅定位 Windows 前置测试失败，另开局部取证；本轮不重跑、不预写原因、不修改冻结代码或门禁。详见 [执行记录](p1/RESULTS.zh-CN.md#conpty-ready-frame-独立诊断工作流-40161857832)。
 
 退出修复已按[新预注册](p1/CONPTY_EXIT_VALIDATION_PLAN.zh-CN.md)完成一次 Windows 实测：准确 HEAD `7d4d7bb2c0f192743aaf4038e7d71fb8a19e9f94` 的唯一 push [运行 40160768631](https://github.com/mofyer/new-windterm/actions/runs/40160768631) 已 `completed/failure`。2022 job 成功，2025 job 失败；两平台 helper、Rust 专项测试/构建和报告上传成功，报告独立 schema/隐私/状态核验通过。
 
 2022 两样本均 startup/complete true、exit 0，startup 3616.3425/418.4354 ms；2025 首样本 startup/complete true、exit 0、startup 2123.8729 ms，第二样本 READY write 6.1119 ms 已确认但 strict 0/embedded 1，`await-ready/startup-timeout`，未进入成功启动后的退出修复路径。三个进入修复后退出路径的样本均完整成功，但不能证明历史根因或普遍修复。2022 三聚合字段 true、2025 三字段 false，整轮仍失败；失败样本 exit 1 可由诊断清理终止产生。精确数值与 SHA-256 见 [P1 执行记录](p1/RESULTS.zh-CN.md#conpty-退出修复的-windows-验证工作流-40160768631)。
 
-下一步集中评估独立定界帧的 READY 方案，先离线验证防回显、控制字符串隔离与分块/畸形/重复边界，再独立审查、另行预注册；尚未实现，不将 embedded 改为通过，不重跑本轮或混入查询/环境矩阵。原时间/输出/隐私门禁保持，P1/第四批未验收，P2 仅准备，main 不合并。以下离线与历史运行证据保留原判定。
+该轮之后已完成独立 READY frame 模式的实现、离线验证、独立审查与[新预注册](p1/CONPTY_FRAMED_PLAN.zh-CN.md)，新运行见上文；旧严格行协议的 embedded 仍不放行，不重跑旧实验或混入查询/环境矩阵。原时间/输出/隐私门禁保持，P1/第四批未验收，P2 仅准备，main 不合并。以下离线与历史运行证据保留原判定。
 
 2026-10-25 已完成两条离线验证并集成：`d85ed99` 加入共享合成 fixture、真实 xterm 测试与[专题记录](p1/CONPTY_OFFLINE_VALIDATION.zh-CN.md)，`5eed885` 修复 startup-only 诊断输入端过早关闭的时序。15 个固定案例分别经过 xterm（977 种分块）和实际 Rust Parser（962 种分块），确认屏幕行与 ANSI 剥离后的 LF 行不能互相替代；解析接受规则保持不变。生命周期测试恢复旧顺序即失败，修复后通过：退出命令 write/flush 确认与子进程退出共用原 500 ms，输入端保留到退出观测或有界终止后再关闭。
 
@@ -70,7 +74,7 @@ cold 首次查询约 21–29 秒；精确 `Get-Command` 准备约 21–23 秒，
 
 抑制 progress 将 stderr 从 392 字节变为空，但查询内部耗时仍约 19.5–19.8 秒（2022）和 23.1–23.5 秒（2025），削弱可见 progress 解释全部延迟的假设，未锁根因。禁用自动加载的四次 exit 2、查询耗时/cwd 为 null，不能算性能改善；直接读取内部约 5–8 ms，但首进程 wall 分别为 3.049/4.233 秒。显式进度校准包含 Utility 命令发现与可能的初始化，不是纯序列化成本。该轮仅一次 push 运行，未改白名单、旧门禁或既定协议，未重跑 Rust/八环境矩阵；该轮提出的 cmdlet 发现、模块加载与初始化阶段诊断已在上述 `66e237e` 完成预注册及实测。P1 与第四批仍未通过，P2 仅准备，main 不合并。详细计时及文件指纹见 [P1 执行记录](p1/RESULTS.zh-CN.md#固定白名单的有限因果对照工作流-39816931188)。
 
-- **集成分支 `p1/integration`**：最新核验为上述 `7d4d7bb` 的退出修复验证 `40160768631`，2022 平台通过、2025 第二样本启动超时，整轮失败；前一轮为 `fc3ff2d` 的 startup-only 诊断 `39833719372`；之前协议分类为 `e3827ea` 的 `39828696609`；上一轮限定命令诊断为 `a8e64c7` 的 `39824348485`，之前 stdio 阶段诊断为 `66e237e` 的 `39819222771`，五 arm 对照为 `d2cee0e` 的 `39816931188`。最近一次旧八环境矩阵仍为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096` 的[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794)，整体失败：fixture 两平台通过，stdio 各 16/16 严格失败；旧 ConPTY 2022 为 16/16、2025 为 15/16，后者首轮产品白名单 marker timeout。后续补强 `81d109a` 不在该旧 Windows 被测提交中，新对照不重写其失败证据。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
+- **集成分支 `p1/integration`**：最新核验为上述 `b0ee332` 的独立 READY frame 诊断 `40161857832`，两平台前置 Cargo test 失败、build null/samples 空，未采样；上一轮为 `7d4d7bb` 的退出修复验证 `40160768631`，2022 平台通过、2025 第二样本启动超时，整轮失败；前一轮为 `fc3ff2d` 的 startup-only 诊断 `39833719372`；之前协议分类为 `e3827ea` 的 `39828696609`；上一轮限定命令诊断为 `a8e64c7` 的 `39824348485`，之前 stdio 阶段诊断为 `66e237e` 的 `39819222771`，五 arm 对照为 `d2cee0e` 的 `39816931188`。最近一次旧八环境矩阵仍为 `67d7f37a4d1a40c6e027b0da28ae65fd76d29096` 的[工作流 39812975794](https://github.com/mofyer/new-windterm/actions/runs/39812975794)，整体失败：fixture 两平台通过，stdio 各 16/16 严格失败；旧 ConPTY 2022 为 16/16、2025 为 15/16，后者首轮产品白名单 marker timeout。后续补强 `81d109a` 不在该旧 Windows 被测提交中，新对照不重写其失败证据。分支头用远端 refs 核对，各轮证据见 [P1 执行记录](p1/RESULTS.zh-CN.md)及[stderr 诊断索引](p1/STDERR_DIAGNOSTIC_INDEX.zh-CN.md)。
 - **远端 `main`**：2026-10-18 第三批获用户单独批准后，已从 `8823be4` 快进至 `780a10e` 并推送、读回核对。第三批被测代码为 `68808de`，合并记录 `40405d7` 已审阅、提交并推送，未修改产品代码；第四批尚未合入 main。接手时用远端 refs 核对最新文档提交。
 - **集成分支 `p0/integration`**：10-15 的 T35–T37、虚拟串口、独立 GSSAPI 探针，以及此前冻结、E11、互操作修复和归档提交，均已同步到 `main`。被测提交 `fb824cf` 的 [CI 7/7 通过](https://github.com/mofyer/new-windterm/actions/runs/38691371347)，之后仅补证据文档、台账与合并记录。本轮新增[上游实测](p0/UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)、[原生实测](p0/NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[P0 出口结论](p0/P0_EXIT_REVIEW.zh-CN.md)，仅更新文档。本批收尾文档已获用户明确合并授权；后续新批次合并到 `main` 仍需用户明确同意。
 - **推送范围**：延续已授权的集成工作流，当前推送 `p1/integration` 并手动触发 CI；main 合并仍须新一批的明确批准。
