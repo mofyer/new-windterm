@@ -1,0 +1,50 @@
+name: P1 Windows ConPTY Runtime Environment Diagnostic
+
+on:
+  push:
+    branches: [p1/integration]
+    paths:
+      - .github/workflows/p1-windows-conpty-runtime-env-diagnostic.yml
+      - tests/native/conpty-runtime-env-report.mjs
+      - tests/native/conpty-runtime-env-report.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-conpty-runtime-env:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: "1.99.0"
+      CARGO_BUILD_JOBS: "2"
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.0.0"
+      - name: Validate diagnostic helpers
+        run: node --test tests/native/*.test.mjs
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      # One bounded control,parent,parent,control runtime environment experiment with real frontend preparation; see docs/p1/CONPTY_RUNTIME_ENV_PLAN.zh-CN.md.
+      - name: Prepare frontend assets, then test and compare at most four runtime environment workers
+        run: node tests/native/conpty-runtime-env-report.mjs
+      - name: Preserve sanitized runtime environment ConPTY report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: powershell-conpty-runtime-env-${{ matrix.os }}
+          path: .artifacts/p1/powershell-conpty-runtime-env/report.json
+          if-no-files-found: error
