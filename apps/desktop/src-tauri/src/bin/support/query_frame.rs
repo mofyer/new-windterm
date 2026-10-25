@@ -20,6 +20,9 @@ enum Event {
     Observe(bool, bool, bool, Option<bool>),
     Verify(bool),
     EnvironmentError(bool),
+    PreparationStart,
+    PreparationDone(u64),
+    PreparationFailure(bool),
 }
 
 // Prefix parsing reports incomplete input separately from an already invalid
@@ -53,6 +56,19 @@ impl Cursor<'_> {
             b'1' => Ok(true),
             _ => Err(PrefixError::Invalid("invalid-frame")),
         }
+    }
+    fn ticks(&mut self) -> Result<u64, PrefixError> {
+        let integer = self.digits(b'.', 5, "invalid-number")?;
+        let mut fraction = 0;
+        for _ in 0..4 {
+            let byte = self.byte()?;
+            if !byte.is_ascii_digit() {
+                return Err(PrefixError::Invalid("invalid-number"));
+            }
+            fraction = fraction * 10 + u64::from(byte - b'0');
+        }
+        self.literal(b"|", "invalid-number")?;
+        Ok(integer * 10_000 + fraction)
     }
     fn phase(&mut self) -> Result<usize, PrefixError> {
         match self.byte()? {
@@ -101,18 +117,34 @@ fn event_prefix(bytes: &[u8], end: &[u8]) -> Result<Event, PrefixError> {
             c.literal(b"|", "invalid-frame")?;
             let phase = c.phase()?;
             c.literal(b"|", "invalid-frame")?;
-            let integer = c.digits(b'.', 5, "invalid-number")?;
-            let mut fraction = 0;
-            for _ in 0..4 {
-                let byte = c.byte()?;
-                if !byte.is_ascii_digit() {
-                    return Err(PrefixError::Invalid("invalid-number"));
-                }
-                fraction = fraction * 10 + u64::from(byte - b'0');
-            }
-            c.literal(b"|", "invalid-number")?;
+            let ticks = c.ticks()?;
             c.literal(b"1|", "invalid-frame")?;
-            Event::Query(phase, integer * 10_000 + fraction)
+            Event::Query(phase, ticks)
+        }
+        b'P' => {
+            c.literal(b"|", "invalid-frame")?;
+            Event::PreparationStart
+        }
+        b'T' => {
+            c.literal(b"|", "invalid-frame")?;
+            let ticks = c.ticks()?;
+            c.literal(b"1|", "invalid-frame")?;
+            Event::PreparationDone(ticks)
+        }
+        b'F' => {
+            c.literal(b"|", "invalid-frame")?;
+            let identity = match c.byte()? {
+                b'i' => {
+                    c.literal(b"dentity|", "invalid-frame")?;
+                    true
+                }
+                b'c' => {
+                    c.literal(b"ommand|", "invalid-frame")?;
+                    false
+                }
+                _ => return Err(PrefixError::Invalid("invalid-frame")),
+            };
+            Event::PreparationFailure(identity)
         }
         b'D' => {
             c.literal(b"|", "invalid-frame")?;
@@ -189,13 +221,29 @@ struct QueryProtocol {
     frames: usize,
     queries: [Option<u64>; 2],
     runtime: bool,
+    phase_mode: bool,
+    preparation: Option<u64>,
+    identity_ok: Option<bool>,
     assignment_armed: bool,
     observation: Option<(bool, bool, Option<bool>)>,
     assignment_verified: Option<bool>,
 }
 impl QueryProtocol {
     fn stage(&self) -> &'static str {
-        if self.runtime {
+        if self.phase_mode {
+            match self.frames {
+                0 => "await-frame",
+                1 if !self.query_armed => "after-ready",
+                1 => "await-prep-start",
+                2 => "await-prep-result",
+                3 => "await-start-1",
+                4 => "await-result-1",
+                5 => "await-start-2",
+                6 => "await-result-2",
+                7 => "await-end",
+                _ => "after-end",
+            }
+        } else if self.runtime {
             match self.frames {
                 0 => "await-frame",
                 1 if !self.query_armed => "after-ready",
@@ -229,12 +277,41 @@ impl QueryProtocol {
         {
             return Err("unexpected-frame");
         }
-        let offset = if self.runtime { 2 } else { 0 };
+        let offset = if self.runtime || self.phase_mode {
+            2
+        } else {
+            0
+        };
         let index = match event {
             Event::Ready => 0,
             Event::Start(phase) => phase * 2 - 1 + offset,
             Event::Query(phase, _) => phase * 2 + offset,
             Event::Done => 5 + offset,
+            Event::PreparationStart => {
+                if !self.phase_mode {
+                    return Err("unexpected-record");
+                }
+                1
+            }
+            Event::PreparationDone(_) => {
+                if !self.phase_mode {
+                    return Err("unexpected-record");
+                }
+                2
+            }
+            Event::PreparationFailure(identity) => {
+                if !self.phase_mode || self.frames != 2 {
+                    return Err("unexpected-record");
+                }
+                if identity {
+                    self.identity_ok = Some(false);
+                }
+                return Err(if identity {
+                    "identity-mismatch"
+                } else {
+                    "command-error"
+                });
+            }
             Event::Observe(present, nonempty, valid, equal) => {
                 if !self.runtime || self.frames != 1 {
                     return Err("unexpected-record");
@@ -292,8 +369,17 @@ impl QueryProtocol {
         if index != self.frames {
             return Err("unexpected-record");
         }
+        if let Event::PreparationDone(ticks) = event {
+            if ticks > MAX_TICKS {
+                return Err("timing-bound");
+            }
+            self.preparation = Some(ticks);
+            self.identity_ok = Some(true);
+        }
         if let Event::Query(phase, ticks) = event {
-            if ticks > MAX_TICKS || ticks + self.queries[0].unwrap_or(0) > MAX_TICKS {
+            if ticks > MAX_TICKS
+                || ticks + self.queries[0].unwrap_or(0) + self.preparation.unwrap_or(0) > MAX_TICKS
+            {
                 return Err("timing-bound");
             }
             self.queries[phase - 1] = Some(ticks);
@@ -317,6 +403,9 @@ impl FrameProtocol for QueryProtocol {
             if !self.runtime && candidate.is_empty() && matches!(byte, b'O' | b'V' | b'E') {
                 return Err("invalid-frame");
             }
+            if !self.phase_mode && candidate.is_empty() && matches!(byte, b'P' | b'T' | b'F') {
+                return Err("invalid-frame");
+            }
             candidate.push(byte);
             match event_prefix(candidate, &self.end) {
                 Ok(event) => {
@@ -334,7 +423,13 @@ impl FrameProtocol for QueryProtocol {
             };
             if self.prefix == self.begin.len() {
                 self.prefix = 0;
-                if self.frames == if self.runtime { 8 } else { 6 } {
+                if self.frames
+                    == if self.runtime || self.phase_mode {
+                        8
+                    } else {
+                        6
+                    }
+                {
                     return Err("duplicate-frame");
                 }
                 self.candidate = Some(Vec::new());
@@ -372,6 +467,9 @@ impl QueryParser {
                 frames: 0,
                 queries: [None, None],
                 runtime: false,
+                phase_mode: false,
+                preparation: None,
+                identity_ok: None,
                 assignment_armed: false,
                 observation: None,
                 assignment_verified: None,
@@ -382,6 +480,17 @@ impl QueryParser {
             parser.record_failure("invalid-frame");
         }
         parser
+    }
+    pub fn phase(nonce: &str) -> Self {
+        let mut parser = Self::new(nonce);
+        parser.protocol.phase_mode = true;
+        parser
+    }
+    pub fn preparation_ms(&self) -> Option<f64> {
+        self.protocol.preparation.map(|n| n as f64 / 10_000.0)
+    }
+    pub fn identity_ok(&self) -> Option<bool> {
+        self.protocol.identity_ok
     }
     pub fn runtime(nonce: &str) -> Self {
         let mut parser = Self::new(nonce);
@@ -395,7 +504,12 @@ impl QueryParser {
         self.protocol.assignment_verified
     }
     pub fn ended(&self) -> bool {
-        self.protocol.frames == if self.protocol.runtime { 8 } else { 6 }
+        self.protocol.frames
+            == if self.protocol.runtime || self.protocol.phase_mode {
+                8
+            } else {
+                6
+            }
     }
     pub fn arm_assignment(&mut self) -> Result<(), &'static str> {
         if self.failure.is_some() {
@@ -447,6 +561,7 @@ impl QueryParser {
             Some("output-limit") => "output-limit",
             Some("cwd-mismatch") => "cwd-mismatch",
             Some("command-error") => "command-error",
+            Some("identity-mismatch") => "identity-mismatch",
             Some("contrast-absent") => "contrast-absent",
             Some("environment-invalid") => "environment-invalid",
             Some("environment-read-error") => "environment-read-error",
@@ -872,6 +987,131 @@ mod tests {
                     .is_err());
                 assert_eq!(p.diagnostic().reason, Some("frame-control"));
             }
+        }
+    }
+    fn phase_ready() -> QueryParser {
+        let mut p = QueryParser::phase(NONCE);
+        p.arm_ready();
+        p.push(frame("R|5.1.1.1").as_bytes()).unwrap();
+        p.arm_query().unwrap();
+        p
+    }
+    #[test]
+    fn phase_success_prefix_and_errors_are_identical_across_partitions() {
+        let success = format!(
+            "{}{}{}",
+            frame("P"),
+            frame("T|12.5000|1"),
+            stream("2.5000", "0.2500")
+        );
+        for (input, frames, reason, prep, identity) in [
+            (success.clone(), 8, None, Some(12.5), Some(true)),
+            (
+                format!("{}{}", success, frame("D")),
+                8,
+                Some("duplicate-frame"),
+                Some(12.5),
+                Some(true),
+            ),
+            (
+                format!("{}{}", frame("P"), frame("F|identity")),
+                2,
+                Some("identity-mismatch"),
+                None,
+                Some(false),
+            ),
+            (
+                format!("{}{}", frame("P"), frame("F|command")),
+                2,
+                Some("command-error"),
+                None,
+                None,
+            ),
+            (
+                format!(
+                    "{}{}{}",
+                    frame("P"),
+                    frame("T|12.5000|1"),
+                    frame("Q|2|1.0000|1")
+                ),
+                3,
+                Some("unexpected-record"),
+                Some(12.5),
+                Some(true),
+            ),
+        ] {
+            for cut in (0..=input.len()).map(Some).chain(std::iter::once(None)) {
+                let mut p = phase_ready();
+                match cut {
+                    Some(at) => {
+                        let _ = p.push(&input.as_bytes()[..at]);
+                        let _ = p.push(&input.as_bytes()[at..]);
+                    }
+                    None => {
+                        for b in input.bytes() {
+                            let _ = p.push(&[b]);
+                        }
+                    }
+                }
+                let _ = p.finish();
+                assert_eq!(p.diagnostic().frames, frames);
+                assert_eq!(p.diagnostic().reason, reason);
+                assert_eq!(p.preparation_ms(), prep);
+                assert_eq!(p.identity_ok(), identity);
+                if reason.is_some() {
+                    let frozen = p.diagnostic();
+                    assert!(p.push(success.as_bytes()).is_err());
+                    assert_eq!(p.diagnostic(), frozen);
+                }
+            }
+        }
+    }
+    #[test]
+    fn phase_timing_identity_order_and_legacy_grammar_fail_closed() {
+        for (prep, a, b, frames, reason) in [
+            ("30000.0000", "0.0000", "0.0000", 8, None),
+            ("29999.9998", "0.0001", "0.0001", 8, None),
+            ("30000.0001", "0.0000", "0.0000", 2, Some("timing-bound")),
+            ("29999.9999", "0.0001", "0.0001", 6, Some("timing-bound")),
+        ] {
+            let mut p = phase_ready();
+            let _ = p.push(
+                format!(
+                    "{}{}{}",
+                    frame("P"),
+                    frame(&format!("T|{prep}|1")),
+                    stream(a, b)
+                )
+                .as_bytes(),
+            );
+            assert_eq!(p.diagnostic().frames, frames);
+            assert_eq!(p.diagnostic().reason, reason);
+        }
+        for text in [
+            "T|1e3|1",
+            "T|-1.0000|1",
+            "T|1.000|1",
+            "T|1.00000|1",
+            "T|1.0000|0",
+        ] {
+            let mut p = phase_ready();
+            p.push(frame("P").as_bytes()).unwrap();
+            assert!(p.push(frame(text).as_bytes()).is_err());
+            assert_eq!(p.preparation_ms(), None);
+            assert_eq!(p.identity_ok(), None);
+        }
+        for text in ["F|identity", "T|1.0000|1", "S|1"] {
+            let mut p = phase_ready();
+            assert!(p.push(frame(text).as_bytes()).is_err());
+            assert_eq!(p.diagnostic().frames, 1);
+        }
+        for text in ["P", "T|1.0000|1", "F|identity"] {
+            let mut p = ready();
+            assert!(p.push(frame(text).as_bytes()).is_err());
+            assert_eq!(p.diagnostic().reason, Some("invalid-frame"));
+            let mut p = runtime_ready();
+            assert!(p.push(frame(text).as_bytes()).is_err());
+            assert_eq!(p.diagnostic().reason, Some("invalid-frame"));
         }
     }
 }

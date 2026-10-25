@@ -24,6 +24,201 @@ mod tests {
         format!("~B{NONCE}|R|5.1.20348.5622|E{NONCE}~")
     }
     #[test]
+    fn phase_actual_scripts_preserve_operations_identity_and_fail_closed_gate() {
+        for arm in [PhaseArm::Discover, PhaseArm::Import] {
+            let script = phase_query_script(arm, NONCE, "C:\\中文 sample");
+            assert!(!script.contains(NONCE));
+            assert!(!script.contains("exit "));
+            assert_eq!(
+                script
+                    .matches("$path=(Get-Location).Path;$sw.Stop();")
+                    .count(),
+                2
+            );
+            assert_eq!(
+                script
+                    .matches("Get-Command -Name Get-Location -CommandType Cmdlet -ErrorAction Stop")
+                    .count(),
+                usize::from(arm == PhaseArm::Discover)
+            );
+            assert_eq!(script.matches("Import-Module -Name Microsoft.PowerShell.Management -PassThru -ErrorAction Stop").count(),usize::from(arm==PhaseArm::Import));
+            for check in [
+                "System.Management.Automation.CmdletInfo",
+                ".Name -ceq 'Get-Location'",
+                ".ModuleName -ceq 'Microsoft.PowerShell.Management'",
+            ] {
+                assert!(script.contains(check));
+            }
+            if arm == PhaseArm::Import {
+                for check in [
+                    "System.Management.Automation.PSModuleInfo",
+                    ".ExportedCommands.ContainsKey('Get-Location')",
+                    "$module[0].ExportedCommands['Get-Location']",
+                ] {
+                    assert!(script.contains(check));
+                }
+            }
+            assert!(script.contains("+'|1'+$e);$prepared=$true;"));
+            assert!(script
+                .contains("catch{$prepared=$false;[Console]::Out.WriteLine($b+'F|command'+$e);}"));
+            assert!(
+                script
+                    .find("$prepWatch=[Diagnostics.Stopwatch]::StartNew();")
+                    .unwrap()
+                    < script.find("$identity=").unwrap()
+            );
+            assert!(
+                script.find("$identity=").unwrap() < script.find("$prepWatch.Stop();").unwrap()
+            );
+            assert!(
+                script.find("$prepared=$true;").unwrap() < script.find("if($prepared){").unwrap()
+            );
+            for cut in (0..=script.len()).map(Some).chain(std::iter::once(None)) {
+                let mut p = Parser::phase(NONCE);
+                p.arm_frame();
+                p.push(frame().as_bytes()).unwrap();
+                p.arm_query().unwrap();
+                match cut {
+                    Some(at) => {
+                        p.push(&script.as_bytes()[..at]).unwrap();
+                        p.push(&script.as_bytes()[at..]).unwrap();
+                    }
+                    None => {
+                        for b in script.bytes() {
+                            p.push(&[b]).unwrap();
+                        }
+                    }
+                }
+                p.finish().unwrap();
+                assert_eq!(p.ready_counts().0, 1);
+                assert_eq!(p.preparation_ms(), None);
+                assert_eq!(p.identity_ok(), None);
+            }
+        }
+    }
+    #[test]
+    fn phase_report_contract_cases_emit_synthetic_json() {
+        for case in [
+            "success",
+            "setup-error",
+            "ready-ack-timeout",
+            "prep-timeout",
+            "identity-failure",
+            "command-failure",
+            "partial-query",
+            "cleanup-failed",
+        ] {
+            let mut r = Report::new(Arm::Unqualified);
+            r.query_framed = true;
+            r.phase_arm = Some(PhaseArm::Discover);
+            r.startup = Some(100.0);
+            r.ready_write_ms = Some(10.0);
+            r.startup_complete = true;
+            r.host = Some(100.0);
+            r.wall = 250.0;
+            r.preparation = Some(50.25);
+            r.identity_ok = Some(true);
+            r.q1 = Some(2.5);
+            r.q2 = Some(0.25);
+            r.version_ok = true;
+            r.cwd1_ok = true;
+            r.cwd2_ok = true;
+            r.cpr = 1;
+            r.bytes = 1000;
+            r.frame_count = 8;
+            r.exit_code = Some(0);
+            r.complete = true;
+            r.cleanup_ok = true;
+            r.failure = None;
+            r.diagnostic.stage = "after-end";
+            r.diagnostic.reason = None;
+            r.kill_requested = Some(false);
+            r.exit_observed_before_kill = Some(true);
+            if case != "success" {
+                r.complete = false;
+                r.exit_code = Some(1);
+                r.kill_requested = Some(true);
+                r.exit_observed_before_kill = Some(false);
+            }
+            match case {
+                "setup-error" => {
+                    r.startup = None;
+                    r.ready_write_ms = None;
+                    r.startup_complete = false;
+                    r.host = None;
+                    r.version_ok = false;
+                    r.frame_count = 0;
+                    r.cpr = 0;
+                    r.bytes = 0;
+                    r.exit_code = None;
+                    r.kill_requested = None;
+                    r.exit_observed_before_kill = None;
+                    r.diagnostic.stage = "not-started";
+                    r.failure = Some("setup-error");
+                }
+                "ready-ack-timeout" => {
+                    r.startup = Some(5001.0);
+                    r.startup_complete = false;
+                    r.host = None;
+                    r.frame_count = 1;
+                    r.diagnostic.stage = "after-ready";
+                    r.failure = Some("startup-timeout");
+                    r.wall = 5200.0;
+                }
+                "prep-timeout" => {
+                    r.frame_count = 2;
+                    r.diagnostic.stage = "await-prep-result";
+                    r.host = Some(30001.0);
+                    r.wall = 30200.0;
+                    r.failure = Some("command-timeout");
+                }
+                "identity-failure" => {
+                    r.frame_count = 2;
+                    r.diagnostic.stage = "await-prep-result";
+                    r.failure = Some("identity-mismatch");
+                }
+                "command-failure" => {
+                    r.frame_count = 2;
+                    r.diagnostic.stage = "await-prep-result";
+                    r.failure = Some("command-error");
+                }
+                "partial-query" => {
+                    r.frame_count = 6;
+                    r.q2 = None;
+                    r.cwd2_ok = false;
+                    r.diagnostic.stage = "await-result-2";
+                    r.host = Some(30001.0);
+                    r.wall = 30200.0;
+                    r.failure = Some("command-timeout");
+                }
+                "cleanup-failed" => {
+                    r.cleanup_ok = false;
+                    r.exit_code = None;
+                    r.failure = Some("cleanup-failed");
+                }
+                _ => {}
+            }
+            if r.frame_count < 3 {
+                r.preparation = None;
+                r.identity_ok = if case == "identity-failure" {
+                    Some(false)
+                } else {
+                    None
+                };
+                r.q1 = None;
+                r.q2 = None;
+                r.cwd1_ok = false;
+                r.cwd2_ok = false;
+            }
+            r.diagnostic.reason = r.failure;
+            let json = r.json();
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(value.as_object().unwrap().len(), 27);
+            assert!(value.get("effectivePresent").is_none());
+            println!("PHASE_CONTRACT {case} {json}");
+        }
+    }
+    #[test]
     fn runtime_parent_input_is_bounded_unicode_without_lossy_coercion() {
         use std::ffi::OsStr;
         for (value, present, reason) in [
@@ -977,7 +1172,23 @@ mod probe {
             }
         }
     }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum PhaseArm {
+        Discover,
+        Import,
+    }
+    impl PhaseArm {
+        pub fn name(self) -> &'static str {
+            match self {
+                Self::Discover => "discover-query",
+                Self::Import => "import-query",
+            }
+        }
+    }
     pub struct Report {
+        pub phase_arm: Option<PhaseArm>,
+        pub preparation: Option<f64>,
+        pub identity_ok: Option<bool>,
         pub runtime_arm: Option<RuntimeArm>,
         pub parent_present: bool,
         pub parent_usable: bool,
@@ -1015,6 +1226,9 @@ mod probe {
     impl Report {
         pub fn new(arm: Arm) -> Self {
             Self {
+                phase_arm: None,
+                preparation: None,
+                identity_ok: None,
                 runtime_arm: None,
                 parent_present: false,
                 parent_usable: false,
@@ -1071,6 +1285,9 @@ mod probe {
             let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
             if let Some(arm) = self.runtime_arm {
                 return format!("{{\"schema\":1,\"mode\":\"runtime-env-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{},\"parentPresent\":{},\"parentUsable\":{},\"effectivePresent\":{},\"effectiveNonempty\":{},\"effectiveEqualsParent\":{},\"assignmentVerified\":{}}}", arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count,self.parent_present,self.parent_usable,boolean(self.effective_present),boolean(self.effective_nonempty),boolean(self.effective_equals_parent),boolean(self.assignment_verified));
+            }
+            if let Some(arm) = self.phase_arm {
+                return format!("{{\"schema\":1,\"mode\":\"phase-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{},\"prepMs\":{},\"identityOk\":{}}}", arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count,number(self.preparation),boolean(self.identity_ok));
             }
             if self.query_framed {
                 return format!("{{\"schema\":1,\"mode\":\"query-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{}}}", self.arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count);
@@ -1148,6 +1365,18 @@ mod probe {
                 query: Some(super::query_frame::QueryParser::new(nonce)),
                 ..Self::new(nonce)
             }
+        }
+        pub fn phase(nonce: &str) -> Self {
+            Self {
+                query: Some(super::query_frame::QueryParser::phase(nonce)),
+                ..Self::new(nonce)
+            }
+        }
+        pub fn preparation_ms(&self) -> Option<f64> {
+            self.query.as_ref().and_then(|p| p.preparation_ms())
+        }
+        pub fn identity_ok(&self) -> Option<bool> {
+            self.query.as_ref().and_then(|p| p.identity_ok())
         }
         pub fn runtime(nonce: &str) -> Self {
             Self {
@@ -1551,6 +1780,16 @@ mod probe {
             framed_query_script(Arm::Unqualified, nonce, cwd).trim_end()
         )
     }
+    pub fn phase_query_script(arm: PhaseArm, nonce: &str, cwd: &str) -> String {
+        let (left, right) = nonce.split_at(16);
+        // Exact discovery/import and identity checks mirror the registered stdio phase experiment.
+        let operation=match arm {
+            PhaseArm::Discover=>"$command=@(Get-Command -Name Get-Location -CommandType Cmdlet -ErrorAction Stop);$identity=($command.Count -eq 1 -and $command[0] -is [System.Management.Automation.CmdletInfo] -and $command[0].Name -ceq 'Get-Location' -and $command[0].ModuleName -ceq 'Microsoft.PowerShell.Management');",
+            PhaseArm::Import=>"$module=@(Import-Module -Name Microsoft.PowerShell.Management -PassThru -ErrorAction Stop);$identity=($module.Count -eq 1 -and $module[0] -is [System.Management.Automation.PSModuleInfo] -and $module[0].Name -ceq 'Microsoft.PowerShell.Management' -and $module[0].ExportedCommands.ContainsKey('Get-Location'));if($identity){$command=$module[0].ExportedCommands['Get-Location'];$identity=($command -is [System.Management.Automation.CmdletInfo] -and $command.Name -ceq 'Get-Location' -and $command.ModuleName -ceq 'Microsoft.PowerShell.Management');}",
+        };
+        let query = framed_query_script(Arm::Unqualified, nonce, cwd);
+        format!("$n='{left}'+'{right}';$b='~'+'B'+$n+'|';$e='|'+'E'+$n+'~';$ErrorActionPreference='Stop';$prepared=$false;try{{[Console]::Out.WriteLine($b+'P'+$e);$prepWatch=[Diagnostics.Stopwatch]::StartNew();{operation}if(-not $identity){{[Console]::Out.WriteLine($b+'F|identity'+$e);}}else{{$prepWatch.Stop();[Console]::Out.WriteLine($b+'T|'+$prepWatch.Elapsed.TotalMilliseconds.ToString('F4',[Globalization.CultureInfo]::InvariantCulture)+'|1'+$e);$prepared=$true;}}}}catch{{$prepared=$false;[Console]::Out.WriteLine($b+'F|command'+$e);}};if($prepared){{{}}}\r\n",query.trim_end())
+    }
     pub fn query_script(arm: Arm, nonce: &str, cwd: &str) -> String {
         let expected = cwd
             .encode_utf16()
@@ -1878,6 +2117,32 @@ mod windows_worker {
         report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
         result
     }
+    fn run_phase_queries(
+        io: &Io,
+        parser: &mut Parser,
+        report: &mut Report,
+        nonce: &str,
+        cwd: &str,
+        arm: PhaseArm,
+    ) -> Result<(), &'static str> {
+        let command = Instant::now();
+        let result = (|| {
+            let script = phase_query_script(arm, nonce, cwd);
+            io.input
+                .try_send(script.into_bytes().into())
+                .map_err(|_| "write-error")?;
+            parser.arm_query()?;
+            receive(
+                io,
+                parser,
+                report,
+                command + Duration::from_secs(30),
+                Until::End,
+            )
+        })();
+        report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
+        result
+    }
     fn run_runtime_queries(
         io: &Io,
         parser: &mut Parser,
@@ -2137,12 +2402,14 @@ mod windows_worker {
         startup_framed: bool,
         query_framed: bool,
         runtime: Option<(RuntimeArm, &RuntimeParent)>,
+        phase_arm: Option<PhaseArm>,
     ) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
         report.startup_only = startup_only;
         report.startup_framed = startup_framed;
         report.query_framed = query_framed;
+        report.phase_arm = phase_arm;
         if let Some((arm, parent)) = runtime {
             report.set_runtime(arm, parent);
             if let Some(reason) = parent.failure {
@@ -2188,7 +2455,9 @@ mod windows_worker {
         };
         let io = start_io(reader, writer);
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let mut parser = if runtime.is_some() {
+        let mut parser = if phase_arm.is_some() {
+            Parser::phase(&nonce)
+        } else if runtime.is_some() {
             Parser::runtime(&nonce)
         } else if query_framed {
             Parser::query(&nonce)
@@ -2251,6 +2520,16 @@ mod windows_worker {
                 report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
                 ready?;
             }
+            if let Some(arm) = phase_arm {
+                return run_phase_queries(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    &nonce,
+                    cwd.to_str().ok_or("setup-error")?,
+                    arm,
+                );
+            }
             if let Some((arm, parent)) = runtime {
                 return run_runtime_queries(
                     &io,
@@ -2297,6 +2576,8 @@ mod windows_worker {
             report.effective_equals_parent = equal;
         }
         report.assignment_verified = parser.assignment_verified();
+        report.preparation = parser.preparation_ms();
+        report.identity_ok = parser.identity_ok();
         report.q1 = parser.queries[0];
         report.q2 = parser.queries[1];
         report.version_ok = parser.version_ok;
@@ -2463,6 +2744,86 @@ mod windows_worker {
                 .iter()
                 .map(|s| query_fixture(s))
                 .collect()
+        }
+        #[test]
+        fn phase_host_preserves_partial_preparation_and_never_accepts_post_failure_queries() {
+            for (tail, frames, prep, identity, reason) in [
+                (
+                    format!(
+                        "{}{}{}",
+                        query_fixture("P"),
+                        query_fixture("T|5.0000|1"),
+                        query_tail()
+                    ),
+                    8,
+                    Some(5.0),
+                    Some(true),
+                    None,
+                ),
+                (
+                    format!(
+                        "{}{}{}",
+                        query_fixture("P"),
+                        query_fixture("F|identity"),
+                        query_tail()
+                    ),
+                    2,
+                    None,
+                    Some(false),
+                    Some("identity-mismatch"),
+                ),
+                (
+                    format!(
+                        "{}{}{}",
+                        query_fixture("P"),
+                        query_fixture("F|command"),
+                        query_tail()
+                    ),
+                    2,
+                    None,
+                    None,
+                    Some("command-error"),
+                ),
+            ] {
+                let (io, events, commands) = mock_io();
+                events.send(Event::Data(tail.into_bytes())).unwrap();
+                let mut p = Parser::phase("0123456789abcdef0123456789abcdef");
+                p.arm_frame();
+                p.push(query_fixture("R|5.1.1.1").as_bytes()).unwrap();
+                let mut r = Report::new(Arm::Unqualified);
+                r.query_framed = true;
+                let result = run_phase_queries(
+                    &io,
+                    &mut p,
+                    &mut r,
+                    "0123456789abcdef0123456789abcdef",
+                    "C:\\sample",
+                    PhaseArm::Discover,
+                );
+                assert_eq!(result.err(), reason);
+                assert_eq!(p.ready_counts().0, frames);
+                assert_eq!(p.preparation_ms(), prep);
+                assert_eq!(p.identity_ok(), identity);
+                assert!(r.host.is_some());
+                assert!(String::from_utf8(commands.try_recv().unwrap().bytes)
+                    .unwrap()
+                    .contains("if($prepared){"));
+                assert!(commands.try_recv().is_err());
+            }
+            let (io, _, _) = mock_io();
+            let mut p = Parser::phase("0123456789abcdef0123456789abcdef");
+            p.arm_frame();
+            p.push(query_fixture("R|5.1.1.1").as_bytes()).unwrap();
+            p.arm_query().unwrap();
+            p.push(query_fixture("P").as_bytes()).unwrap();
+            let mut r = Report::new(Arm::Unqualified);
+            r.query_framed = true;
+            assert_eq!(
+                receive(&io, &mut p, &mut r, Instant::now(), Until::End),
+                Err("command-timeout")
+            );
+            assert_eq!(p.diagnostic().stage, "await-prep-result");
+            assert_eq!(p.preparation_ms(), None);
         }
         #[test]
         fn runtime_observation_failure_never_enqueues_assignment_or_query() {
@@ -3050,6 +3411,15 @@ mod windows_worker {
 fn main() {
     use std::io::Write;
     let args: Vec<_> = std::env::args().skip(1).collect();
+    let phase_arm = match args.as_slice() {
+        [flag, arm] if flag == "--phase-framed" && arm == "discover-query" => {
+            Some(probe::PhaseArm::Discover)
+        }
+        [flag, arm] if flag == "--phase-framed" && arm == "import-query" => {
+            Some(probe::PhaseArm::Import)
+        }
+        _ => None,
+    };
     let (arm, startup_only, startup_framed, query_framed, runtime_arm) = match args.as_slice() {
         [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false, false, None),
         [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true, false, None),
@@ -3079,6 +3449,7 @@ fn main() {
             true,
             Some(probe::RuntimeArm::Parent),
         ),
+        _ if phase_arm.is_some() => (probe::Arm::Unqualified, false, false, true, None),
         _ => std::process::exit(1),
     };
     let parent_value = runtime_arm.and_then(|_| std::env::var_os("PSModulePath"));
@@ -3107,6 +3478,7 @@ fn main() {
                 startup_framed,
                 query_framed,
                 runtime,
+                phase_arm,
             )
         }
         Err(_) => {
@@ -3118,6 +3490,7 @@ fn main() {
             r
         }
     };
+    report.phase_arm = phase_arm;
     if let Some((arm, parent)) = runtime {
         report.set_runtime(arm, parent);
     }
