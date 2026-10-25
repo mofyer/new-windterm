@@ -32,11 +32,15 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 ### 分支
 
+2026-10-25 已完成两条离线验证并集成：`d85ed99` 加入共享合成 fixture、真实 xterm 测试与[专题记录](p1/CONPTY_OFFLINE_VALIDATION.zh-CN.md)，`5eed885` 修复 startup-only 诊断输入端过早关闭的时序。15 个固定案例分别经过 xterm（977 种分块）和实际 Rust Parser（962 种分块），确认屏幕行与 ANSI 剥离后的 LF 行不能互相替代；解析接受规则保持不变。生命周期测试恢复旧顺序即失败，修复后通过：退出命令 write/flush 确认与子进程退出共用原 500 ms，输入端保留到退出观测或有界终止后再关闭。
+
+集成树 native helper **237/237**、Rust 专项 **31/31** 通过；xterm **15/15**、定向 TypeScript、Rust check/clippy/fmt 与 Windows cfg 检查及独立审查通过。Windows cfg 仅类型检查，本轮没有新 Windows 实测；最近实跑仍为下述 `39833719372`，不能将诊断工具的离线修复记为 Windows 根因已定或第四批验收通过。下一步评估明确协议记录边界的方案，并另行预注册验证退出修复；不以嵌入匹配放行、不扩展旧时间限制。P1/第四批未验收，P2 仅准备，main 不合并。
+
 最新 startup-only 诊断按[预注册](p1/CONPTY_STARTUP_PLAN.zh-CN.md)分两次提交推送：实现 `7aadab600a7c89d4235df239c9c0bf4b12723e66` 使用 `[skip ci]`，随后仅新 workflow 的 `fc3ff2d199a6ec87749afc164a5f9eff917abdb9` 为准确被测 HEAD。本机完整 native **237/237**、startup 专项 **48/48**、Rust **19/19** 及 Windows cfg/独立审查通过；唯一 push 运行 [39833719372](https://github.com/mofyer/new-windterm/actions/runs/39833719372) 已 `completed/failure`，两 job 失败，两平台 helper/Rust 测试/构建通过。独立报告 schema/隐私/状态核验通过，诊断仍失败。
 
 2022 首样本 startup/complete 均成功（write 146.6556 ms、startup 4483.0913 ms、exit 0）；第二样本 write 6.2963 ms 已确认，但 strict READY 0、完整 embedded READY 1，仍在原 5 秒 `await-ready` 超时，未放宽为包含即通过。2025 首样本在 4459.7464 ms 内启动成功（write 12.6397 ms、strict READY 1），随后 `after-ready/exit-error`、exit 3221225786，第二样本未运行，不能记成启动失败。其 kill false/退出前观测 true 只排除显式 child.kill，不排除清理关闭输入端的时序影响。两报告聚合三字段均 false；2025 因只完成一个预定启动而 `startupSuccess=false`，不抹去样本 `startupComplete=true`。精确计时、状态与 SHA-256 见 [P1 执行记录](p1/RESULTS.zh-CN.md#conpty-startup-only-写入与-ready-分类诊断工作流-39833719372)。无目录查询或产品修复结论。
 
-下一步分两条离线先行：2022 用既有 xterm 的固定合成 fixture 核定行边界/CR/CSI 处理能力，再评估严格解析修复，不直接接受嵌入形状；2025 审计 `exit 0` 实际 write/flush 确认与输入 writer 关闭先后，建立有界生命周期 fixture，不能仅凭退出码归因。下次实测另行预注册，本轮不改不重跑。缓存变量对照仍是独立后续候选，不混为同一根因。P1/第四批未验收，P2 仅准备，main 不合并。以下为上一轮协议分类证据。
+该轮提出的两条离线验证已在上述 `d85ed99` / `5eed885` 完成；真实 Windows 的具体行布局及历史退出原因仍未确定，下次实测另行预注册，不重判该轮失败。缓存变量对照仍是独立后续候选，不混为同一根因。以下为上一轮协议分类证据。
 
 上一轮测试侧实现为 `e3827ea33545c6e8c3922295a9b3bbfc5548977d`，按[协议诊断预注册](p1/CONPTY_PROTOCOL_DIAGNOSTIC_PLAN.zh-CN.md)增加 schema 2 的固定阶段/原因、有限终端计数及清理退出时序；原解析接受规则、两 arm、时限和首失败停止不变，未修复解析器或产品。本机完整 native **189/189**、wrapper **41/41**、Rust **15/15** 通过，Windows cfg 检查与独立审查通过；这些与 Windows 实跑分开。唯一新运行 [39828696609](https://github.com/mofyer/new-windterm/actions/runs/39828696609) 已 `completed/failure`，两 job 失败、helper/上传成功，两平台 Rust 测试和构建 exit 0；报告独立 schema 2/隐私/状态核验通过。
 

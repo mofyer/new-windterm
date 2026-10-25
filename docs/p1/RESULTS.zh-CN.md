@@ -652,3 +652,15 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 下一步分开处理两类现象，先离线验证：2022 用既有 xterm 的固定合成 fixture 核定行边界、CR/CSI 处理能力，再评估严格解析修复，不能直接把“包含完整 READY”改为通过；2025 审计 `exit 0` 的实际 write/flush 确认与 writer 关闭先后，建立有界生命周期 fixture。当前实现只将 `exit 0` 入队而无专门 ACK，cleanup 先 `drop(io.input)` 再等待退出，writer 排空后关闭输入端；这是待验证的生命周期候选，不是本次退出原因已定。任何下一次 CI 均另行预注册，本轮不改不重跑，也不承诺新增计数或环境矩阵。模块分析缓存仍为独立后续候选，不能把它与 READY/退出异常混为同一根因。
 
 唯一上传 `.artifacts/p1/powershell-conpty-startup/report.json`，原文、nonce、路径、环境值和构建输出不落工件。ConPTY 合流不能证明独立 stderr 为空；本轮不评价查询耗时、不回填旧失败、不修改产品或原生普通查询门禁。P1/第四批未验收，P2 仅准备，main 不合并。
+
+### 2026-10-25：离线行布局验证与诊断退出时序修复
+
+集成提交 `d85ed99c3321a5f11df798d89103b537f7666866` 增加共享固定 fixture、真实 xterm 测试及[离线专题](CONPTY_OFFLINE_VALIDATION.zh-CN.md)；`5eed8850aefb802d244e1507a37c6d1f050977fb` 修复 startup-only 诊断的退出时序。两提交使用 `[skip ci]`，本轮不触发新 Windows 实测，旧运行 `39833719372` 保持失败。
+
+15 个固定人工案例分别通过真实 xterm 6.0.0 的 977 种分块和实际 Rust Parser 的 962 种分块。CR/CSI 可使屏幕独立行与字节行不同；反向案例也显示屏幕已清除而流解析器仍保留记录。该证据不能确定 Windows 2022 的实际控制序列，不改变严格 READY 接受规则，不以包含 marker 替代协议边界。
+
+生命周期 fixture 使用实际 writer 队列和受控子进程状态。将同一测试临时恢复旧关闭顺序后，`!closed_while_running` 断言失败；恢复修复后全部通过。新策略仅用于成功启动后的 startup-only 清理：确认 `exit 0` 的 write/flush，并在等待退出期间保留输入端；ACK 与退出共用原 500 ms，原内部 4.5 秒/外部 5 秒清理界限不变。未确认写入保留 `write-error`，未退出沿用有界终止，非零退出仍失败。旧 `--sample`、JSON schema、产品和原生验收逻辑未改。此修复消除已复现的诊断关闭顺序，不证明历史 `3221225786` 的具体来源。
+
+作者与独立审查均确认本机 Rust **31/31**；check、clippy（warnings 为错误）、fmt 与 Windows cfg 全目标检查通过，后者仅类型检查。真实 xterm Playwright **15/15**、定向 TypeScript 检查通过。集成树再次运行 native helper **237/237**、Rust 专项 **31/31** 通过，diff check 通过，冻结代码与专题均获独立 APPROVE。Rust 文件 SHA-256 为 `6c2733be2edfe49da7639d751b025a52d76d55ed28e2e2c00cbc82949c54c05b`。
+
+下一步评估明确协议记录边界的方案，并另行预注册 Windows 退出修复验证；本轮没有新 runner 工件或查询性能结论。旧失败、5 秒启动、30 秒查询及 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 未合并。
