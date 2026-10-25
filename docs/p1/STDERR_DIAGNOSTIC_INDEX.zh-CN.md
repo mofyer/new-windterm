@@ -128,6 +128,12 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 新 31 键 schema、Node 专项 96/96、全 native 471/471 与 Node/方案/workflow 独立审查已完成，Rust 最终独立审查通过：77/77 为审查修正前结果，修正后定向脚本与序列化各 1/1、真实 JSON→Node 13/13、check/clippy/fmt/Windows cfg 通过，未重称最终全套。首推 Rust/Node `0221864`/`ae796f5` 使用 `[skip ci]`，新 workflow 第二推准确 HEAD `fa2a09ba9d7bbda5a0cae55dc8168a6c0729ca97` 的唯一 [push 运行 40166224227](https://github.com/mofyer/new-windterm/actions/runs/40166224227) 已 `completed/success`，两平台准备/Cargo 与 8/8 worker 完整通过，工件独立核验，详见[执行记录](RESULTS.zh-CN.md#conpty-运行时环境有限干预工作流-40166224227)。八样本均父/实际值有效非空、Ordinal 不同、assignmentVerified=true、frameCount=8、cwd 正确、exit 0、未请求 kill、cleanup true；parent 替换后 q1 仍 11405.0151–22985.8476 ms，未消除首次慢路径，不能将更慢的首 control 与后续样本差异当稳定效果。该结果削弱单变量替换足以修复的解释，不全面排除 PSModulePath 交互。2025 首 control host 29669.0781 ms 符合原 30 秒，wall 31907.8537 ms 属启动+host+清理总量，仍受原 45 秒 worker 上限；没有放宽门禁。下一步候选是真实 ConPTY 精确发现/显式导入阶段对照，当前未预注册/实施，不以 stdio 替代或相减归因。产品白名单与普通查询保持，ConPTY 合流不证明独立 stderr 为空；P1/第四批未验收，P2 仅准备，main 不合并。
 
+## 有限诊断通过：ConPTY 准备阶段对照 `40167503032`
+
+[新预注册](CONPTY_PHASE_PLAN.zh-CN.md)固定 D/I/I/D 四 worker 上限，精确 Get-Command 与显式 Import-Module 各完成固定身份验证后，再执行原两普通查询；准备及校验计入 prepMs，所有阶段共用原 30 秒 host 窗口。27 键报告严格区分 T 成功、F/identity 的 false 和 F/command 的 null，失败不进入后续查询。Node 88/88、全 native 559/559 与 Node/方案/workflow 独立审查通过，Rust 82/82、check/clippy/fmt/Windows cfg 与最终独立审查通过，真实报告跨 Node 8/8；Rust/Node 首推 `afbacd4`/`8564ebd` 使用 `[skip ci]`，新 workflow 第二推准确 HEAD `f616d18185a32f58b1aab400d15f7fe80938e7dd`，唯一 [push 运行 40167503032](https://github.com/mofyer/new-windterm/actions/runs/40167503032) 已 `completed/success`，准确 SHA 下仅此一条 push；两平台准备/Cargo 与 8/8 worker 完整通过，工件独立核验，见[执行记录](RESULTS.zh-CN.md#conpty-准备阶段对照工作流-40167503032)。
+
+八样本均 identityOk=true、frameCount=8、cwd 正确、exit 0、未请求 kill、cleanup true；D 准备 11847.4912–29484.9300 ms，I 准备 24.4259–38.1349 ms，准备后 q1 为 1.7095–13.5463 ms、q2 为 0.1563–0.2610 ms。本轮无同提交的无准备控制，旧 stdio 仅为跨层线索；两种准备都影响查询状态，不称纯组件时间、作差值归因或称产品冷查询改善。2025 首 D host=29878.5284 ms 符合原 30 秒，wall=31800.6866 ms 仍受原 45 秒 worker 门限；启动/退出/job 硬限保持，缺样本不补跑。下一步候选为当前树有限原生验收刷新，历史已知原生同症；[既有入口](../../.github/workflows/p0-cross-platform.yml)的 native_only 实际双平台各 7 场景，本轮未预注册/执行，不自动追加样本或泛增诊断矩阵。产品白名单、普通查询不改，显式导入未加入产品。ConPTY 合流不证明独立 stderr 为空，P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：

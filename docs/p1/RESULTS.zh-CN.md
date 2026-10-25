@@ -823,3 +823,39 @@ Node 新专项 **96/96**、协调者全 native **471/471**、语法/diff 检查�
 内容受限工件 `powershell-conpty-runtime-env-windows-{2022,2025}/report.json` 已独立核验准确 run/SHA、固定 schema/枚举、环境三态与阶段/count/cwd 关系、ABBA 顺序、准备前置、首停、聚合与清理。SHA-256：2022 为 `6c2a7537630539c5e6206517914c29e6d5628f76d4aaacbbb34cc4671ac8af21`；2025 为 `63a7e55e97d456d4e73771953179fadee2e4f6aca18d8491dc4470359883ace5`。工件不保留值、路径、脚本或原始输出；ConPTY 合流仍不能证明 PowerShell 独立 stderr 为空，不重判历史失败或拼接不同提交样本。
 
 下一步候选转向尚未在真实 ConPTY 完成的精确命令发现/显式 Management 模块导入阶段对照。既有 stdio `39819222771` 的精确 Get-Command 约 21–23 秒、显式导入约 44–59 ms，仅是跨层线索；若立项，应先独立预注册 D/I/I/D 的准备阶段及随后原两普通查询，共用原 30 秒窗口，不把 stdio 数值移作 ConPTY 证据，不把操作时间称为纯发现/纯加载或通过相减归因。该候选本轮未实施、未预注册，不再追加环境 arm 或重跑已完成 ABBA。产品白名单、普通原生查询与首次/重开、中文空格 cwd、独立 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 不合并。
+
+### ConPTY 准备阶段对照（工作流 `40167503032`）
+
+按[独立 ConPTY 准备阶段预注册](CONPTY_PHASE_PLAN.zh-CN.md)，新增 `--phase-framed discover-query|import-query`、27 键 schema，成功序列 R/P/T/S1/Q1/S2/Q2/D 共 8 frame。每平台最多四个 fresh worker，D/I/I/D：D 使用精确 Get-Command 查 Get-Location，I 显式导入 Microsoft.PowerShell.Management；两者按既有 stdio 脚本语义在内存验证命令/模块唯一性、类型、Name/ModuleName 和导出项身份。准备计时包含操作及身份校验，随后两次查询仍是原普通 `(Get-Location).Path` 并精确验证 cwd。
+
+READY+实际写入 ACK 均须在原同一 5 秒内；从准备/查询脚本构造前开始的原 30 秒 host 总窗覆盖准备、校验、协议、传输及两查询，不重置。prep/q1/q2 按 F4 整数 tick 校验已接受前缀总和不超过 30000 ms。T 成功才保存 prepMs/identityOk=true；准备身份错误为 identityOk=false/prepMs=null、count2，准备异常二者 null/count2，均不执行查询。后续失败仍保留合法准备前缀，完整 END 仍须退出和清理成功。
+
+Node 实现/测试/方案来源 `d6cf2e9`，Rust 集成 `afbacd42924a3be1ec33220141e9c642c1ab8f94` 与 Node 集成 `8564ebd8e12153609be81b9d4f5bfe7f50d25216` 首推均使用 `[skip ci]`；新 workflow 第二推准确测试 HEAD 为 `f616d18185a32f58b1aab400d15f7fe80938e7dd`。Node 专项 **88/88**、协调者全 native **559/559**、语法/diff 与 Node/方案/workflow 独立审查通过。Rust 专项 **82/82**（旧 77 + 新 5）、check/clippy（`-D warnings`）/fmt 与 Windows cfg 全目标/全部 feature（含非 test 路径）通过；实际 `Report::json` 的 8 类合成报告在 fresh 测试中输出后经冻结 Node 接受且 deepEqual **8/8**，Rust/Node 最终独立审查批准。唯一 [push 运行 40167503032](https://github.com/mofyer/new-windterm/actions/runs/40167503032) 已 `completed/success`，准确 SHA 下仅此一条 push；两平台工件独立核验通过，无额外 dispatch、重试或补样本。不将合成报告、stdio、本机或类型检查当 Windows 运行证据。
+
+新入口复用原 prepared 层，旧默认行为不改；真实前端准备 3 分钟、Cargo `--locked --all-features` 14 分钟、四 worker 各 45 秒的名义总和已为 job 20 分钟硬限，工具链/调度/清理还占时间，不承诺最慢组合能完成。首失败即停止、不补样本，退出 ACK+child exit 共用原 500 ms、cleanup 4.5/5 秒保持。工件只保留固定字段，不输出对象、模块列表、路径、环境、脚本或终端原文。
+
+精确发现可能自动导入，显式导入也含多个内部步骤；准备会影响随后查询，不能称纯发现/纯加载或用差值归因。本轮无同提交的无准备 arm，不把旧 ConPTY run 或 stdio `39819222771` 当配对控制；D/I/I/D 仍不能排除顺序、缓存与负载影响。本轮有限结果见下表，不据此确定内部机制。产品白名单、普通原生查询、默认 progress 和独立 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 不合并。
+
+
+两平台均完成真实 npm ci/前端构建、Cargo test/build 和预注册 D/I/I/D 四个 fresh worker，共 **8/8 完整诊断样本**。准备进程 exit 0、输出字节 141/447、distReady=true；Cargo test/build exit 0、输出字节 29824/499。各进程均 failure null、退出已观察、本地资源释放、未请求 tree kill。Windows 工件只有 Cargo 进程结果，没有逐项测试计数，不能补写 Windows 82/82。以下按原 D/I/I/D 顺序列出，D=discover-query，I=import-query；宿主 f64 显示至四位小数，prep/q 保留 F4：
+
+| 平台 | 轮次/次序 | arm | prep ms | q1 ms | q2 ms | startup ms | host ms | wall ms | READY write ms | 合流 bytes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2022 | 1/1 | D | 29093.6875 | 13.5463 | 0.2209 | 3127.3791 | 29780.4239 | 32981.1883 | 22.0653 | 37445 |
+| 2022 | 1/2 | I | 38.1349 | 2.3481 | 0.1934 | 315.3605 | 792.4863 | 1139.2477 | 6.6094 | 47235 |
+| 2022 | 2/1 | I | 27.9375 | 2.2332 | 0.1635 | 310.0476 | 868.2631 | 1209.2114 | 6.2311 | 51045 |
+| 2022 | 2/2 | D | 23035.5856 | 2.3997 | 0.2610 | 314.2749 | 23709.4855 | 24054.7871 | 6.2944 | 32493 |
+| 2025 | 1/1 | D | 29484.9300 | 12.7438 | 0.1907 | 1874.6944 | 29878.5284 | 31800.6866 | 7.8312 | 20401 |
+| 2025 | 1/2 | I | 32.9503 | 2.2278 | 0.1735 | 277.7958 | 501.7900 | 805.8499 | 7.0719 | 33112 |
+| 2025 | 2/1 | I | 24.4259 | 1.7383 | 0.1678 | 257.1558 | 490.6217 | 774.6267 | 7.3299 | 27049 |
+| 2025 | 2/2 | D | 11847.4912 | 1.7095 | 0.1563 | 273.8189 | 12258.8920 | 12555.1953 | 6.4955 | 24952 |
+
+所有样本 identityOk/version/cwd1/cwd2/startupComplete/complete/cleanupOk=true、CPR=1、frameCount=8、stage=after-end、failure/protocolReason=null、exitCode=0、killRequested=false、exitObservedBeforeKill=true。READY write/flush 均在原启动 5 秒内，prep+q1+q2 与 host 均符合原 30000 ms 总窗。2022 首 D 的 host=29780.4239 ms、wall=32981.1883 ms；2025 首 D 的 prep=29484.9300 ms、host=29878.5284 ms、wall=31800.6866 ms。wall 包含启动、host 与退出清理，超过 30 秒不等于超时，外层 worker 仍受原 45 秒门限；本轮没有放宽任何门限。八个外层 worker 均 exit 0、failure null、退出已观察、本地资源释放、未请求 tree kill；stdout 固定报告字节为 2022 的 526/516/516/522、2025 的 523/516/506/525。
+
+两平台顶层 `phase=done/status=pass/diagnosticPassed=true/failure=null`，内层 `startupSuccess/experimentComplete/commandSuccess/diagnosticPassed` 均 true。此处通过的是有限准备、身份验证、普通查询、退出和清理诊断，不表示产品首次查询已修复或所有失败路径已由 Windows 触发。
+
+精确发现 D 的准备耗时为 **11847.4912–29484.9300 ms**，显式导入 I 为 **24.4259–38.1349 ms**；准备后的 q1 为 **1.7095–13.5463 ms**，q2 为 **0.1563–0.2610 ms**。本轮在真实 ConPTY 上观察到两种准备路径的明显耗时差异，较长时间出现在 D 的准备区间；该区间包含精确发现及身份校验，可能涉及自动加载等多个步骤，不是纯发现耗时。I 的区间也不能称纯模块加载时间，不能通过两者相减定位内部根因。两 arm 都先改变了会话状态，随后 q1 是准备后的查询，不能据此宣称产品冷查询改善；无同 SHA 无准备 arm，历史 stdio 或旧 ConPTY 样本不作为配对控制。D 两次自身差异明显，有限 D/I/I/D 仍不能排除顺序、缓存和负载影响。
+
+内容受限工件 `powershell-conpty-phase-windows-{2022,2025}/report.json` 已独立核验准确 run/SHA、固定 schema/枚举、准备及身份字段与阶段/count/cwd 关系、D/I/I/D 顺序、前置准备、首停、聚合与清理。SHA-256：2022 为 `0961a95c587920135d13317f11faaecf6484dadcfb3431c8e47ce4e57802f289`；2025 为 `a3ce620cec8cb1b5bb243f413cf966ef30c1e4110cd853ea53fcaeb4e51190bd`。工件不保留对象、模块列表、路径、环境、脚本或原始输出；ConPTY 合流仍不能证明 PowerShell 独立 stderr 为空，不重判历史失败或拼接不同提交样本。
+
+下一步候选收敛为当前产品树的有限原生验收刷新，再结合结果评估单个产品方案，不继续泛增诊断矩阵。历史原生运行 `39783803294` 已有 21.6–27.6 秒同症，不再将下一步称为首次确认原生是否慢。可复用[既有原生工作流](../../.github/workflows/p0-cross-platform.yml)的 `native_only=true/windows_shell_repeats=0/windows_webview_timing=true` 入口与[原生 runner](../../tests/native/run.mjs)：实际运行 Linux WebKitGTK 与 Windows 2022 WebView2 各 7 个场景，不是仅 Windows 或单个场景；保留首次/重开、中文空格 cwd、普通查询与完整 trace 门禁。该刷新本轮未预注册或执行，本次诊断通过不自动授权追加样本。显式导入只是待评估候选，不静默加入产品；不修改八项白名单、普通查询或放宽时间/独立 stderr 门禁，不循环补跑。P1/第四批未验收，P2 仅准备，main 不合并。
