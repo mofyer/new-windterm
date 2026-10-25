@@ -38,7 +38,8 @@ jobs:
         run: node --test tests/native/*.test.mjs
       - name: Install pinned Rust toolchain
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-      - name: Test and build the worker, then run at most two bounded startup-only workers
+      # One bounded validation of the exit fix; see docs/p1/CONPTY_EXIT_VALIDATION_PLAN.zh-CN.md.
+      - name: Test and build the worker, then validate startup exit cleanup with at most two workers
         run: node tests/native/conpty-startup-report.mjs
       - name: Preserve sanitized startup ConPTY report
         if: always()
