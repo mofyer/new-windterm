@@ -17,6 +17,9 @@ enum Event {
     Query(usize, u64),
     Done,
     Failure(usize, &'static str),
+    Observe(bool, bool, bool, Option<bool>),
+    Verify(bool),
+    EnvironmentError(bool),
 }
 
 // Prefix parsing reports incomplete input separately from an already invalid
@@ -43,6 +46,13 @@ impl Cursor<'_> {
             }
         }
         Ok(())
+    }
+    fn boolean(&mut self) -> Result<bool, PrefixError> {
+        match self.byte()? {
+            b'0' => Ok(false),
+            b'1' => Ok(true),
+            _ => Err(PrefixError::Invalid("invalid-frame")),
+        }
     }
     fn phase(&mut self) -> Result<usize, PrefixError> {
         match self.byte()? {
@@ -108,6 +118,44 @@ fn event_prefix(bytes: &[u8], end: &[u8]) -> Result<Event, PrefixError> {
             c.literal(b"|", "invalid-frame")?;
             Event::Done
         }
+        b'O' => {
+            c.literal(b"|", "invalid-frame")?;
+            let present = c.boolean()?;
+            c.literal(b"|", "invalid-frame")?;
+            let nonempty = c.boolean()?;
+            c.literal(b"|", "invalid-frame")?;
+            let valid = c.boolean()?;
+            c.literal(b"|", "invalid-frame")?;
+            let equal = match c.byte()? {
+                b'0' => Some(false),
+                b'1' => Some(true),
+                b'x' => None,
+                _ => return Err(PrefixError::Invalid("invalid-frame")),
+            };
+            c.literal(b"|", "invalid-frame")?;
+            Event::Observe(present, nonempty, valid, equal)
+        }
+        b'V' => {
+            c.literal(b"|", "invalid-frame")?;
+            let verified = c.boolean()?;
+            c.literal(b"|", "invalid-frame")?;
+            Event::Verify(verified)
+        }
+        b'E' => {
+            c.literal(b"|", "invalid-frame")?;
+            let assignment = match c.byte()? {
+                b'r' => {
+                    c.literal(b"ead|", "invalid-frame")?;
+                    false
+                }
+                b'a' => {
+                    c.literal(b"ssign|", "invalid-frame")?;
+                    true
+                }
+                _ => return Err(PrefixError::Invalid("invalid-frame")),
+            };
+            Event::EnvironmentError(assignment)
+        }
         b'X' => {
             c.literal(b"|", "invalid-frame")?;
             let phase = c.phase()?;
@@ -140,31 +188,99 @@ struct QueryProtocol {
     query_armed: bool,
     frames: usize,
     queries: [Option<u64>; 2],
+    runtime: bool,
+    assignment_armed: bool,
+    observation: Option<(bool, bool, Option<bool>)>,
+    assignment_verified: Option<bool>,
 }
 impl QueryProtocol {
     fn stage(&self) -> &'static str {
-        match self.frames {
-            0 => "await-frame",
-            1 if !self.query_armed => "after-ready",
-            1 => "await-start-1",
-            2 => "await-result-1",
-            3 => "await-start-2",
-            4 => "await-result-2",
-            5 => "await-end",
-            _ => "after-end",
+        if self.runtime {
+            match self.frames {
+                0 => "await-frame",
+                1 if !self.query_armed => "after-ready",
+                1 => "await-observation",
+                2 if !self.assignment_armed => "after-observation",
+                2 => "await-assignment",
+                3 => "await-start-1",
+                4 => "await-result-1",
+                5 => "await-start-2",
+                6 => "await-result-2",
+                7 => "await-end",
+                _ => "after-end",
+            }
+        } else {
+            match self.frames {
+                0 => "await-frame",
+                1 if !self.query_armed => "after-ready",
+                1 => "await-start-1",
+                2 => "await-result-1",
+                3 => "await-start-2",
+                4 => "await-result-2",
+                5 => "await-end",
+                _ => "after-end",
+            }
         }
     }
     fn accept(&mut self, event: Event) -> Result<(), &'static str> {
-        if !self.ready_armed || (self.frames > 0 && !self.query_armed) {
+        if !self.ready_armed
+            || (self.frames > 0 && !self.query_armed)
+            || (self.runtime && self.frames == 2 && !self.assignment_armed)
+        {
             return Err("unexpected-frame");
         }
+        let offset = if self.runtime { 2 } else { 0 };
         let index = match event {
             Event::Ready => 0,
-            Event::Start(phase) => phase * 2 - 1,
-            Event::Query(phase, _) => phase * 2,
-            Event::Done => 5,
+            Event::Start(phase) => phase * 2 - 1 + offset,
+            Event::Query(phase, _) => phase * 2 + offset,
+            Event::Done => 5 + offset,
+            Event::Observe(present, nonempty, valid, equal) => {
+                if !self.runtime || self.frames != 1 {
+                    return Err("unexpected-record");
+                }
+                // Only canonical states are meaningful; unknown equality never means false.
+                if !matches!(
+                    (present, nonempty, valid, equal),
+                    (false, false, true, None)
+                        | (true, false, true, None)
+                        | (true, true, false, None)
+                        | (true, true, true, Some(_))
+                ) {
+                    return Err("invalid-frame");
+                }
+                self.observation = Some((present, nonempty, equal));
+                self.frames += 1; // A full observation frame, even if no usable contrast exists.
+                if !valid {
+                    return Err("environment-invalid");
+                }
+                if !nonempty || equal == Some(true) {
+                    return Err("contrast-absent");
+                }
+                return Ok(());
+            }
+            Event::Verify(verified) => {
+                if !self.runtime || self.frames != 2 {
+                    return Err("unexpected-record");
+                }
+                self.assignment_verified = Some(verified);
+                if !verified {
+                    return Err("assignment-failed");
+                }
+                2
+            }
+            Event::EnvironmentError(assignment) => {
+                if !self.runtime || self.frames != if assignment { 2 } else { 1 } {
+                    return Err("unexpected-record");
+                }
+                return Err(if assignment {
+                    "assignment-failed"
+                } else {
+                    "environment-read-error"
+                });
+            }
             Event::Failure(phase, reason) => {
-                if self.frames != phase * 2 {
+                if self.frames != phase * 2 + offset {
                     return Err("unexpected-record");
                 }
                 return Err(reason);
@@ -198,6 +314,9 @@ impl FrameProtocol for QueryProtocol {
             if candidate.len() == MAX_CANDIDATE {
                 return Err("invalid-frame");
             }
+            if !self.runtime && candidate.is_empty() && matches!(byte, b'O' | b'V' | b'E') {
+                return Err("invalid-frame");
+            }
             candidate.push(byte);
             match event_prefix(candidate, &self.end) {
                 Ok(event) => {
@@ -215,7 +334,7 @@ impl FrameProtocol for QueryProtocol {
             };
             if self.prefix == self.begin.len() {
                 self.prefix = 0;
-                if self.frames == 6 {
+                if self.frames == if self.runtime { 8 } else { 6 } {
                     return Err("duplicate-frame");
                 }
                 self.candidate = Some(Vec::new());
@@ -252,6 +371,10 @@ impl QueryParser {
                 query_armed: false,
                 frames: 0,
                 queries: [None, None],
+                runtime: false,
+                assignment_armed: false,
+                observation: None,
+                assignment_verified: None,
             },
             failure: None,
         };
@@ -259,6 +382,31 @@ impl QueryParser {
             parser.record_failure("invalid-frame");
         }
         parser
+    }
+    pub fn runtime(nonce: &str) -> Self {
+        let mut parser = Self::new(nonce);
+        parser.protocol.runtime = true;
+        parser
+    }
+    pub fn observation(&self) -> Option<(bool, bool, Option<bool>)> {
+        self.protocol.observation
+    }
+    pub fn assignment_verified(&self) -> Option<bool> {
+        self.protocol.assignment_verified
+    }
+    pub fn ended(&self) -> bool {
+        self.protocol.frames == if self.protocol.runtime { 8 } else { 6 }
+    }
+    pub fn arm_assignment(&mut self) -> Result<(), &'static str> {
+        if self.failure.is_some() {
+            return Err(self.error());
+        }
+        if !self.protocol.runtime || self.protocol.frames != 2 || self.protocol.assignment_armed {
+            self.record_failure("unexpected-frame");
+            return Err(self.error());
+        }
+        self.protocol.assignment_armed = true;
+        Ok(())
     }
     pub fn arm_ready(&mut self) {
         self.protocol.ready_armed = true;
@@ -299,6 +447,10 @@ impl QueryParser {
             Some("output-limit") => "output-limit",
             Some("cwd-mismatch") => "cwd-mismatch",
             Some("command-error") => "command-error",
+            Some("contrast-absent") => "contrast-absent",
+            Some("environment-invalid") => "environment-invalid",
+            Some("environment-read-error") => "environment-read-error",
+            Some("assignment-failed") => "assignment-failed",
             _ => "protocol-error",
         }
     }
@@ -562,5 +714,164 @@ mod tests {
         );
         let mut p = QueryParser::new("bad");
         assert!(p.push(b"x").is_err());
+    }
+    fn runtime_ready() -> QueryParser {
+        let mut p = QueryParser::runtime(NONCE);
+        p.arm_ready();
+        p.push(frame("R|5.1.1.1").as_bytes()).unwrap();
+        p.arm_query().unwrap();
+        p
+    }
+    #[test]
+    fn runtime_observation_canonical_states_and_first_error_all_splits() {
+        for (payload, expected, observation) in [
+            (
+                "O|0|0|1|x",
+                Some("contrast-absent"),
+                Some((false, false, None)),
+            ),
+            (
+                "O|1|0|1|x",
+                Some("contrast-absent"),
+                Some((true, false, None)),
+            ),
+            (
+                "O|1|1|0|x",
+                Some("environment-invalid"),
+                Some((true, true, None)),
+            ),
+            (
+                "O|1|1|1|1",
+                Some("contrast-absent"),
+                Some((true, true, Some(true))),
+            ),
+            ("O|1|1|1|0", None, Some((true, true, Some(false)))),
+        ] {
+            let text = frame(payload);
+            for cut in (0..=text.len()).map(Some).chain(std::iter::once(None)) {
+                let mut p = runtime_ready();
+                match cut {
+                    Some(cut) => {
+                        let _ = p.push(&text.as_bytes()[..cut]);
+                        let _ = p.push(&text.as_bytes()[cut..]);
+                    }
+                    None => {
+                        for byte in text.bytes() {
+                            let _ = p.push(&[byte]);
+                        }
+                    }
+                }
+                assert_eq!(p.diagnostic().frames, 2);
+                assert_eq!(p.diagnostic().stage, "after-observation");
+                assert_eq!(p.diagnostic().reason, expected);
+                assert_eq!(p.observation(), observation);
+                if expected.is_some() {
+                    assert!(p.arm_assignment().is_err());
+                }
+            }
+        }
+        for payload in [
+            "O|0|1|1|x",
+            "O|0|0|0|x",
+            "O|1|0|1|0",
+            "O|1|1|0|0",
+            "O|1|1|1|x",
+        ] {
+            let mut p = runtime_ready();
+            assert!(p.push(frame(payload).as_bytes()).is_err());
+            assert_eq!(p.diagnostic().reason, Some("invalid-frame"));
+            assert_eq!(p.diagnostic().frames, 1);
+            assert_eq!(p.observation(), None);
+        }
+    }
+    #[test]
+    fn runtime_gate_assignment_and_query_prefix_are_strict_all_splits() {
+        let mut early = runtime_ready();
+        assert!(early
+            .push(format!("{}{}", frame("O|1|1|1|0"), frame("V|1")).as_bytes())
+            .is_err());
+        assert_eq!(early.diagnostic().frames, 2);
+        assert_eq!(early.diagnostic().reason, Some("unexpected-frame"));
+        let stream = format!("{}{}", frame("V|1"), stream("12.5000", "0.2500"));
+        for cut in (0..=stream.len()).map(Some).chain(std::iter::once(None)) {
+            let mut p = runtime_ready();
+            p.push(frame("O|1|1|1|0").as_bytes()).unwrap();
+            p.arm_assignment().unwrap();
+            match cut {
+                Some(cut) => {
+                    p.push(&stream.as_bytes()[..cut]).unwrap();
+                    p.push(&stream.as_bytes()[cut..]).unwrap();
+                }
+                None => {
+                    for byte in stream.bytes() {
+                        p.push(&[byte]).unwrap();
+                    }
+                }
+            }
+            p.finish().unwrap();
+            assert_eq!(p.diagnostic().frames, 8);
+            assert!(p.ended());
+            assert_eq!(p.assignment_verified(), Some(true));
+            assert_eq!(p.queries(), [Some(12.5), Some(0.25)]);
+            assert!(p.push(frame("D").as_bytes()).is_err());
+            assert_eq!(p.diagnostic().reason, Some("duplicate-frame"));
+            assert_eq!(p.diagnostic().frames, 8);
+        }
+        for payload in ["S|1", "V|0", "E|assign"] {
+            let mut p = runtime_ready();
+            p.push(frame("O|1|1|1|0").as_bytes()).unwrap();
+            p.arm_assignment().unwrap();
+            assert!(p.push(frame(payload).as_bytes()).is_err());
+            assert_eq!(p.diagnostic().frames, 2);
+            assert_eq!(
+                p.assignment_verified(),
+                if payload == "V|0" { Some(false) } else { None }
+            );
+            assert_eq!(
+                p.diagnostic().reason,
+                Some(if payload == "S|1" {
+                    "unexpected-record"
+                } else {
+                    "assignment-failed"
+                })
+            );
+        }
+        let mut p = runtime_ready();
+        assert_eq!(
+            p.push(frame("E|read").as_bytes()),
+            Err("environment-read-error")
+        );
+        assert_eq!(p.observation(), None);
+        assert_eq!(p.diagnostic().frames, 1);
+    }
+    #[test]
+    fn runtime_control_opaque_truncation_and_legacy_grammar_stay_closed() {
+        for payload in ["O|1|1|1|0", "V|1", "E|read", "E|assign"] {
+            let mut legacy = ready();
+            assert!(legacy.push(frame(payload).as_bytes()).is_err());
+            assert_eq!(legacy.diagnostic().reason, Some("invalid-frame"));
+        }
+        let wire = frame("O|1|1|1|0");
+        for at in 1..wire.len() {
+            let mut p = runtime_ready();
+            p.push(&wire.as_bytes()[..at]).unwrap();
+            assert!(p.finish().is_err());
+            assert_eq!(p.diagnostic().reason, Some("incomplete-frame"));
+        }
+        for open in ["\x1b]", "\x1bP", "\x1bX", "\x1b^", "\x1b_"] {
+            let mut p = runtime_ready();
+            p.push(format!("{open}{wire}\x1b\\").as_bytes()).unwrap();
+            assert_eq!(p.diagnostic().frames, 1);
+            assert_eq!(p.observation(), None);
+        }
+        for at in format!("~B{NONCE}|").len()..wire.len() {
+            for control in ["\r", "\n", "\x1b[0m", "中"] {
+                let mut p = runtime_ready();
+                assert!(p
+                    .push(format!("{}{control}{}", &wire[..at], &wire[at..]).as_bytes())
+                    .is_err());
+                assert_eq!(p.diagnostic().reason, Some("frame-control"));
+            }
+        }
     }
 }

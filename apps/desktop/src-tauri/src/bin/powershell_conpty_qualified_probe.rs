@@ -24,6 +24,265 @@ mod tests {
         format!("~B{NONCE}|R|5.1.20348.5622|E{NONCE}~")
     }
     #[test]
+    fn runtime_parent_input_is_bounded_unicode_without_lossy_coercion() {
+        use std::ffi::OsStr;
+        for (value, present, reason) in [
+            (None, false, Some("contrast-absent")),
+            (Some(OsStr::new("")), true, Some("contrast-absent")),
+            (
+                Some(OsStr::new("bad\0value")),
+                true,
+                Some("environment-invalid"),
+            ),
+            (Some(OsStr::new("C:\\模块;$('private')")), true, None),
+        ] {
+            let p = RuntimeParent::new(value);
+            assert_eq!(p.present, present);
+            assert_eq!(p.failure, reason);
+            assert_eq!(p.value.is_some(), reason.is_none());
+        }
+        assert!(RuntimeParent::new(Some(OsStr::new(&"a".repeat(4096))))
+            .value
+            .is_some());
+        assert_eq!(
+            RuntimeParent::new(Some(OsStr::new(&"a".repeat(4097)))).failure,
+            Some("environment-invalid")
+        );
+        assert!(RuntimeParent::new(Some(OsStr::new(&"🙂".repeat(2048))))
+            .value
+            .is_some());
+        assert_eq!(
+            RuntimeParent::new(Some(OsStr::new(&"🙂".repeat(2049)))).failure,
+            Some("environment-invalid")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            assert_eq!(
+                RuntimeParent::new(Some(OsStr::from_bytes(&[0xff]))).failure,
+                Some("environment-invalid")
+            );
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStringExt;
+            let invalid = std::ffi::OsString::from_wide(&[0xd800]);
+            assert_eq!(
+                RuntimeParent::new(Some(&invalid)).failure,
+                Some("environment-invalid")
+            );
+        }
+    }
+    #[test]
+    fn runtime_scripts_encode_parent_and_preserve_gate_and_ordinary_queries() {
+        let parent = "C:\\私密'\";$()\r\n🙂";
+        let observation = runtime_observation_script(NONCE, parent);
+        assert!(!observation.contains(parent));
+        assert!(!observation.contains(NONCE));
+        assert!(observation.contains("[char[]]@("));
+        assert!(!observation.contains("Get-Location"));
+        assert!(!observation.contains("SetEnvironmentVariable"));
+        assert!(observation.contains("[Text.UTF8Encoding]::new($false,$true).GetByteCount"));
+        let control = runtime_assignment_script(RuntimeArm::Control, NONCE, "C:\\中文 path");
+        let treatment = runtime_assignment_script(RuntimeArm::Parent, NONCE, "C:\\中文 path");
+        assert_eq!(
+            control.replace("$target=$original;", "$target=$reference;"),
+            treatment
+        );
+        assert_eq!(
+            control
+                .matches("$path=(Get-Location).Path;$sw.Stop();")
+                .count(),
+            2
+        );
+        assert_eq!(control.matches("SetEnvironmentVariable").count(), 1);
+        assert!(control.contains("if($assigned){"));
+        assert!(
+            control.contains("catch{$assigned=$false;[Console]::Out.WriteLine($b+'E|assign'+$e);}")
+        );
+        assert!(
+            control.find("catch{$assigned=$false;").unwrap()
+                < control.find("if($assigned){").unwrap()
+        );
+        for script in [observation, control, treatment] {
+            for forbidden in [
+                NONCE,
+                "Import-Module",
+                "Get-Command",
+                "exit ",
+                "Microsoft.PowerShell.Management",
+            ] {
+                assert!(!script.contains(forbidden));
+            }
+            for cut in (0..=script.len()).map(Some).chain(std::iter::once(None)) {
+                let mut p = Parser::runtime(NONCE);
+                p.arm_frame();
+                p.push(frame().as_bytes()).unwrap();
+                p.arm_query().unwrap();
+                match cut {
+                    Some(cut) => {
+                        p.push(&script.as_bytes()[..cut]).unwrap();
+                        p.push(&script.as_bytes()[cut..]).unwrap();
+                    }
+                    None => {
+                        for byte in script.bytes() {
+                            p.push(&[byte]).unwrap();
+                        }
+                    }
+                }
+                p.finish().unwrap();
+                assert_eq!(p.ready_counts().0, 1);
+                assert_eq!(p.observation(), None);
+            }
+        }
+    }
+    #[test]
+    fn runtime_report_contract_cases_emit_synthetic_json() {
+        for case in [
+            "success",
+            "parent-missing",
+            "parent-empty",
+            "parent-invalid",
+            "actual-missing",
+            "actual-empty",
+            "actual-same",
+            "actual-invalid",
+            "read-error",
+            "assign-error",
+            "verify-false",
+            "partial-query",
+            "cleanup-failed",
+        ] {
+            let parent = RuntimeParent::new(Some(std::ffi::OsStr::new("private-parent-reference")));
+            let mut r = Report::new(Arm::Unqualified);
+            r.set_runtime(RuntimeArm::Control, &parent);
+            r.startup = Some(100.0);
+            r.ready_write_ms = Some(10.0);
+            r.startup_complete = true;
+            r.host = Some(20.0);
+            r.wall = 130.0;
+            r.q1 = Some(12.5);
+            r.q2 = Some(0.25);
+            r.version_ok = true;
+            r.cwd1_ok = true;
+            r.cwd2_ok = true;
+            r.cpr = 1;
+            r.bytes = 1000;
+            r.frame_count = 8;
+            r.exit_code = Some(0);
+            r.complete = true;
+            r.cleanup_ok = true;
+            r.failure = None;
+            r.diagnostic.stage = "after-end";
+            r.diagnostic.reason = None;
+            r.kill_requested = Some(false);
+            r.exit_observed_before_kill = Some(true);
+            r.effective_present = Some(true);
+            r.effective_nonempty = Some(true);
+            r.effective_equals_parent = Some(false);
+            r.assignment_verified = Some(true);
+            if case != "success" {
+                r.complete = false;
+                r.exit_code = Some(1);
+                r.kill_requested = Some(true);
+                r.exit_observed_before_kill = Some(false);
+            }
+            if case.starts_with("parent-") {
+                r.parent_present = case != "parent-missing";
+                r.parent_usable = false;
+                r.startup = None;
+                r.ready_write_ms = None;
+                r.startup_complete = false;
+                r.host = None;
+                r.q1 = None;
+                r.q2 = None;
+                r.cwd1_ok = false;
+                r.cwd2_ok = false;
+                r.version_ok = false;
+                r.frame_count = 0;
+                r.cpr = 0;
+                r.bytes = 0;
+                r.effective_present = None;
+                r.effective_nonempty = None;
+                r.effective_equals_parent = None;
+                r.assignment_verified = None;
+                r.kill_requested = None;
+                r.exit_observed_before_kill = None;
+                r.exit_code = None;
+                r.diagnostic.stage = "not-started";
+                r.failure = Some(if case == "parent-invalid" {
+                    "environment-invalid"
+                } else {
+                    "contrast-absent"
+                });
+            } else if case.starts_with("actual-")
+                || ["read-error", "assign-error", "verify-false"].contains(&case)
+            {
+                r.q1 = None;
+                r.q2 = None;
+                r.cwd1_ok = false;
+                r.cwd2_ok = false;
+                r.frame_count = 2;
+                r.assignment_verified = None;
+                r.diagnostic.stage = "after-observation";
+                match case {
+                    "actual-missing" => {
+                        r.effective_present = Some(false);
+                        r.effective_nonempty = Some(false);
+                        r.effective_equals_parent = None;
+                        r.failure = Some("contrast-absent");
+                    }
+                    "actual-empty" => {
+                        r.effective_nonempty = Some(false);
+                        r.effective_equals_parent = None;
+                        r.failure = Some("contrast-absent");
+                    }
+                    "actual-same" => {
+                        r.effective_equals_parent = Some(true);
+                        r.failure = Some("contrast-absent");
+                    }
+                    "actual-invalid" => {
+                        r.effective_equals_parent = None;
+                        r.failure = Some("environment-invalid");
+                    }
+                    "read-error" => {
+                        r.frame_count = 1;
+                        r.diagnostic.stage = "await-observation";
+                        r.effective_present = None;
+                        r.effective_nonempty = None;
+                        r.effective_equals_parent = None;
+                        r.failure = Some("environment-read-error");
+                    }
+                    _ => {
+                        r.diagnostic.stage = "await-assignment";
+                        r.failure = Some("assignment-failed");
+                        if case == "verify-false" {
+                            r.assignment_verified = Some(false);
+                        }
+                    }
+                }
+            } else if case == "partial-query" {
+                r.q2 = None;
+                r.cwd2_ok = false;
+                r.frame_count = 6;
+                r.diagnostic.stage = "await-result-2";
+                r.failure = Some("command-timeout");
+                r.host = Some(30001.0);
+                r.wall = 30200.0;
+            } else if case == "cleanup-failed" {
+                r.cleanup_ok = false;
+                r.exit_code = None;
+                r.failure = Some("cleanup-failed");
+            }
+            r.diagnostic.reason = r.failure;
+            let json = r.json();
+            let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(v.as_object().unwrap().len(), 31);
+            assert!(!json.contains("private"));
+            println!("RUNTIME_CONTRACT {case} {json}");
+        }
+    }
+    #[test]
     fn query_report_has_exact_independent_schema() {
         let mut report = Report::new(Arm::Qualified);
         report.query_framed = true;
@@ -672,7 +931,60 @@ mod probe {
             }
         }
     }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum RuntimeArm {
+        Control,
+        Parent,
+    }
+    impl RuntimeArm {
+        pub fn name(self) -> &'static str {
+            match self {
+                Self::Control => "control",
+                Self::Parent => "parent",
+            }
+        }
+    }
+    // Values remain private in memory; no Debug implementation may expose them.
+    pub struct RuntimeParent {
+        pub value: Option<String>,
+        pub present: bool,
+        pub failure: Option<&'static str>,
+    }
+    impl RuntimeParent {
+        pub fn new(value: Option<&std::ffi::OsStr>) -> Self {
+            let present = value.is_some();
+            let result = match value {
+                None => Err("contrast-absent"),
+                Some(value) => match value.to_str() {
+                    Some("") => Err("contrast-absent"),
+                    Some(text) if !text.contains('\0') && text.encode_utf16().count() <= 4096 => {
+                        Ok(text.to_owned())
+                    }
+                    _ => Err("environment-invalid"),
+                },
+            };
+            match result {
+                Ok(value) => Self {
+                    value: Some(value),
+                    present,
+                    failure: None,
+                },
+                Err(failure) => Self {
+                    value: None,
+                    present,
+                    failure: Some(failure),
+                },
+            }
+        }
+    }
     pub struct Report {
+        pub runtime_arm: Option<RuntimeArm>,
+        pub parent_present: bool,
+        pub parent_usable: bool,
+        pub effective_present: Option<bool>,
+        pub effective_nonempty: Option<bool>,
+        pub effective_equals_parent: Option<bool>,
+        pub assignment_verified: Option<bool>,
         pub query_framed: bool,
         pub startup_framed: bool,
         pub frame_count: usize,
@@ -703,6 +1015,13 @@ mod probe {
     impl Report {
         pub fn new(arm: Arm) -> Self {
             Self {
+                runtime_arm: None,
+                parent_present: false,
+                parent_usable: false,
+                effective_present: None,
+                effective_nonempty: None,
+                effective_equals_parent: None,
+                assignment_verified: None,
                 query_framed: false,
                 startup_framed: false,
                 frame_count: 0,
@@ -736,6 +1055,12 @@ mod probe {
                 exit_observed_before_kill: None,
             }
         }
+        pub fn set_runtime(&mut self, arm: RuntimeArm, parent: &RuntimeParent) {
+            self.runtime_arm = Some(arm);
+            self.query_framed = true;
+            self.parent_present = parent.present;
+            self.parent_usable = parent.value.is_some();
+        }
         pub fn json(&self) -> String {
             let number = |value: Option<f64>| {
                 value
@@ -744,6 +1069,9 @@ mod probe {
             };
             let c = self.diagnostic.counters;
             let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
+            if let Some(arm) = self.runtime_arm {
+                return format!("{{\"schema\":1,\"mode\":\"runtime-env-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{},\"parentPresent\":{},\"parentUsable\":{},\"effectivePresent\":{},\"effectiveNonempty\":{},\"effectiveEqualsParent\":{},\"assignmentVerified\":{}}}", arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count,self.parent_present,self.parent_usable,boolean(self.effective_present),boolean(self.effective_nonempty),boolean(self.effective_equals_parent),boolean(self.assignment_verified));
+            }
             if self.query_framed {
                 return format!("{{\"schema\":1,\"mode\":\"query-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{}}}", self.arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count);
             }
@@ -820,6 +1148,24 @@ mod probe {
                 query: Some(super::query_frame::QueryParser::new(nonce)),
                 ..Self::new(nonce)
             }
+        }
+        pub fn runtime(nonce: &str) -> Self {
+            Self {
+                query: Some(super::query_frame::QueryParser::runtime(nonce)),
+                ..Self::new(nonce)
+            }
+        }
+        pub fn arm_assignment(&mut self) -> Result<(), &'static str> {
+            self.query
+                .as_mut()
+                .ok_or("protocol-error")?
+                .arm_assignment()
+        }
+        pub fn observation(&self) -> Option<(bool, bool, Option<bool>)> {
+            self.query.as_ref().and_then(|q| q.observation())
+        }
+        pub fn assignment_verified(&self) -> Option<bool> {
+            self.query.as_ref().and_then(|q| q.assignment_verified())
         }
         pub fn arm_query(&mut self) -> Result<(), &'static str> {
             if let Some(query) = &mut self.query {
@@ -914,7 +1260,7 @@ mod probe {
                 let d = query.diagnostic();
                 self.version_ok = d.frames >= 1;
                 self.queries = query.queries();
-                self.ended = d.frames == 6;
+                self.ended = query.ended();
                 if let Some(reason) = d.reason {
                     self.record_failure(reason);
                 }
@@ -1182,6 +1528,29 @@ mod probe {
         script.push_str("[Console]::Out.WriteLine($b+'D'+$e);}catch{[Console]::Out.WriteLine($b+'X|'+$phase+'|'+$kind+$e);}\r\n");
         script
     }
+    pub fn runtime_observation_script(nonce: &str, parent: &str) -> String {
+        let (left, right) = nonce.split_at(16);
+        let units = parent
+            .encode_utf16()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("$n='{left}'+'{right}';$b='~'+'B'+$n+'|';$e='|'+'E'+$n+'~';$ErrorActionPreference='Stop';try{{$reference=[string]::new([char[]]@({units}));$original=[Environment]::GetEnvironmentVariable('PSModulePath',[EnvironmentVariableTarget]::Process);$present=0;$nonempty=0;$valid=1;$equal='x';if($null -ne $original){{$present=1;if($original.Length -gt 0){{$nonempty=1;if($original.Length -gt 4096 -or $original.IndexOf([char]0) -ge 0){{$valid=0;}}else{{try{{$null=[Text.UTF8Encoding]::new($false,$true).GetByteCount($original);}}catch{{$valid=0;}}}}if($valid -eq 1){{$equal=[int][string]::Equals($original,$reference,[StringComparison]::Ordinal);}}}}}}[Console]::Out.WriteLine($b+'O|'+$present+'|'+$nonempty+'|'+$valid+'|'+$equal+$e);}}catch{{[Console]::Out.WriteLine($b+'E|read'+$e);}}\r\n")
+    }
+    pub fn runtime_assignment_script(arm: RuntimeArm, nonce: &str, cwd: &str) -> String {
+        let target = match arm {
+            RuntimeArm::Control => "$original",
+            RuntimeArm::Parent => "$reference",
+        };
+        // Both arms use the same API and verification; only the selected value differs.
+        let assignment = format!("$assigned=$false;try{{$target={target};[Environment]::SetEnvironmentVariable('PSModulePath',$target,[EnvironmentVariableTarget]::Process);$actual=[Environment]::GetEnvironmentVariable('PSModulePath',[EnvironmentVariableTarget]::Process);$assigned=($null -ne $actual) -and [string]::Equals($actual,$target,[StringComparison]::Ordinal);[Console]::Out.WriteLine($b+'V|'+[int]$assigned+$e);}}catch{{$assigned=$false;[Console]::Out.WriteLine($b+'E|assign'+$e);}};");
+        // The already reviewed ordinary query body has its own X/cwd/command catch.
+        // Therefore a later query exception cannot be mislabeled as assignment failure.
+        format!(
+            "{assignment}if($assigned){{{}}}\r\n",
+            framed_query_script(Arm::Unqualified, nonce, cwd).trim_end()
+        )
+    }
     pub fn query_script(arm: Arm, nonce: &str, cwd: &str) -> String {
         let expected = cwd
             .encode_utf16()
@@ -1354,6 +1723,7 @@ mod windows_worker {
     }
     #[derive(Clone, Copy)]
     enum Until {
+        Observation,
         Cursor,
         Ready,
         End,
@@ -1365,7 +1735,7 @@ mod windows_worker {
         deadline: Instant,
         until: Until,
     ) -> Result<(), &'static str> {
-        let timeout = if matches!(until, Until::End) {
+        let timeout = if matches!(until, Until::End | Until::Observation) {
             "command-timeout"
         } else {
             "startup-timeout"
@@ -1402,6 +1772,7 @@ mod windows_worker {
                         Until::Cursor => replies > 0,
                         Until::Ready => parser.version_ok,
                         Until::End => parser.ended,
+                        Until::Observation => parser.observation().is_some(),
                     };
                     if reached {
                         if Instant::now() >= deadline {
@@ -1503,6 +1874,38 @@ mod windows_worker {
                 command + Duration::from_secs(30),
                 Until::End,
             )
+        })();
+        report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
+        result
+    }
+    fn run_runtime_queries(
+        io: &Io,
+        parser: &mut Parser,
+        report: &mut Report,
+        nonce: &str,
+        cwd: &str,
+        parent: &str,
+        arm: RuntimeArm,
+    ) -> Result<(), &'static str> {
+        // This one window includes both constructions, FIFO enqueues and observations.
+        let command = Instant::now();
+        let deadline = command + Duration::from_secs(30);
+        let result = (|| {
+            let observation = runtime_observation_script(nonce, parent);
+            io.input
+                .try_send(observation.into_bytes().into())
+                .map_err(|_| "write-error")?;
+            parser.arm_query()?;
+            receive(io, parser, report, deadline, Until::Observation)?;
+            let assignment = runtime_assignment_script(arm, nonce, cwd);
+            if Instant::now() >= deadline {
+                return Err("command-timeout");
+            }
+            io.input
+                .try_send(assignment.into_bytes().into())
+                .map_err(|_| "write-error")?;
+            parser.arm_assignment()?;
+            receive(io, parser, report, deadline, Until::End)
         })();
         report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
         result
@@ -1733,12 +2136,23 @@ mod windows_worker {
         startup_only: bool,
         startup_framed: bool,
         query_framed: bool,
+        runtime: Option<(RuntimeArm, &RuntimeParent)>,
     ) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
         report.startup_only = startup_only;
         report.startup_framed = startup_framed;
         report.query_framed = query_framed;
+        if let Some((arm, parent)) = runtime {
+            report.set_runtime(arm, parent);
+            if let Some(reason) = parent.failure {
+                report.failure = Some(reason);
+                report.diagnostic.reason = Some(reason);
+                report.cleanup_ok = true;
+                report.wall = started.elapsed().as_secs_f64() * 1000.0;
+                return report;
+            }
+        }
         // Before spawn any failed ConPTY construction/drop is still bounded by
         // the supervising Node worker deadline; no shell has been created yet.
         let setup = (|| {
@@ -1774,7 +2188,9 @@ mod windows_worker {
         };
         let io = start_io(reader, writer);
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let mut parser = if query_framed {
+        let mut parser = if runtime.is_some() {
+            Parser::runtime(&nonce)
+        } else if query_framed {
             Parser::query(&nonce)
         } else if startup_framed {
             Parser::framed(&nonce)
@@ -1835,6 +2251,17 @@ mod windows_worker {
                 report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
                 ready?;
             }
+            if let Some((arm, parent)) = runtime {
+                return run_runtime_queries(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    &nonce,
+                    cwd.to_str().ok_or("setup-error")?,
+                    parent.value.as_deref().ok_or("environment-invalid")?,
+                    arm,
+                );
+            }
             if query_framed {
                 return run_queries(
                     &io,
@@ -1864,6 +2291,12 @@ mod windows_worker {
         if query_framed {
             report.frame_count = parser.ready_counts().0;
         }
+        if let Some((present, nonempty, equal)) = parser.observation() {
+            report.effective_present = Some(present);
+            report.effective_nonempty = Some(nonempty);
+            report.effective_equals_parent = equal;
+        }
+        report.assignment_verified = parser.assignment_verified();
         report.q1 = parser.queries[0];
         report.q2 = parser.queries[1];
         report.version_ok = parser.version_ok;
@@ -2030,6 +2463,88 @@ mod windows_worker {
                 .iter()
                 .map(|s| query_fixture(s))
                 .collect()
+        }
+        #[test]
+        fn runtime_observation_failure_never_enqueues_assignment_or_query() {
+            for payload in ["O|0|0|1|x", "O|1|0|1|x", "O|1|1|1|1", "O|1|1|0|x", "E|read"] {
+                let (io, events, commands) = mock_io();
+                events
+                    .send(Event::Data(query_fixture(payload).into_bytes()))
+                    .unwrap();
+                let mut parser = Parser::runtime("0123456789abcdef0123456789abcdef");
+                parser.arm_frame();
+                parser.push(query_fixture("R|5.1.1.1").as_bytes()).unwrap();
+                let mut report = Report::new(Arm::Unqualified);
+                report.query_framed = true;
+                assert!(run_runtime_queries(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    "0123456789abcdef0123456789abcdef",
+                    "C:\\sample",
+                    "C:\\reference",
+                    RuntimeArm::Control
+                )
+                .is_err());
+                let sent = commands.try_recv().unwrap();
+                assert!(!String::from_utf8(sent.bytes)
+                    .unwrap()
+                    .contains("Get-Location"));
+                assert!(commands.try_recv().is_err());
+                assert!(report.host.is_some());
+                assert_eq!(parser.queries, [None, None]);
+            }
+        }
+        #[test]
+        fn runtime_host_gates_assignment_after_observation_and_preserves_total_window() {
+            let (io, events, commands) = mock_io();
+            let worker = thread::spawn(move || {
+                let first = String::from_utf8(commands.recv().unwrap().bytes).unwrap();
+                assert!(first.contains("GetEnvironmentVariable"));
+                assert!(!first.contains("SetEnvironmentVariable"));
+                events
+                    .send(Event::Data(query_fixture("O|1|1|1|0").into_bytes()))
+                    .unwrap();
+                let second = String::from_utf8(commands.recv().unwrap().bytes).unwrap();
+                assert!(second.contains("$target=$reference;"));
+                assert!(second.contains("if($assigned){"));
+                events
+                    .send(Event::Data(
+                        format!("{}{}", query_fixture("V|1"), query_tail()).into_bytes(),
+                    ))
+                    .unwrap();
+            });
+            let mut parser = Parser::runtime("0123456789abcdef0123456789abcdef");
+            parser.arm_frame();
+            parser.push(query_fixture("R|5.1.1.1").as_bytes()).unwrap();
+            let mut report = Report::new(Arm::Unqualified);
+            report.query_framed = true;
+            run_runtime_queries(
+                &io,
+                &mut parser,
+                &mut report,
+                "0123456789abcdef0123456789abcdef",
+                "C:\\sample",
+                "C:\\reference",
+                RuntimeArm::Parent,
+            )
+            .unwrap();
+            worker.join().unwrap();
+            assert_eq!(parser.ready_counts().0, 8);
+            assert!(parser.ended);
+            assert_eq!(parser.assignment_verified(), Some(true));
+            assert_eq!(parser.queries, [Some(2.5), Some(0.25)]);
+            assert!(report.host.is_some());
+            assert_eq!(
+                receive(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    Instant::now(),
+                    Until::Observation
+                ),
+                Err("command-timeout")
+            );
         }
         #[test]
         fn query_ready_ack_uses_original_window_and_failure_never_starts_query() {
@@ -2535,23 +3050,40 @@ mod windows_worker {
 fn main() {
     use std::io::Write;
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let (arm, startup_only, startup_framed, query_framed) = match args.as_slice() {
-        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false, false),
-        [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true, false),
+    let (arm, startup_only, startup_framed, query_framed, runtime_arm) = match args.as_slice() {
+        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false, false, None),
+        [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true, false, None),
         [flag, arm] if flag == "--sample" && arm == "unqualified" => {
-            (probe::Arm::Unqualified, false, false, false)
+            (probe::Arm::Unqualified, false, false, false, None)
         }
         [flag, arm] if flag == "--sample" && arm == "module-qualified" => {
-            (probe::Arm::Qualified, false, false, false)
+            (probe::Arm::Qualified, false, false, false, None)
         }
         [flag, arm] if flag == "--sample-framed" && arm == "unqualified" => {
-            (probe::Arm::Unqualified, false, false, true)
+            (probe::Arm::Unqualified, false, false, true, None)
         }
         [flag, arm] if flag == "--sample-framed" && arm == "module-qualified" => {
-            (probe::Arm::Qualified, false, false, true)
+            (probe::Arm::Qualified, false, false, true, None)
         }
+        [flag, arm] if flag == "--runtime-env-framed" && arm == "control" => (
+            probe::Arm::Unqualified,
+            false,
+            false,
+            true,
+            Some(probe::RuntimeArm::Control),
+        ),
+        [flag, arm] if flag == "--runtime-env-framed" && arm == "parent" => (
+            probe::Arm::Unqualified,
+            false,
+            false,
+            true,
+            Some(probe::RuntimeArm::Parent),
+        ),
         _ => std::process::exit(1),
     };
+    let parent_value = runtime_arm.and_then(|_| std::env::var_os("PSModulePath"));
+    let parent = probe::RuntimeParent::new(parent_value.as_deref());
+    let runtime = runtime_arm.map(|arm| (arm, &parent));
     let directory = std::env::temp_dir().join(format!(
         "p1 qualified 中文-{}",
         uuid::Uuid::new_v4().simple()
@@ -2568,7 +3100,14 @@ fn main() {
         Ok(cwd) => {
             // canonicalize yields a Windows verbatim prefix; PowerShell's provider
             // reports an ordinary local path. Strip only that fixed prefix in memory.
-            windows_worker::sample(arm, &cwd, startup_only, startup_framed, query_framed)
+            windows_worker::sample(
+                arm,
+                &cwd,
+                startup_only,
+                startup_framed,
+                query_framed,
+                runtime,
+            )
         }
         Err(_) => {
             let mut r = probe::Report::new(arm);
@@ -2579,6 +3118,9 @@ fn main() {
             r
         }
     };
+    if let Some((arm, parent)) = runtime {
+        report.set_runtime(arm, parent);
+    }
     if report.cleanup_ok && std::fs::remove_dir(&directory).is_err() {
         report.failure = Some("setup-error");
         report.diagnostic.record_failure("setup-error");
