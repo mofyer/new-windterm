@@ -664,3 +664,26 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 作者与独立审查均确认本机 Rust **31/31**；check、clippy（warnings 为错误）、fmt 与 Windows cfg 全目标检查通过，后者仅类型检查。真实 xterm Playwright **15/15**、定向 TypeScript 检查通过。集成树再次运行 native helper **237/237**、Rust 专项 **31/31** 通过，diff check 通过，冻结代码与专题均获独立 APPROVE。Rust 文件 SHA-256 为 `6c2733be2edfe49da7639d751b025a52d76d55ed28e2e2c00cbc82949c54c05b`。
 
 下一步评估明确协议记录边界的方案，并另行预注册 Windows 退出修复验证；本轮没有新 runner 工件或查询性能结论。旧失败、5 秒启动、30 秒查询及 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 未合并。
+
+### ConPTY 退出修复的 Windows 验证（工作流 `40160768631`）
+
+按[退出验证预注册](CONPTY_EXIT_VALIDATION_PLAN.zh-CN.md)，方案与 workflow 的标签/注释调整在同一提交推送，准确被测 HEAD 为 `7d4d7bb2c0f192743aaf4038e7d71fb8a19e9f94`。唯一 push [运行 40160768631](https://github.com/mofyer/new-windterm/actions/runs/40160768631) 已 `completed/failure`：2022 job 成功，2025 job 失败；两平台 helper、Rust 专项测试/构建与报告上传成功。实际命令、矩阵、权限与预算未变，无额外 dispatch、重复运行或追加样本。
+
+本轮仅验证已离线审查的 `5eed885` startup-only 退出修复：两平台各最多两个同构 fresh worker、首失败停止。原 5 秒启动、500 ms 退出 ACK 与退出等待共享、4.5 秒/5 秒清理和 45 秒外层总窗不变，严格 READY 与 schema 1 的 21 键保持。`readyWriteCompleted` / `readyWriteMs` 仍只描述 READY 写入，不是 `exit 0` 的 ACK 或耗时；退出确认须结合冻结实现及最终退出/清理结果解释。
+
+| 平台 / 样本 | READY write/flush 时点（ms） | startup / wall（ms） | strict / embedded READY | 样本结果 |
+| --- | --- | --- | --- | --- |
+| 2022 / 1 | 24.3591 | 3616.3425 / 3721.0963 | 1 / 0 | startup/complete true，exit 0 |
+| 2022 / 2 | 6.7666 | 418.4354 / 449.793 | 1 / 0 | startup/complete true，exit 0 |
+| 2025 / 1 | 7.0373 | 2123.8729 / 2197.545 | 1 / 0 | startup/complete true，exit 0 |
+| 2025 / 2 | 6.1119 | 5009.9274 / 5020.9624 | 0 / 1 | `await-ready/startup-timeout`，startup/complete false，exit 1 |
+
+四个样本均 READY write 已确认、CPR 1、cleanup true。三个成功启动样本均 `after-ready`、reason null、版本正确，完整退出成功，kill false/退出前观测 true；最终合流分别为 748、748、1102 字节。本次取得三个进入修复后退出路径并完成退出的样本，不能据此确定历史退出码来源、一般故障率或完整 Windows 修复；这些也不是目录查询测量。
+
+2025 第二样本虽在 6.1119 ms 完成 READY 实际 write/flush，但未取得严格行首 READY；version false、strict 0、embedded 完整形状 1。首错终端计数为 CR/LF 各 2、cursor 3、erase 0、marker 0、duplicate 0、embedded marker 1、ignored 2；最终合流 773 字节。约 5009.9 ms 是轮询观察到的超时，不放宽原 5 秒期限；计数仍不能复原屏幕行或确定控制序列原因。其 kill true/退出前观测 false，exit 1 可来自诊断清理终止；成功启动后的退出修复路径未进入，不能用此失败判断该路径修复无效。
+
+2022 的 `experimentComplete`、`startupSuccess`、`diagnosticPassed` 均 true，`failure=null`；2025 三字段均 false、`failure=sample-failed`。2025 第二样本首错后即停止，无补样本。所有外层 worker 均观察到退出、本地资源释放、未请求 tree kill；这不覆盖未触发的外层终止路径。2022 的有限平台诊断通过不等于双平台诊断或第四批通过，运行整体仍失败。
+
+两份报告已独立核验准确 SHA/run、schema/隐私、顺序/首停、状态聚合与清理字段。SHA-256：2022 为 `7bfb06cae36f706b31df0662833a500bcd280128a1e249680e72fa5e4fb847b1`；2025 为 `12454eb038c6b6ed8c79a0aa4eb1e765bb495a2444ff7ce69403afd4667ed220`。唯一上传内容受限的 `report.json`，终端与构建原文不落工件；ConPTY 合流仍不能证明独立 stderr 为空。历史各轮结论保持，不拼接不同提交的样本或把有限成功作为根因证明。
+
+下一步集中评估独立定界帧的 READY 方案，先离线验证防回显、控制字符串隔离、分块及重复/畸形帧，再独立审查并另行预注册；该方案尚未实现，本轮不改严格行首接受、不临时放行 embedded、不追加查询或环境矩阵。退出修复获得有限真实样本证据，启动行边界仍阻塞整轮；普通目录查询、首次/重开、中文空格 cwd、原 30 秒及 stderr 门禁保持。P1/第四批未验收，P2 仅准备，main 未合并。

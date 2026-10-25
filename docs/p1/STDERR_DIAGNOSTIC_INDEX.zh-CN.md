@@ -90,6 +90,12 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 2026-10-25 离线补充：`d85ed99` / `5eed885` 已集成共享 xterm/Rust 行布局 fixture 与 startup-only 退出时序修复，详见[专题](CONPTY_OFFLINE_VALIDATION.zh-CN.md)及[执行记录](RESULTS.zh-CN.md#2026-10-25离线行布局验证与诊断退出时序修复)。xterm 15/15（977 分块）、Rust 31/31（其中同源解析 962 分块）、集成 native helper 237/237 通过，Windows cfg 仅类型检查。旧关闭顺序的 mutation 在同一等待中子进程 fixture 明确失败；修复在原共用 500 ms 内确认退出写入并保留输入端至退出观测或有界终止。旧协议接受、schema 和产品未改，本轮无新 Windows 实测，最近诊断 `39833719372` 仍失败；不能据离线结果关闭 stderr、目录延迟或第四批验收问题。
 
+## 已结束、整轮失败：退出修复验证 `40160768631`
+
+准确 HEAD `7d4d7bb2c0f192743aaf4038e7d71fb8a19e9f94` 的唯一 [push 运行 40160768631](https://github.com/mofyer/new-windterm/actions/runs/40160768631) 按[新预注册](CONPTY_EXIT_VALIDATION_PLAN.zh-CN.md)完成，整体 `failure`：2022 job 成功、两样本 startup/complete true、exit 0，三个聚合字段 true；2025 首样完整成功，第二样本 READY write 6.1119 ms 已确认但 strict 0/embedded 1，`await-ready/startup-timeout`，三个聚合字段 false。两平台 helper、Rust 专项测试/构建、报告上传成功，工件已独立 schema/隐私/顺序/聚合/清理核验；精确计时与文件 hash 见 [执行记录](RESULTS.zh-CN.md#conpty-退出修复的-windows-验证工作流-40160768631)。
+
+本次三个进入成功启动后退出路径的样本均 exit 0，提供有限修复后证据；2025 第二样本未进入该路径，不能据此称退出修复无效，也不能把三个成功当历史根因证明或双平台通过。READY 写入字段不是退出 ACK，kill false 不排除所有系统影响。旧失败、原 5 秒启动/500 ms 共用退出/30 秒查询及 stderr 门禁不变，无重试或补样本。下一步仅评估独立定界帧，先离线验证防回显、控制字符串隔离与分块等边界，另行审查/预注册；方案未实现，本轮不接受嵌入 marker、不修改产品。P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
