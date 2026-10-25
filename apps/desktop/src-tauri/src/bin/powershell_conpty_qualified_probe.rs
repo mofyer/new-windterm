@@ -1,4 +1,7 @@
 //! One supervised ConPTY diagnostic sample. The Node wrapper owns the matrix.
+#[cfg(any(windows, test))]
+#[path = "support/ready_frame.rs"]
+mod ready_frame;
 #[cfg(not(windows))]
 fn main() {
     std::process::exit(1);
@@ -13,6 +16,72 @@ mod tests {
     fn lines() -> String {
         let p = format!("P1Q_{NONCE}|");
         format!("{p}READY|5.1.20348.5622\r\n{p}START|1\r\n{p}RESULT|1|12.5|true\r\n{p}START|2\r\n{p}RESULT|2|0.25|true\r\n{p}END\r\n")
+    }
+    fn frame() -> String {
+        format!("~B{NONCE}|R|5.1.20348.5622|E{NONCE}~")
+    }
+    #[test]
+    fn framed_script_echo_cannot_satisfy_armed_protocol_at_any_split() {
+        let script = framed_ready_script(NONCE);
+        assert!(!script.contains(&format!("~B{NONCE}|")));
+        assert!(!script.contains(&format!("|E{NONCE}~")));
+        assert!(!script.contains(NONCE));
+        for input in [&script, &format!("PS> {script}")] {
+            let mut parser = Parser::framed(NONCE);
+            parser.arm_frame();
+            for byte in input.bytes() {
+                parser.push(&[byte]).unwrap();
+            }
+            parser.finish().unwrap();
+            assert!(!parser.version_ok);
+            for cut in 0..=input.len() {
+                let mut parser = Parser::framed(NONCE);
+                parser.arm_frame();
+                parser.push(&input.as_bytes()[..cut]).unwrap();
+                parser.push(&input.as_bytes()[cut..]).unwrap();
+                parser.finish().unwrap();
+                assert!(!parser.version_ok);
+            }
+        }
+    }
+    #[test]
+    fn framed_snapshot_preserves_first_error_and_distinguishes_legacy_line_protocol() {
+        let mut parser = Parser::framed(NONCE);
+        parser.arm_frame();
+        parser
+            .push(format!("prompt{}suffix", frame()).as_bytes())
+            .unwrap();
+        assert!(parser.version_ok);
+        assert_eq!(parser.ready_counts(), (1, 0));
+        assert_eq!(parser.diagnostic().stage, "after-frame");
+        assert_eq!(parser.push(frame().as_bytes()), Err("protocol-error"));
+        let frozen = parser.diagnostic();
+        assert_eq!(frozen.reason, Some("duplicate-frame"));
+        parser.record_failure("cleanup-failed");
+        assert_eq!(parser.diagnostic(), frozen);
+        let mut legacy = Parser::startup(NONCE);
+        legacy.push(frame().as_bytes()).unwrap();
+        assert!(!legacy.version_ok);
+    }
+    #[test]
+    fn framed_report_uses_only_its_new_fixed_fields() {
+        let mut report = Report::new(Arm::Unqualified);
+        report.startup_only = true;
+        report.startup_framed = true;
+        let value: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 19);
+        assert_eq!(value["mode"], "startup-framed");
+        assert_eq!(value["schema"], 1);
+        assert_eq!(value["frameCount"], 0);
+        for legacy in [
+            "terminalCounters",
+            "strictReadyCount",
+            "embeddedReadyCount",
+            "q1Ms",
+            "arm",
+        ] {
+            assert!(value.get(legacy).is_none());
+        }
     }
     #[test]
     fn valid_protocol_and_split_cursor_query() {
@@ -467,6 +536,8 @@ mod probe {
         }
     }
     pub struct Report {
+        pub startup_framed: bool,
+        pub frame_count: usize,
         pub startup_only: bool,
         pub startup_complete: bool,
         pub ready_write_ms: Option<f64>,
@@ -494,6 +565,8 @@ mod probe {
     impl Report {
         pub fn new(arm: Arm) -> Self {
             Self {
+                startup_framed: false,
+                frame_count: 0,
                 startup_only: false,
                 startup_complete: false,
                 ready_write_ms: None,
@@ -532,6 +605,9 @@ mod probe {
             };
             let c = self.diagnostic.counters;
             let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
+            if self.startup_framed {
+                return format!("{{\"schema\":1,\"mode\":\"startup-framed\",\"startupMs\":{},\"wallMs\":{},\"versionOk\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{}}}", number(self.startup),number(Some(self.wall)),self.version_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count);
+            }
             if self.startup_only {
                 return format!("{{\"schema\":1,\"mode\":\"startup-only\",\"startupMs\":{},\"wallMs\":{},\"versionOk\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"terminalCounters\":{{\"cr\":{},\"lf\":{},\"csiCursor\":{},\"csiErase\":{},\"markerLines\":{},\"duplicateMarkers\":{},\"embeddedMarkerLines\":{},\"ignoredLines\":{}}},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"strictReadyCount\":{},\"embeddedReadyCount\":{}}}", number(self.startup),number(Some(self.wall)),self.version_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),c.cr,c.lf,c.csi_cursor,c.csi_erase,c.marker_lines,c.duplicate_markers,c.embedded_marker_lines,c.ignored_lines,boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.strict_ready_count,self.embedded_ready_count);
             }
@@ -546,6 +622,7 @@ mod probe {
         OscEsc,
     }
     pub struct Parser {
+        framed: Option<super::ready_frame::FrameParser>,
         startup_only: bool,
         strict_ready_count: usize,
         embedded_ready_count: usize,
@@ -564,6 +641,7 @@ mod probe {
     impl Parser {
         pub fn new(nonce: &str) -> Self {
             Self {
+                framed: None,
                 startup_only: false,
                 strict_ready_count: 0,
                 embedded_ready_count: 0,
@@ -586,10 +664,38 @@ mod probe {
                 ..Self::new(nonce)
             }
         }
+        pub fn framed(nonce: &str) -> Self {
+            Self {
+                framed: Some(super::ready_frame::FrameParser::new(nonce)),
+                startup_only: true,
+                ..Self::new(nonce)
+            }
+        }
+        pub fn arm_frame(&mut self) {
+            if let Some(frame) = &mut self.framed {
+                frame.arm();
+            }
+        }
         pub fn ready_counts(&self) -> (usize, usize) {
             self.diagnostic().ready_counts
         }
         pub fn diagnostic(&self) -> Diagnostic {
+            if let Some(frozen) = self.first_failure {
+                return frozen;
+            }
+            if let Some(frame) = &self.framed {
+                let d = frame.diagnostic();
+                return Diagnostic {
+                    stage: if self.await_cursor {
+                        "await-cursor"
+                    } else {
+                        d.stage
+                    },
+                    reason: d.reason,
+                    counters: TerminalCounters::default(),
+                    ready_counts: (d.counters.frames, 0),
+                };
+            }
             self.first_failure.unwrap_or(Diagnostic {
                 stage: if self.await_cursor {
                     "await-cursor"
@@ -627,6 +733,15 @@ mod probe {
             Err(failure)
         }
         pub fn push(&mut self, bytes: &[u8]) -> Result<usize, &'static str> {
+            if let Some(frame) = &mut self.framed {
+                let result = frame.push(bytes);
+                self.version_ok = frame.seen();
+                let reason = frame.diagnostic().reason;
+                if let Some(reason) = reason {
+                    self.record_failure(reason);
+                }
+                return result;
+            }
             let mut cpr = 0;
             for &byte in bytes {
                 if byte == b'\r' {
@@ -695,6 +810,14 @@ mod probe {
             Ok(cpr)
         }
         pub fn finish(&mut self) -> Result<(), &'static str> {
+            if let Some(frame) = &mut self.framed {
+                let result = frame.finish();
+                let reason = frame.diagnostic().reason;
+                if let Some(reason) = reason {
+                    self.record_failure(reason);
+                }
+                return result;
+            }
             if !self.line.is_empty()
                 && (self.line.starts_with(self.prefix.as_bytes())
                     || self.prefix.as_bytes().starts_with(&self.line))
@@ -840,6 +963,11 @@ mod probe {
     }
     pub fn ready_script(nonce: &str) -> String {
         format!("{}[Console]::WriteLine();[Console]::WriteLine($p+'READY|'+$PSVersionTable.PSVersion.ToString());\r\n", prefix_assignment(nonce))
+    }
+    pub fn framed_ready_script(nonce: &str) -> String {
+        let (left, right) = nonce.split_at(16);
+        // Literal command echo never contains a complete begin or end token.
+        format!("$n='{left}'+'{right}';$b='~'+'B'+$n+'|';$e='|'+'E'+$n+'~';[Console]::Out.WriteLine();[Console]::Out.WriteLine($b+'R|'+[string]$PSVersionTable.PSVersion+$e)\r\n")
     }
     pub fn query_script(arm: Arm, nonce: &str, cwd: &str) -> String {
         let expected = cwd
@@ -1306,10 +1434,11 @@ mod windows_worker {
         Ok((values, path))
     }
     #[cfg(windows)]
-    pub fn sample(arm: Arm, cwd: &Path, startup_only: bool) -> Report {
+    pub fn sample(arm: Arm, cwd: &Path, startup_only: bool, startup_framed: bool) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
         report.startup_only = startup_only;
+        report.startup_framed = startup_framed;
         // Before spawn any failed ConPTY construction/drop is still bounded by
         // the supervising Node worker deadline; no shell has been created yet.
         let setup = (|| {
@@ -1345,7 +1474,9 @@ mod windows_worker {
         };
         let io = start_io(reader, writer);
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let mut parser = if startup_only {
+        let mut parser = if startup_framed {
+            Parser::framed(&nonce)
+        } else if startup_only {
             Parser::startup(&nonce)
         } else {
             Parser::new(&nonce)
@@ -1367,10 +1498,16 @@ mod windows_worker {
                 )?;
                 io.input
                     .try_send(WriteRequest {
-                        bytes: ready_script(&nonce).into_bytes(),
+                        bytes: if startup_framed {
+                            framed_ready_script(&nonce)
+                        } else {
+                            ready_script(&nonce)
+                        }
+                        .into_bytes(),
                         ready_done: startup_only.then_some(ready_ack_tx),
                     })
                     .map_err(|_| "write-error")?;
+                parser.arm_frame();
                 receive(
                     &io,
                     &mut parser,
@@ -1408,7 +1545,12 @@ mod windows_worker {
                     outcome = Err("startup-timeout");
                 }
                 report.startup = Some(frozen.duration_since(startup).as_secs_f64() * 1000.0);
-                (report.strict_ready_count, report.embedded_ready_count) = parser.ready_counts();
+                if startup_framed {
+                    report.frame_count = parser.ready_counts().0;
+                } else {
+                    (report.strict_ready_count, report.embedded_ready_count) =
+                        parser.ready_counts();
+                }
                 report.startup_complete = outcome.is_ok();
                 outcome?;
                 // Exit is sent and acknowledged in the existing cleanup budget,
@@ -1622,6 +1764,49 @@ mod windows_worker {
             assert_eq!(cleaned.bytes, 0);
         }
         #[test]
+        fn framed_cleanup_rejects_duplicate_and_incomplete_tails_without_losing_startup() {
+            let nonce = "0123456789abcdef0123456789abcdef";
+            let frame = format!("~B{nonce}|R|5.1.1.1|E{nonce}~");
+            for (tail, reason) in [
+                (String::new(), None),
+                (frame.clone(), Some("duplicate-frame")),
+                (format!("~B{nonce}|"), Some("duplicate-frame")),
+                ("\x1b]unfinished".into(), Some("incomplete-control")),
+                ("~B0123".into(), Some("incomplete-frame")),
+            ] {
+                let state = Arc::new(LifecycleState::default());
+                state.child_ready.store(true, Ordering::SeqCst);
+                let io = start_io(
+                    Box::new(std::io::Cursor::new(tail.into_bytes())),
+                    Box::new(LifecycleWriter {
+                        state: state.clone(),
+                        fail_flush: false,
+                        flush_gate: None,
+                    }),
+                );
+                let mut parser = Parser::framed(nonce);
+                parser.arm_frame();
+                parser.push(frame.as_bytes()).unwrap();
+                let frozen_count = parser.ready_counts().0;
+                assert!(parser.version_ok);
+                let cleaned = cleanup(
+                    Box::new(LifecycleChild(state.clone())),
+                    (),
+                    io,
+                    false,
+                    true,
+                    parser,
+                );
+                assert!(cleaned.confirmed);
+                assert_eq!(cleaned.exit, Some(0));
+                assert_eq!(cleaned.diagnostic.reason, reason);
+                assert_eq!(cleaned.failure, reason.map(|_| "protocol-error"));
+                assert_eq!(cleaned.diagnostic.stage, "after-frame");
+                assert_eq!(frozen_count, 1);
+                assert!(!state.closed_before_exit.load(Ordering::SeqCst));
+            }
+        }
+        #[test]
         fn startup_cleanup_keeps_input_open_while_child_progress_is_pending() {
             let state = Arc::new(LifecycleState::default());
             let (notice, running) = mpsc::sync_channel(1);
@@ -1804,6 +1989,30 @@ mod windows_worker {
             )
         }
         #[test]
+        fn framed_cursor_fifo_and_arm_gate_preserve_startup_order() {
+            let nonce = "0123456789abcdef0123456789abcdef";
+            let frame = format!("~B{nonce}|R|5.1.1.1|E{nonce}~");
+            let (io, output, commands) = mock_io();
+            let mut parser = Parser::framed(nonce);
+            let mut report = Report::new(Arm::Unqualified);
+            let deadline = Instant::now() + Duration::from_secs(1);
+            output.send(Event::Data(b"\x1b[6n".to_vec())).unwrap();
+            receive(&io, &mut parser, &mut report, deadline, Until::Cursor).unwrap();
+            let ready = framed_ready_script(nonce);
+            io.input.try_send(ready.as_bytes().to_vec().into()).unwrap();
+            parser.arm_frame();
+            output.send(Event::Data(frame.as_bytes().to_vec())).unwrap();
+            receive(&io, &mut parser, &mut report, deadline, Until::Ready).unwrap();
+            assert_eq!(commands.recv().unwrap().bytes, b"\x1b[1;1R");
+            assert_eq!(commands.recv().unwrap().bytes, ready.as_bytes());
+            assert!(parser.version_ok);
+            let mut early = Parser::framed(nonce);
+            early.await_cursor = true;
+            assert_eq!(early.push(frame.as_bytes()), Err("protocol-error"));
+            assert_eq!(early.diagnostic().stage, "await-cursor");
+            assert_eq!(early.diagnostic().reason, Some("unexpected-frame"));
+        }
+        #[test]
         fn split_cursor_reply_precedes_ready_and_deadline_is_not_reset() {
             let (io, events, commands) = mock_io();
             let nonce = "0123456789abcdef0123456789abcdef";
@@ -1868,13 +2077,14 @@ mod windows_worker {
 fn main() {
     use std::io::Write;
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let (arm, startup_only) = match args.as_slice() {
-        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true),
+    let (arm, startup_only, startup_framed) = match args.as_slice() {
+        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false),
+        [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true),
         [flag, arm] if flag == "--sample" && arm == "unqualified" => {
-            (probe::Arm::Unqualified, false)
+            (probe::Arm::Unqualified, false, false)
         }
         [flag, arm] if flag == "--sample" && arm == "module-qualified" => {
-            (probe::Arm::Qualified, false)
+            (probe::Arm::Qualified, false, false)
         }
         _ => std::process::exit(1),
     };
@@ -1894,11 +2104,12 @@ fn main() {
         Ok(cwd) => {
             // canonicalize yields a Windows verbatim prefix; PowerShell's provider
             // reports an ordinary local path. Strip only that fixed prefix in memory.
-            windows_worker::sample(arm, &cwd, startup_only)
+            windows_worker::sample(arm, &cwd, startup_only, startup_framed)
         }
         Err(_) => {
             let mut r = probe::Report::new(arm);
             r.startup_only = startup_only;
+            r.startup_framed = startup_framed;
             r.cleanup_ok = true;
             r
         }
