@@ -32,9 +32,13 @@ P1 从已合并的 `a35582f` 开始，当前集成分支为 `p1/integration`。�
 
 ### 分支
 
+独立 framed 查询模式已完成一次双 Windows 验证：新增 `--sample-framed <arm>`，READY/START1/QUERY1/START2/QUERY2/END 严格 nonce frame 顺序，固定 25 键 worker 报告；每平台最多四个 fresh worker 按 U、Q、Q、U 比较普通与模块限定查询，每 worker 两查询共用原 30 秒。Node 专项 **64/64**、协调者全 native **375/375**、Rust 专项 **69/69**（旧 55 + 新 14）、check/clippy/fmt/Windows cfg 与独立审查通过；真实 Rust 报告交 Node 校验的四类案例 **4/4** 通过。Rust 集成 `d54bf6e` 与 Node/方案 `1f3d13b` 第一推均为 `[skip ci]`，新 workflow 第二推准确 HEAD 为 `8f976ea13003c523ffb9030273895391298f835b`；唯一 [push 运行 40164795306](https://github.com/mofyer/new-windterm/actions/runs/40164795306) 已 `completed/success`，两平台准备/Cargo 成功，合计 **8/8** 查询及退出样本完整通过，工件独立核验通过。普通首次 q1 为 **11.2995–27.5139 秒**，模块限定首次为 **22.3006–37.4313 ms**；两 arm 的第二次为 0.1351–0.2345 ms。该有限对照支持路径耗时差异，未确定内部根因，普通首次慢路径仍存在。见[查询预注册](p1/CONPTY_FRAMED_QUERY_PLAN.zh-CN.md)与[执行记录](p1/RESULTS.zh-CN.md#conpty-framed-查询对照工作流-40164795306)。
+
+新入口复用既有真实前端准备，未修改旧 wrapper 默认行为；准备 3 分钟、Cargo 14 分钟、四 worker 各 45 秒的名义合计已为 20 分钟，不含工具链/调度开销，job 硬限仍 20 分钟，不能保证边界组合完成。本轮按首失败停止规则执行，无重试或补样本；诊断通过不等于普通查询性能问题解决或独立 stderr 为空。下一步先复核既有 ConPTY 环境干预，避免重复 spawn 前加回父 PSModulePath 的旧 A/B；仅评估启动后有效环境差异及有条件的单变量实验，不修改产品。P1/第四批未验收、P2 仅准备、main 不合并。
+
 新的真实构建准备流程已独立审查并推送：实现第一推 `06e7768`（`[skip ci]`），新 workflow 第二推准确 HEAD `74c6bf97377810167fdb49af5b21016db303c7c1`，唯一 [push 运行 40163001613](https://github.com/mofyer/new-windterm/actions/runs/40163001613) 已 `completed/success`，两平台全部步骤成功，工件独立核验通过。新 wrapper 在干净 dist 前置条件下真实安装依赖、构建前端，然后复用原 framed runner 和所有时限；本机专项 18/18、全 native 311/311 与 Windows 结果分别记录。2022 两样本 startup 3508.3862/413.6288 ms，2025 为 2036.043/458.3029 ms；四样本均 CPR 1/frame 1、启动写入确认、startup/complete/cleanup true、exit 0、kill false，顶层与嵌套聚合均通过。无查询、无重试，不据此重判旧运行或确定历史根因。见[准备方案](p1/CONPTY_FRAMED_PREPARED_PLAN.zh-CN.md)与[本轮记录](p1/RESULTS.zh-CN.md#conpty-frame-真实构建准备与验证工作流-40163001613)。
 
-下一步独立预注册严格 frame 查询协议，保留原未限定查询、产品白名单和两次查询共用的原 30 秒总窗，不按 frame/第二次查询重置；本轮不提供查询性能或独立 PowerShell stderr 结论，P1/第四批未验收，P2 仅准备，main 不合并。`CLAUDE.md` 的 all-features/wincheck 真实资产前置说明已补齐为 `3664ee2`，旧 framed workflow 的入口处置仍待后续。
+该轮之后的独立 framed 查询方案与实现见上文，保留原未限定查询、产品白名单和两次查询共用的原 30 秒总窗，不按 frame/第二次查询重置；该启动验证本身不提供查询性能或独立 PowerShell stderr 结论，P1/第四批未验收，P2 仅准备，main 不合并。`CLAUDE.md` 的 all-features/wincheck 真实资产前置说明已补齐为 `3664ee2`，旧 framed workflow 的入口处置仍待后续。
 
 2026-10-25 的后续本机对照已确认构建前置缺口：旧 wrapper 使用 `--features dev-tools`，新 frame wrapper 改为 `--all-features`，启用 `custom-protocol` 后需要真实 `frontendDist`，而新 workflow 未构建前端。在精确 `b0ee332` 的干净 macOS 副本中，无 `dist`、无 `TAURI_CONFIG` 时 `cargo check` 返回 101，固定分类 `frontend-dist-missing`，宏位置 `src/lib.rs:596`；另一干净副本通过真实 `npm ci` 与 TypeScript/Vite 构建后，`cargo test --locked --all-features` 专项 **55/55** 通过。两者分别是 check 与 test，不是完全同命令的红绿测试；本机证据不确定历史 Windows 失败原因。准备流程已另行预注册并完成上述新验证，旧失败不改；详细条件和证据见[本机对照记录](p1/RESULTS.zh-CN.md#2026-10-25ready-frame-构建前置条件的本机对照)。
 

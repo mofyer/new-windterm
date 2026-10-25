@@ -116,6 +116,12 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 本轮只证明准备后四个有限样本的 frame 启动与有界退出通过。旧实验不重跑、旧失败不重判，无查询或产品环境修改；ConPTY 合流不证明 PowerShell 独立 stderr 为空，也不确定旧 Cargo 失败根因。下一步独立预注册严格 frame 查询协议，保留原未限定查询、白名单及两次查询共用原 30 秒总窗。all-features/wincheck 资产前置说明已另行补齐 `CLAUDE.md`（`3664ee2`），旧 frame workflow 仍待处置。P1/第四批未验收，P2 仅准备，main 不合并。
 
+## 有限诊断通过：framed 查询对照 `40164795306`
+
+[新查询预注册](CONPTY_FRAMED_QUERY_PLAN.zh-CN.md)采用严格 READY/START1/QUERY1/START2/QUERY2/END nonce frame 顺序，每平台最多四个 fresh worker、U/Q/Q/U 正反序，每 worker 两查询共享原 30 秒；首失败停止，不把启动通过当查询通过。新 25 键 worker 报告分别保留合法查询前缀与退出/清理状态，F4 数字按整数刻度校验，不接收错误 cwd。Node 专项 64/64、全 native 375/375、Rust 专项 69/69、check/clippy/fmt/Windows cfg 与独立审查通过，真实 Rust 报告跨 Node 四案例 4/4；Rust/Node 第一推 `d54bf6e`/`1f3d13b` 使用 `[skip ci]`，新 workflow 第二推准确 HEAD `8f976ea13003c523ffb9030273895391298f835b` 的唯一 [push 运行 40164795306](https://github.com/mofyer/new-windterm/actions/runs/40164795306) 已 `completed/success`，两平台准备/Cargo 与合计 8/8 worker 完整通过，固定工件已独立核验，详见[执行记录](RESULTS.zh-CN.md#conpty-framed-查询对照工作流-40164795306)。
+
+真实前端准备复用原安全流程，旧默认行为、产品白名单、普通原生查询、5 秒启动/500 ms 退出/30 秒查询/45 秒 worker 均保持。准备 3 分钟 + Cargo 14 分钟 + 四 worker 3 分钟已占满 20 分钟名义预算，job 硬限不扩，缺样本不补跑。普通首次 q1 为 11299.5118–27513.9404 ms，模块限定为 22.3006–37.4313 ms，第二次均 0.1351–0.2345 ms；所有样本 frameCount=6、cwd 正确、exit 0、未请求 kill、`exitObservedBeforeKill=true`，各 host 均在原 30 秒内。这只支持有限路径耗时差异，普通首次慢路径与具体根因仍未解决。下一步先核对既有 ConPTY 父 PSModulePath 干预证据，避免重做已有 spawn 前 A/B；运行时有效环境差异仅为待评估候选，未预注册/执行。ConPTY 合流不证明独立 stderr 为空，旧失败不改判；P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
