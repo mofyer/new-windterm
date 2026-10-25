@@ -47,6 +47,8 @@ npx playwright test tests/e2e/workspace.spec.ts -g "<测试标题>"   # 单个�
 
 Rust（在仓库根目录执行；工具链由 `rust-toolchain.toml` 固定为 1.99.0，本机可能需要 `export PATH="$HOME/.cargo/bin:$PATH"`）。始终带 `--all-features`，否则 `pty-diagnostics`/`pty-readiness` 下的代码不会被编译检查，CI 也是这样跑的：
 
+**干净 checkout 的前置准备**：先在 `apps/desktop` 执行 `npm ci` 和 `npm run build`，真实生成 `apps/desktop/dist`，再运行下列 Rust 命令。`--all-features` 包含 `custom-protocol`，Tauri 的 `generate_context!` 宏需要 `frontendDist` 资产；即使 `cargo check` / `clippy` 不链接，也仍会展开该宏。不要用占位文件、配置覆盖或减少 feature 绕过准备。现行主跨平台 CI 已在 Rust 步骤前构建前端；独立调用这些命令仍须自行完成准备。
+
 仓库根 `.cargo/config.toml` 默认设置 `RUST_TEST_THREADS=2`，CI 同样固定为 2：同一测试进程的 loopback 认证共享产品的 4 个密钥读取名额，不能按 CPU 数量无界并行独立测试。测试内部的通道并发、容量饱和与取消断言保持；产品容量不变。专门做压力诊断时可显式覆盖并发值，但不能把预期外的容量失败忽略后记为门禁通过。从仓库之外调用 `cargo --manifest-path` 不会自动读取这里的配置，此时须显式传 `RUST_TEST_THREADS=2`。
 
 ```sh
@@ -80,7 +82,7 @@ P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的
 
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --locked --features dev-tools --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
-Windows 专属代码在 macOS 上只能做类型检查：`tools/wincheck/wincheck.sh`（对 `x86_64-pc-windows-msvc` 执行 clippy，用桩头文件跳过链接）；Windows 测试只在 CI 上运行。多代理协作方式与续做中断任务的方法见 [docs/p0/AGENT_WORKFLOW.zh-CN.md](docs/p0/AGENT_WORKFLOW.zh-CN.md)。
+Windows 专属代码在 macOS 上只能做类型检查：`tools/wincheck/wincheck.sh`（对 `x86_64-pc-windows-msvc` 执行 clippy，用桩头文件跳过链接）。此脚本同样启用 `--all-features`，不会自动构建前端；干净 checkout 须先按上文在 `apps/desktop` 执行 `npm ci`、`npm run build`，不能因“不链接”省略真实 dist。Windows 测试只在 CI 上运行。多代理协作方式与续做中断任务的方法见 [docs/p0/AGENT_WORKFLOW.zh-CN.md](docs/p0/AGENT_WORKFLOW.zh-CN.md)。
 
 提交前：`git diff --check`。
 
