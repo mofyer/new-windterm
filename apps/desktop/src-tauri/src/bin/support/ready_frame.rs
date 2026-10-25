@@ -379,113 +379,55 @@ enum Frame {
     End(usize),
 }
 
-pub struct FrameParser {
-    begin: Vec<u8>,
-    end: Vec<u8>,
-    prefix: usize,
-    frame: Frame,
+pub(crate) trait FrameProtocol {
+    fn candidate(&self) -> bool;
+    fn boundary(&mut self);
+    fn text(&mut self, byte: u8) -> Result<(), &'static str>;
+}
+
+// Both diagnostic protocols consume the same incremental UTF-8/VT stream.
+// The consumer sees printable ground bytes only; candidates cannot cross controls.
+pub(crate) struct WireDecoder {
     vt: Vt,
     utf8: [u8; 4],
     utf8_len: usize,
     utf8_need: usize,
     bytes: usize,
-    armed: bool,
-    seen: bool,
     counters: FrameCounters,
-    first_failure: Option<FrameDiagnostic>,
 }
-
-fn increment(counter: &mut usize) {
-    *counter = counter.saturating_add(1).min(OUTPUT_LIMIT);
-}
-
-impl FrameParser {
-    pub fn new(nonce: &str) -> Self {
-        // Validate before allocating any caller-controlled token length.
-        let valid = nonce.len() == 32
-            && nonce
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
-        let mut parser = Self {
-            begin: if valid {
-                format!("~B{nonce}|").into_bytes()
-            } else {
-                Vec::new()
-            },
-            end: if valid {
-                format!("E{nonce}~").into_bytes()
-            } else {
-                Vec::new()
-            },
-            prefix: 0,
-            frame: Frame::Seeking,
+impl Default for WireDecoder {
+    fn default() -> Self {
+        Self {
             vt: Vt::Ground,
             utf8: [0; 4],
             utf8_len: 0,
             utf8_need: 0,
             bytes: 0,
-            armed: false,
-            seen: false,
             counters: FrameCounters::default(),
-            first_failure: None,
-        };
-        if !valid {
-            parser.record_failure("invalid-frame");
-        }
-        parser
-    }
-
-    pub fn arm(&mut self) {
-        self.armed = true;
-    }
-
-    /// Historical acceptance only: a later duplicate/tail failure remains fatal.
-    pub fn seen(&self) -> bool {
-        self.seen
-    }
-
-    pub fn diagnostic(&self) -> FrameDiagnostic {
-        self.first_failure.unwrap_or(FrameDiagnostic {
-            stage: if self.seen {
-                "after-frame"
-            } else {
-                "await-frame"
-            },
-            reason: None,
-            counters: self.counters,
-        })
-    }
-
-    pub fn record_failure(&mut self, reason: &'static str) {
-        if self.first_failure.is_none() {
-            let mut diagnostic = self.diagnostic();
-            diagnostic.reason = Some(reason);
-            self.first_failure = Some(diagnostic);
         }
     }
-
-    fn error(&self) -> &'static str {
-        match self.first_failure.and_then(|value| value.reason) {
-            Some("output-limit") => "output-limit",
-            _ => "protocol-error",
-        }
-    }
-
-    fn fail<T>(&mut self, reason: &'static str) -> Result<T, &'static str> {
-        self.record_failure(reason);
-        Err(self.error())
-    }
-
+}
+fn increment(counter: &mut usize) {
+    *counter = counter.saturating_add(1).min(OUTPUT_LIMIT);
+}
+pub(crate) fn valid_nonce(nonce: &str) -> bool {
+    nonce.len() == 32
+        && nonce
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+impl WireDecoder {
     /// Returns only complete, ground-state CSI 6 n requests consumed by this call.
-    pub fn push(&mut self, input: &[u8]) -> Result<usize, &'static str> {
-        if self.first_failure.is_some() {
-            return Err(self.error());
-        }
+    pub(crate) fn push<P: FrameProtocol>(
+        &mut self,
+        input: &[u8],
+        protocol: &mut P,
+    ) -> Result<usize, &'static str> {
         let mut cpr = 0;
         for &byte in input {
             self.bytes += 1;
             if self.bytes > OUTPUT_LIMIT {
-                return self.fail("output-limit");
+                return Err("output-limit");
             }
             if byte == b'\r' {
                 increment(&mut self.counters.cr);
@@ -495,7 +437,7 @@ impl FrameParser {
             }
             if self.utf8_need != 0 {
                 if !(0x80..=0xbf).contains(&byte) {
-                    return self.fail("invalid-utf8");
+                    return Err("invalid-utf8");
                 }
                 self.utf8[self.utf8_len] = byte;
                 self.utf8_len += 1;
@@ -506,18 +448,18 @@ impl FrameParser {
                     self.utf8_len = 0;
                     self.utf8_need = 0;
                     match character {
-                        Some(character) => cpr += self.character(character)?,
-                        None => return self.fail("invalid-utf8"),
+                        Some(character) => cpr += self.character(character, protocol)?,
+                        None => return Err("invalid-utf8"),
                     }
                 }
             } else if byte.is_ascii() {
-                cpr += self.character(char::from(byte))?;
+                cpr += self.character(char::from(byte), protocol)?;
             } else {
                 self.utf8_need = match byte {
                     0xc2..=0xdf => 2,
                     0xe0..=0xef => 3,
                     0xf0..=0xf4 => 4,
-                    _ => return self.fail("invalid-utf8"),
+                    _ => return Err("invalid-utf8"),
                 };
                 self.utf8[0] = byte;
                 self.utf8_len = 1;
@@ -526,33 +468,37 @@ impl FrameParser {
         Ok(cpr)
     }
 
-    fn character(&mut self, character: char) -> Result<usize, &'static str> {
-        if self.frame != Frame::Seeking && (!character.is_ascii() || character.is_ascii_control()) {
-            return self.fail("frame-control");
+    fn character<P: FrameProtocol>(
+        &mut self,
+        character: char,
+        protocol: &mut P,
+    ) -> Result<usize, &'static str> {
+        if protocol.candidate() && (!character.is_ascii() || character.is_ascii_control()) {
+            return Err("frame-control");
         }
         // Encoded C1 is a control, not ordinary Unicode text. The protocol
         // supports explicit 7-bit ESC controls only; never scan behind C1.
         if ('\u{80}'..='\u{9f}').contains(&character) {
-            return self.fail("unsupported-control");
+            return Err("unsupported-control");
         }
         if !character.is_ascii() {
-            self.prefix = 0;
+            protocol.boundary();
             return match self.vt {
                 Vt::Ground | Vt::Osc | Vt::Opaque => Ok(0),
-                _ => self.fail("unsupported-control"),
+                _ => Err("unsupported-control"),
             };
         }
         let byte = character as u8;
         match self.vt.clone() {
             Vt::Ground => {
                 if byte.is_ascii_control() {
-                    self.prefix = 0;
+                    protocol.boundary();
                     if byte == 0x1b {
                         self.vt = Vt::Esc;
                     }
                     return Ok(0);
                 }
-                self.text(byte)?;
+                protocol.text(byte)?;
             }
             Vt::Esc => {
                 self.vt = match byte {
@@ -567,15 +513,15 @@ impl FrameParser {
                     }
                     b'7' | b'8' | b'D' | b'E' | b'H' | b'M' | b'=' | b'>' | b'c' => Vt::Ground,
                     0x20..=0x2f => Vt::EscIntermediate(1),
-                    _ => return self.fail("unsupported-control"),
+                    _ => return Err("unsupported-control"),
                 };
             }
             Vt::EscIntermediate(size) => {
                 self.vt = match byte {
                     0x20..=0x2f if size < ESCAPE_LIMIT => Vt::EscIntermediate(size + 1),
-                    0x20..=0x2f => return self.fail("escape-limit"),
+                    0x20..=0x2f => return Err("escape-limit"),
                     0x30..=0x7e => Vt::Ground,
-                    _ => return self.fail("unsupported-control"),
+                    _ => return Err("unsupported-control"),
                 };
             }
             Vt::Csi(mut sequence) => {
@@ -594,10 +540,10 @@ impl FrameParser {
                     || ((0x30..=0x3f).contains(&byte)
                         && sequence.iter().any(|b| (0x20..=0x2f).contains(b)))
                 {
-                    return self.fail("unsupported-control");
+                    return Err("unsupported-control");
                 }
                 if sequence.len() >= ESCAPE_LIMIT {
-                    return self.fail("escape-limit");
+                    return Err("escape-limit");
                 }
                 sequence.push(byte);
                 self.vt = Vt::Csi(sequence);
@@ -624,6 +570,33 @@ impl FrameParser {
         Ok(0)
     }
 
+    pub(crate) fn finish(&self) -> Result<(), &'static str> {
+        if self.utf8_need != 0 {
+            return Err("invalid-utf8");
+        }
+        if self.vt != Vt::Ground {
+            return Err("incomplete-control");
+        }
+        Ok(())
+    }
+}
+
+struct ReadyProtocol {
+    begin: Vec<u8>,
+    end: Vec<u8>,
+    prefix: usize,
+    frame: Frame,
+    armed: bool,
+    seen: bool,
+    counters: FrameCounters,
+}
+impl FrameProtocol for ReadyProtocol {
+    fn candidate(&self) -> bool {
+        self.frame != Frame::Seeking
+    }
+    fn boundary(&mut self) {
+        self.prefix = 0;
+    }
     fn text(&mut self, byte: u8) -> Result<(), &'static str> {
         match self.frame {
             Frame::Seeking => {
@@ -636,7 +609,7 @@ impl FrameParser {
                     self.prefix = 0;
                     if self.seen {
                         increment(&mut self.counters.duplicates);
-                        return self.fail("duplicate-frame");
+                        return Err("duplicate-frame");
                     }
                     self.frame = Frame::Payload(0);
                 }
@@ -644,7 +617,7 @@ impl FrameParser {
             Frame::Payload(index) => {
                 const PAYLOAD: &[u8] = b"R|5.1.";
                 if byte != PAYLOAD[index] {
-                    return self.fail("invalid-frame");
+                    return Err("invalid-frame");
                 }
                 self.frame = if index + 1 == PAYLOAD.len() {
                     Frame::Build(0)
@@ -656,23 +629,23 @@ impl FrameParser {
                 self.frame = match byte {
                     b'0'..=b'9' if digits < 10 => Frame::Build(digits + 1),
                     b'.' if digits > 0 => Frame::Revision(0),
-                    _ => return self.fail("invalid-frame"),
+                    _ => return Err("invalid-frame"),
                 };
             }
             Frame::Revision(digits) => {
                 self.frame = match byte {
                     b'0'..=b'9' if digits < 10 => Frame::Revision(digits + 1),
                     b'|' if digits > 0 => Frame::End(0),
-                    _ => return self.fail("invalid-frame"),
+                    _ => return Err("invalid-frame"),
                 };
             }
             Frame::End(index) => {
                 if byte != self.end[index] {
-                    return self.fail("invalid-frame");
+                    return Err("invalid-frame");
                 }
                 if index + 1 == self.end.len() {
                     if !self.armed {
-                        return self.fail("unexpected-frame");
+                        return Err("unexpected-frame");
                     }
                     self.seen = true;
                     increment(&mut self.counters.frames);
@@ -684,19 +657,103 @@ impl FrameParser {
         }
         Ok(())
     }
+}
 
+pub struct FrameParser {
+    decoder: WireDecoder,
+    protocol: ReadyProtocol,
+    first_failure: Option<FrameDiagnostic>,
+}
+impl FrameParser {
+    pub fn new(nonce: &str) -> Self {
+        let valid = valid_nonce(nonce);
+        let mut parser = Self {
+            decoder: WireDecoder::default(),
+            protocol: ReadyProtocol {
+                begin: if valid {
+                    format!("~B{nonce}|").into_bytes()
+                } else {
+                    Vec::new()
+                },
+                end: if valid {
+                    format!("E{nonce}~").into_bytes()
+                } else {
+                    Vec::new()
+                },
+                prefix: 0,
+                frame: Frame::Seeking,
+                armed: false,
+                seen: false,
+                counters: FrameCounters::default(),
+            },
+            first_failure: None,
+        };
+        if !valid {
+            parser.record_failure("invalid-frame");
+        }
+        parser
+    }
+    pub fn arm(&mut self) {
+        self.protocol.armed = true;
+    }
+    /// Historical acceptance only: a later duplicate/tail failure remains fatal.
+    pub fn seen(&self) -> bool {
+        self.protocol.seen
+    }
+    pub fn diagnostic(&self) -> FrameDiagnostic {
+        let mut counters = self.decoder.counters;
+        counters.frames = self.protocol.counters.frames;
+        counters.duplicates = self.protocol.counters.duplicates;
+        self.first_failure.unwrap_or(FrameDiagnostic {
+            stage: if self.seen() {
+                "after-frame"
+            } else {
+                "await-frame"
+            },
+            reason: None,
+            counters,
+        })
+    }
+    pub fn record_failure(&mut self, reason: &'static str) {
+        if self.first_failure.is_none() {
+            let mut diagnostic = self.diagnostic();
+            diagnostic.reason = Some(reason);
+            self.first_failure = Some(diagnostic);
+        }
+    }
+    fn error(&self) -> &'static str {
+        if self.first_failure.and_then(|d| d.reason) == Some("output-limit") {
+            "output-limit"
+        } else {
+            "protocol-error"
+        }
+    }
+    pub fn push(&mut self, input: &[u8]) -> Result<usize, &'static str> {
+        if self.first_failure.is_some() {
+            return Err(self.error());
+        }
+        match self.decoder.push(input, &mut self.protocol) {
+            Ok(cpr) => Ok(cpr),
+            Err(reason) => {
+                self.record_failure(reason);
+                Err(self.error())
+            }
+        }
+    }
     pub fn finish(&mut self) -> Result<(), &'static str> {
         if self.first_failure.is_some() {
             return Err(self.error());
         }
-        if self.utf8_need != 0 {
-            return self.fail("invalid-utf8");
-        }
-        if self.vt != Vt::Ground {
-            return self.fail("incomplete-control");
-        }
-        if self.frame != Frame::Seeking || self.prefix != 0 {
-            return self.fail("incomplete-frame");
+        let result = self.decoder.finish().and_then(|()| {
+            if self.protocol.candidate() || self.protocol.prefix != 0 {
+                Err("incomplete-frame")
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(reason) = result {
+            self.record_failure(reason);
+            return Err(self.error());
         }
         Ok(())
     }

@@ -1,5 +1,8 @@
 //! One supervised ConPTY diagnostic sample. The Node wrapper owns the matrix.
 #[cfg(any(windows, test))]
+#[path = "support/query_frame.rs"]
+mod query_frame;
+#[cfg(any(windows, test))]
 #[path = "support/ready_frame.rs"]
 mod ready_frame;
 #[cfg(not(windows))]
@@ -19,6 +22,140 @@ mod tests {
     }
     fn frame() -> String {
         format!("~B{NONCE}|R|5.1.20348.5622|E{NONCE}~")
+    }
+    #[test]
+    fn query_report_has_exact_independent_schema() {
+        let mut report = Report::new(Arm::Qualified);
+        report.query_framed = true;
+        let value: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 25);
+        assert_eq!(value["mode"], "query-framed");
+        assert_eq!(value["schema"], 1);
+        assert_eq!(value["arm"], "module-qualified");
+        assert!(value.get("terminalCounters").is_none());
+        assert!(value.get("strictReadyCount").is_none());
+    }
+    #[test]
+    fn query_report_contract_cases_emit_synthetic_json() {
+        for case in [
+            "success",
+            "partial-prefix",
+            "ready-ack-timeout",
+            "cleanup-failed",
+        ] {
+            let mut r = Report::new(Arm::Unqualified);
+            r.query_framed = true;
+            r.startup = Some(100.0);
+            r.ready_write_ms = Some(10.0);
+            r.startup_complete = true;
+            r.host = Some(20.0);
+            r.wall = 130.0;
+            r.q1 = Some(12.5);
+            r.q2 = Some(0.25);
+            r.version_ok = true;
+            r.cwd1_ok = true;
+            r.cwd2_ok = true;
+            r.cpr = 1;
+            r.bytes = 1000;
+            r.frame_count = 6;
+            r.exit_code = Some(0);
+            r.complete = true;
+            r.cleanup_ok = true;
+            r.failure = None;
+            r.diagnostic.stage = "after-end";
+            r.diagnostic.reason = None;
+            r.kill_requested = Some(false);
+            r.exit_observed_before_kill = Some(true);
+            match case {
+                "partial-prefix" => {
+                    r.q2 = None;
+                    r.cwd2_ok = false;
+                    r.frame_count = 4;
+                    r.host = Some(30001.0);
+                    r.wall = 30200.0;
+                    r.complete = false;
+                    r.exit_code = Some(1);
+                    r.kill_requested = Some(true);
+                    r.exit_observed_before_kill = Some(false);
+                    r.failure = Some("command-timeout");
+                    r.diagnostic.stage = "await-result-2";
+                    r.diagnostic.reason = r.failure;
+                }
+                "ready-ack-timeout" => {
+                    r.q1 = None;
+                    r.q2 = None;
+                    r.cwd1_ok = false;
+                    r.cwd2_ok = false;
+                    r.frame_count = 1;
+                    r.startup = Some(5001.0);
+                    r.startup_complete = false;
+                    r.host = None;
+                    r.wall = 5100.0;
+                    r.complete = false;
+                    r.exit_code = Some(1);
+                    r.kill_requested = Some(true);
+                    r.exit_observed_before_kill = Some(false);
+                    r.failure = Some("startup-timeout");
+                    r.diagnostic.stage = "after-ready";
+                    r.diagnostic.reason = r.failure;
+                }
+                "cleanup-failed" => {
+                    r.complete = false;
+                    r.cleanup_ok = false;
+                    r.exit_code = None;
+                    r.kill_requested = Some(true);
+                    r.exit_observed_before_kill = Some(false);
+                    r.failure = Some("cleanup-failed");
+                    r.diagnostic.reason = r.failure;
+                }
+                _ => {}
+            }
+            let json = r.json();
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(value.as_object().unwrap().len(), 25);
+            println!("QUERY_CONTRACT {case} {json}");
+        }
+    }
+    #[test]
+    fn actual_query_scripts_never_echo_a_complete_frame_at_any_split() {
+        for arm in [Arm::Unqualified, Arm::Qualified] {
+            let script = framed_query_script(arm, NONCE, "C:\\private\\中文");
+            assert!(!script.contains(NONCE));
+            for forbidden in ["Get-Command", "Import-Module", "exit ", "Write-Output"] {
+                assert!(!script.contains(forbidden));
+            }
+            assert_eq!(script.matches(".ToString('F4',").count(), 2);
+            assert_eq!(script.matches("[StringComparison]::Ordinal").count(), 2);
+            let operation = if arm == Arm::Qualified {
+                "$path=(Microsoft.PowerShell.Management\\Get-Location).Path;$sw.Stop();"
+            } else {
+                "$path=(Get-Location).Path;$sw.Stop();"
+            };
+            assert_eq!(script.matches(operation).count(), 2);
+            for input in [script.clone(), format!("PS> {script}")] {
+                for cut in (0..=input.len()).map(Some).chain(std::iter::once(None)) {
+                    let mut parser = Parser::query(NONCE);
+                    parser.arm_frame();
+                    parser.push(frame().as_bytes()).unwrap();
+                    parser.arm_query().unwrap();
+                    match cut {
+                        Some(at) => {
+                            parser.push(&input.as_bytes()[..at]).unwrap();
+                            parser.push(&input.as_bytes()[at..]).unwrap();
+                        }
+                        None => {
+                            for byte in input.bytes() {
+                                parser.push(&[byte]).unwrap();
+                            }
+                        }
+                    }
+                    parser.finish().unwrap();
+                    assert_eq!(parser.ready_counts().0, 1);
+                    assert_eq!(parser.queries, [None, None]);
+                    assert!(!parser.ended);
+                }
+            }
+        }
     }
     #[test]
     fn framed_script_echo_cannot_satisfy_armed_protocol_at_any_split() {
@@ -536,6 +673,7 @@ mod probe {
         }
     }
     pub struct Report {
+        pub query_framed: bool,
         pub startup_framed: bool,
         pub frame_count: usize,
         pub startup_only: bool,
@@ -565,6 +703,7 @@ mod probe {
     impl Report {
         pub fn new(arm: Arm) -> Self {
             Self {
+                query_framed: false,
                 startup_framed: false,
                 frame_count: 0,
                 startup_only: false,
@@ -605,6 +744,9 @@ mod probe {
             };
             let c = self.diagnostic.counters;
             let boolean = |v: Option<bool>| v.map_or_else(|| "null".to_owned(), |v| v.to_string());
+            if self.query_framed {
+                return format!("{{\"schema\":1,\"mode\":\"query-framed\",\"arm\":\"{}\",\"q1Ms\":{},\"q2Ms\":{},\"startupMs\":{},\"hostMs\":{},\"wallMs\":{},\"versionOk\":{},\"cwd1Ok\":{},\"cwd2Ok\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{}}}", self.arm.name(),number(self.q1),number(self.q2),number(self.startup),number(self.host),number(Some(self.wall)),self.version_ok,self.cwd1_ok,self.cwd2_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count);
+            }
             if self.startup_framed {
                 return format!("{{\"schema\":1,\"mode\":\"startup-framed\",\"startupMs\":{},\"wallMs\":{},\"versionOk\":{},\"exitCode\":{},\"cprReplies\":{},\"mergedBytes\":{},\"startupComplete\":{},\"complete\":{},\"cleanupOk\":{},\"failure\":{},\"expectedStage\":\"{}\",\"protocolReason\":{},\"killRequested\":{},\"exitObservedBeforeKill\":{},\"readyWriteCompleted\":{},\"readyWriteMs\":{},\"frameCount\":{}}}", number(self.startup),number(Some(self.wall)),self.version_ok,self.exit_code.map_or_else(|| "null".to_owned(), |n|n.to_string()),self.cpr,self.bytes,self.startup_complete,self.complete,self.cleanup_ok,self.failure.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),self.diagnostic.stage,self.diagnostic.reason.map_or_else(|| "null".to_owned(), |s|format!("\"{s}\"")),boolean(self.kill_requested),boolean(self.exit_observed_before_kill),self.ready_write_ms.is_some(),number(self.ready_write_ms),self.frame_count);
             }
@@ -622,6 +764,7 @@ mod probe {
         OscEsc,
     }
     pub struct Parser {
+        query: Option<super::query_frame::QueryParser>,
         framed: Option<super::ready_frame::FrameParser>,
         startup_only: bool,
         strict_ready_count: usize,
@@ -641,6 +784,7 @@ mod probe {
     impl Parser {
         pub fn new(nonce: &str) -> Self {
             Self {
+                query: None,
                 framed: None,
                 startup_only: false,
                 strict_ready_count: 0,
@@ -671,7 +815,23 @@ mod probe {
                 ..Self::new(nonce)
             }
         }
+        pub fn query(nonce: &str) -> Self {
+            Self {
+                query: Some(super::query_frame::QueryParser::new(nonce)),
+                ..Self::new(nonce)
+            }
+        }
+        pub fn arm_query(&mut self) -> Result<(), &'static str> {
+            if let Some(query) = &mut self.query {
+                query.arm_query()?;
+            }
+            Ok(())
+        }
         pub fn arm_frame(&mut self) {
+            if let Some(query) = &mut self.query {
+                query.arm_ready();
+            }
+
             if let Some(frame) = &mut self.framed {
                 frame.arm();
             }
@@ -682,6 +842,19 @@ mod probe {
         pub fn diagnostic(&self) -> Diagnostic {
             if let Some(frozen) = self.first_failure {
                 return frozen;
+            }
+            if let Some(query) = &self.query {
+                let d = query.diagnostic();
+                return Diagnostic {
+                    stage: if self.await_cursor {
+                        "await-cursor"
+                    } else {
+                        d.stage
+                    },
+                    reason: d.reason,
+                    counters: TerminalCounters::default(),
+                    ready_counts: (d.frames, 0),
+                };
             }
             if let Some(frame) = &self.framed {
                 let d = frame.diagnostic();
@@ -718,6 +891,9 @@ mod probe {
             })
         }
         pub fn record_failure(&mut self, reason: &'static str) {
+            if let Some(query) = &mut self.query {
+                query.record_failure(reason);
+            }
             if self.first_failure.is_none() {
                 let mut diagnostic = self.diagnostic();
                 diagnostic.record_failure(reason);
@@ -733,6 +909,17 @@ mod probe {
             Err(failure)
         }
         pub fn push(&mut self, bytes: &[u8]) -> Result<usize, &'static str> {
+            if let Some(query) = &mut self.query {
+                let result = query.push(bytes);
+                let d = query.diagnostic();
+                self.version_ok = d.frames >= 1;
+                self.queries = query.queries();
+                self.ended = d.frames == 6;
+                if let Some(reason) = d.reason {
+                    self.record_failure(reason);
+                }
+                return result;
+            }
             if let Some(frame) = &mut self.framed {
                 let result = frame.push(bytes);
                 self.version_ok = frame.seen();
@@ -810,6 +997,13 @@ mod probe {
             Ok(cpr)
         }
         pub fn finish(&mut self) -> Result<(), &'static str> {
+            if let Some(query) = &mut self.query {
+                let result = query.finish();
+                if let Some(reason) = query.diagnostic().reason {
+                    self.record_failure(reason);
+                }
+                return result;
+            }
             if let Some(frame) = &mut self.framed {
                 let result = frame.finish();
                 let reason = frame.diagnostic().reason;
@@ -968,6 +1162,25 @@ mod probe {
         let (left, right) = nonce.split_at(16);
         // Literal command echo never contains a complete begin or end token.
         format!("$n='{left}'+'{right}';$b='~'+'B'+$n+'|';$e='|'+'E'+$n+'~';[Console]::Out.WriteLine();[Console]::Out.WriteLine($b+'R|'+[string]$PSVersionTable.PSVersion+$e)\r\n")
+    }
+    pub fn framed_query_script(arm: Arm, nonce: &str, cwd: &str) -> String {
+        let (left, right) = nonce.split_at(16);
+        let expected = cwd
+            .encode_utf16()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let command = if arm == Arm::Qualified {
+            "Microsoft.PowerShell.Management\\Get-Location"
+        } else {
+            "Get-Location"
+        };
+        let mut script = format!("$n='{left}'+'{right}';$b='~'+'B'+$n+'|';$e='|'+'E'+$n+'~';$ErrorActionPreference='Stop';$expected=[string]::new([char[]]@({expected}));$phase=1;$kind='command';try{{[Console]::Out.WriteLine();");
+        for phase in 1..=2 {
+            script.push_str(&format!("$phase={phase};$kind='command';[Console]::Out.WriteLine($b+'S|{phase}'+$e);$sw=[Diagnostics.Stopwatch]::StartNew();$path=({command}).Path;$sw.Stop();$ok=[string]::Equals($path,$expected,[StringComparison]::Ordinal);if(-not $ok){{$kind='cwd';throw 0;}}[Console]::Out.WriteLine($b+'Q|{phase}|'+$sw.Elapsed.TotalMilliseconds.ToString('F4',[Globalization.CultureInfo]::InvariantCulture)+'|1'+$e);"));
+        }
+        script.push_str("[Console]::Out.WriteLine($b+'D'+$e);}catch{[Console]::Out.WriteLine($b+'X|'+$phase+'|'+$kind+$e);}\r\n");
+        script
     }
     pub fn query_script(arm: Arm, nonce: &str, cwd: &str) -> String {
         let expected = cwd
@@ -1199,6 +1412,9 @@ mod windows_worker {
                 }
                 Ok(Event::Error) => return Err("read-error"),
                 Ok(Event::Eof) => {
+                    if report.query_framed {
+                        parser.finish()?;
+                    }
                     parser.record_failure("eof-before-complete");
                     return Err("protocol-error");
                 }
@@ -1212,6 +1428,83 @@ mod windows_worker {
         if matches!(until, Until::Cursor) && result.is_ok() {
             parser.await_cursor = false;
         }
+        result
+    }
+    fn confirm_startup(
+        ready: Result<(), &'static str>,
+        ready_ack_rx: &Receiver<Instant>,
+        startup: Instant,
+        startup_deadline: Instant,
+        report: &mut Report,
+        parser: &Parser,
+        startup_framed: bool,
+    ) -> Result<(), &'static str> {
+        let mut outcome = ready;
+        let ack = if outcome.is_ok() {
+            match ready_ack_rx
+                .recv_timeout(startup_deadline.saturating_duration_since(Instant::now()))
+            {
+                Ok(at) => Some(at),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    outcome = Err("startup-timeout");
+                    None
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    outcome = Err("write-error");
+                    None
+                }
+            }
+        } else {
+            ready_ack_rx.try_recv().ok()
+        };
+        let frozen = Instant::now();
+        // This ACK was received before `frozen`; compare its actual
+        // completion with the original deadline, even on equal clock ticks.
+        report.ready_write_ms = ready_write_ms(startup, startup_deadline, ack);
+        if outcome.is_ok() && (frozen >= startup_deadline || report.ready_write_ms.is_none()) {
+            outcome = Err("startup-timeout");
+        }
+        report.startup = Some(frozen.duration_since(startup).as_secs_f64() * 1000.0);
+        if startup_framed || report.query_framed {
+            report.frame_count = parser.ready_counts().0;
+        } else {
+            (report.strict_ready_count, report.embedded_ready_count) = parser.ready_counts();
+        }
+        report.startup_complete = outcome.is_ok();
+        outcome
+    }
+    fn run_queries(
+        io: &Io,
+        parser: &mut Parser,
+        report: &mut Report,
+        arm: Arm,
+        nonce: &str,
+        cwd: &str,
+        framed: bool,
+    ) -> Result<(), &'static str> {
+        // Includes script construction and FIFO enqueue; neither query resets it.
+        let command = Instant::now();
+        let result = (|| {
+            let script = if framed {
+                framed_query_script(arm, nonce, cwd)
+            } else {
+                query_script(arm, nonce, cwd)
+            };
+            io.input
+                .try_send(script.into_bytes().into())
+                .map_err(|_| "write-error")?;
+            if framed {
+                parser.arm_query()?;
+            }
+            receive(
+                io,
+                parser,
+                report,
+                command + Duration::from_secs(30),
+                Until::End,
+            )
+        })();
+        report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
         result
     }
     struct CleanupOutcome {
@@ -1434,11 +1727,18 @@ mod windows_worker {
         Ok((values, path))
     }
     #[cfg(windows)]
-    pub fn sample(arm: Arm, cwd: &Path, startup_only: bool, startup_framed: bool) -> Report {
+    pub fn sample(
+        arm: Arm,
+        cwd: &Path,
+        startup_only: bool,
+        startup_framed: bool,
+        query_framed: bool,
+    ) -> Report {
         let started = Instant::now();
         let mut report = Report::new(arm);
         report.startup_only = startup_only;
         report.startup_framed = startup_framed;
+        report.query_framed = query_framed;
         // Before spawn any failed ConPTY construction/drop is still bounded by
         // the supervising Node worker deadline; no shell has been created yet.
         let setup = (|| {
@@ -1474,7 +1774,9 @@ mod windows_worker {
         };
         let io = start_io(reader, writer);
         let nonce = uuid::Uuid::new_v4().simple().to_string();
-        let mut parser = if startup_framed {
+        let mut parser = if query_framed {
+            Parser::query(&nonce)
+        } else if startup_framed {
             Parser::framed(&nonce)
         } else if startup_only {
             Parser::startup(&nonce)
@@ -1498,13 +1800,13 @@ mod windows_worker {
                 )?;
                 io.input
                     .try_send(WriteRequest {
-                        bytes: if startup_framed {
+                        bytes: if startup_framed || query_framed {
                             framed_ready_script(&nonce)
                         } else {
                             ready_script(&nonce)
                         }
                         .into_bytes(),
-                        ready_done: startup_only.then_some(ready_ack_tx),
+                        ready_done: (startup_only || query_framed).then_some(ready_ack_tx),
                     })
                     .map_err(|_| "write-error")?;
                 parser.arm_frame();
@@ -1516,49 +1818,34 @@ mod windows_worker {
                     Until::Ready,
                 )
             })();
-            if startup_only {
-                let mut outcome = ready;
-                let ack = if outcome.is_ok() {
-                    match ready_ack_rx
-                        .recv_timeout(startup_deadline.saturating_duration_since(Instant::now()))
-                    {
-                        Ok(at) => Some(at),
-                        Err(mpsc::RecvTimeoutError::Timeout) => {
-                            outcome = Err("startup-timeout");
-                            None
-                        }
-                        Err(mpsc::RecvTimeoutError::Disconnected) => {
-                            outcome = Err("write-error");
-                            None
-                        }
-                    }
-                } else {
-                    ready_ack_rx.try_recv().ok()
-                };
-                let frozen = Instant::now();
-                // This ACK was received before `frozen`; compare its actual
-                // completion with the original deadline, even on equal clock ticks.
-                report.ready_write_ms = ready_write_ms(startup, startup_deadline, ack);
-                if outcome.is_ok()
-                    && (frozen >= startup_deadline || report.ready_write_ms.is_none())
-                {
-                    outcome = Err("startup-timeout");
+            if startup_only || query_framed {
+                confirm_startup(
+                    ready,
+                    &ready_ack_rx,
+                    startup,
+                    startup_deadline,
+                    &mut report,
+                    &parser,
+                    startup_framed,
+                )?;
+                if startup_only {
+                    return Ok(());
                 }
-                report.startup = Some(frozen.duration_since(startup).as_secs_f64() * 1000.0);
-                if startup_framed {
-                    report.frame_count = parser.ready_counts().0;
-                } else {
-                    (report.strict_ready_count, report.embedded_ready_count) =
-                        parser.ready_counts();
-                }
-                report.startup_complete = outcome.is_ok();
-                outcome?;
-                // Exit is sent and acknowledged in the existing cleanup budget,
-                // after this frozen startup snapshot. No query is introduced.
-                return Ok(());
+            } else {
+                report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
+                ready?;
             }
-            report.startup = Some(startup.elapsed().as_secs_f64() * 1000.0);
-            ready?;
+            if query_framed {
+                return run_queries(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    arm,
+                    &nonce,
+                    cwd.to_str().ok_or("setup-error")?,
+                    true,
+                );
+            }
             let command = Instant::now();
             let script = query_script(arm, &nonce, cwd.to_str().ok_or("setup-error")?);
             io.input
@@ -1574,6 +1861,9 @@ mod windows_worker {
             report.host = Some(command.elapsed().as_secs_f64() * 1000.0);
             result
         })();
+        if query_framed {
+            report.frame_count = parser.ready_counts().0;
+        }
         report.q1 = parser.queries[0];
         report.q2 = parser.queries[1];
         report.version_ok = parser.version_ok;
@@ -1594,7 +1884,7 @@ mod windows_worker {
             master,
             io,
             report.failure.is_some(),
-            startup_only,
+            startup_only || query_framed,
             parser,
         );
         report.bytes = cleaned.bytes;
@@ -1723,6 +2013,174 @@ mod windows_worker {
                 .push(format!("P1Q_{nonce}|READY|5.1.1.1\r\n").as_bytes())
                 .unwrap();
             parser
+        }
+        fn query_fixture(payload: &str) -> String {
+            format!(
+                "~B0123456789abcdef0123456789abcdef|{payload}|E0123456789abcdef0123456789abcdef~"
+            )
+        }
+        fn query_ready_parser() -> Parser {
+            let mut p = Parser::query("0123456789abcdef0123456789abcdef");
+            p.arm_frame();
+            p.push(query_fixture("R|5.1.1.1").as_bytes()).unwrap();
+            p
+        }
+        fn query_tail() -> String {
+            ["S|1", "Q|1|2.5000|1", "S|2", "Q|2|0.2500|1", "D"]
+                .iter()
+                .map(|s| query_fixture(s))
+                .collect()
+        }
+        #[test]
+        fn query_ready_ack_uses_original_window_and_failure_never_starts_query() {
+            for ready in [Ok(()), Err("protocol-error")] {
+                let (tx, rx) = mpsc::sync_channel(1);
+                let start = Instant::now() - Duration::from_secs(6);
+                tx.send(start + Duration::from_millis(1)).unwrap();
+                let parser = query_ready_parser();
+                let mut report = Report::new(Arm::Unqualified);
+                report.query_framed = true;
+                let result = confirm_startup(
+                    ready,
+                    &rx,
+                    start,
+                    start + Duration::from_secs(5),
+                    &mut report,
+                    &parser,
+                    false,
+                );
+                assert!(result.is_err());
+                assert!(!report.startup_complete);
+                assert_eq!(report.host, None);
+                assert_eq!(parser.diagnostic().stage, "after-ready");
+                assert_eq!(parser.ready_counts().0, 1);
+            }
+            let (tx, rx) = mpsc::sync_channel(1);
+            let start = Instant::now();
+            tx.send(start).unwrap();
+            let parser = query_ready_parser();
+            let mut report = Report::new(Arm::Unqualified);
+            report.query_framed = true;
+            confirm_startup(
+                Ok(()),
+                &rx,
+                start,
+                start + Duration::from_secs(5),
+                &mut report,
+                &parser,
+                false,
+            )
+            .unwrap();
+            assert!(report.startup_complete);
+            assert!(report.ready_write_ms.is_some());
+            assert_eq!(report.frame_count, 1);
+        }
+        #[test]
+        fn query_enqueue_arms_only_after_success_and_host_includes_failed_enqueue() {
+            let nonce = "0123456789abcdef0123456789abcdef";
+            let (io, events, commands) = mock_io();
+            events.send(Event::Data(query_tail().into_bytes())).unwrap();
+            let mut parser = query_ready_parser();
+            let mut report = Report::new(Arm::Unqualified);
+            run_queries(
+                &io,
+                &mut parser,
+                &mut report,
+                Arm::Unqualified,
+                nonce,
+                "C:\\fixture",
+                true,
+            )
+            .unwrap();
+            assert_eq!(
+                commands.recv().unwrap().bytes,
+                framed_query_script(Arm::Unqualified, nonce, "C:\\fixture").as_bytes()
+            );
+            assert!(parser.ended);
+            assert_eq!(parser.ready_counts().0, 6);
+            assert!(report.host.unwrap() < 30000.0);
+            let (io, _events, commands) = mock_io();
+            drop(commands);
+            let mut parser = query_ready_parser();
+            let mut report = Report::new(Arm::Unqualified);
+            assert_eq!(
+                run_queries(
+                    &io,
+                    &mut parser,
+                    &mut report,
+                    Arm::Unqualified,
+                    nonce,
+                    "C:\\fixture",
+                    true
+                ),
+                Err("write-error")
+            );
+            assert!(report.host.is_some());
+            assert_eq!(parser.diagnostic().stage, "after-ready");
+            assert_eq!(parser.ready_counts().0, 1);
+        }
+        #[test]
+        fn query_cleanup_keeps_input_and_rejects_tails_without_rewriting_prefix() {
+            for (tail, reason) in [
+                (String::new(), None),
+                (query_fixture("D"), Some("duplicate-frame")),
+                ("~B0123".into(), Some("incomplete-frame")),
+                ("\x1b]unfinished".into(), Some("incomplete-control")),
+            ] {
+                let state = Arc::new(LifecycleState::default());
+                state.child_ready.store(true, Ordering::SeqCst);
+                let io = start_io(
+                    Box::new(std::io::Cursor::new(tail.into_bytes())),
+                    Box::new(LifecycleWriter {
+                        state: state.clone(),
+                        fail_flush: false,
+                        flush_gate: None,
+                    }),
+                );
+                let mut parser = query_ready_parser();
+                parser.arm_query().unwrap();
+                parser.push(query_tail().as_bytes()).unwrap();
+                let frozen = (parser.ready_counts().0, parser.queries);
+                let mut expected_diagnostic = parser.diagnostic();
+                expected_diagnostic.reason = reason;
+                let result = cleanup(
+                    Box::new(LifecycleChild(state.clone())),
+                    (),
+                    io,
+                    false,
+                    true,
+                    parser,
+                );
+                assert!(result.confirmed);
+                assert_eq!(result.exit, Some(0));
+                assert_eq!(result.diagnostic.reason, reason);
+                assert_eq!(result.diagnostic.stage, "after-end");
+                assert_eq!(result.diagnostic, expected_diagnostic);
+                assert_eq!(frozen, (6, [Some(2.5), Some(0.25)]));
+                assert!(!state.closed_before_exit.load(Ordering::SeqCst));
+            }
+        }
+        #[test]
+        fn query_failure_freezes_prefix_before_cleanup_late_result() {
+            let state = Arc::new(LifecycleState::default());
+            let io = start_io(
+                Box::new(std::io::Cursor::new(query_tail().into_bytes())),
+                Box::new(LifecycleWriter {
+                    state: state.clone(),
+                    fail_flush: false,
+                    flush_gate: None,
+                }),
+            );
+            let mut parser = query_ready_parser();
+            parser.arm_query().unwrap();
+            parser.push(query_fixture("S|1").as_bytes()).unwrap();
+            parser.record_failure("command-timeout");
+            let expected_diagnostic = parser.diagnostic();
+            let result = cleanup(Box::new(LifecycleChild(state)), (), io, true, true, parser);
+            assert!(result.confirmed);
+            assert_eq!(result.diagnostic.stage, "await-result-1");
+            assert_eq!(result.diagnostic.reason, Some("command-timeout"));
+            assert_eq!(result.diagnostic, expected_diagnostic);
         }
         #[test]
         fn old_input_drop_can_precede_independent_child_exit_observation() {
@@ -2077,14 +2535,20 @@ mod windows_worker {
 fn main() {
     use std::io::Write;
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let (arm, startup_only, startup_framed) = match args.as_slice() {
-        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false),
-        [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true),
+    let (arm, startup_only, startup_framed, query_framed) = match args.as_slice() {
+        [flag] if flag == "--startup-only" => (probe::Arm::Unqualified, true, false, false),
+        [flag] if flag == "--startup-framed" => (probe::Arm::Unqualified, true, true, false),
         [flag, arm] if flag == "--sample" && arm == "unqualified" => {
-            (probe::Arm::Unqualified, false, false)
+            (probe::Arm::Unqualified, false, false, false)
         }
         [flag, arm] if flag == "--sample" && arm == "module-qualified" => {
-            (probe::Arm::Qualified, false, false)
+            (probe::Arm::Qualified, false, false, false)
+        }
+        [flag, arm] if flag == "--sample-framed" && arm == "unqualified" => {
+            (probe::Arm::Unqualified, false, false, true)
+        }
+        [flag, arm] if flag == "--sample-framed" && arm == "module-qualified" => {
+            (probe::Arm::Qualified, false, false, true)
         }
         _ => std::process::exit(1),
     };
@@ -2104,12 +2568,13 @@ fn main() {
         Ok(cwd) => {
             // canonicalize yields a Windows verbatim prefix; PowerShell's provider
             // reports an ordinary local path. Strip only that fixed prefix in memory.
-            windows_worker::sample(arm, &cwd, startup_only, startup_framed)
+            windows_worker::sample(arm, &cwd, startup_only, startup_framed, query_framed)
         }
         Err(_) => {
             let mut r = probe::Report::new(arm);
             r.startup_only = startup_only;
             r.startup_framed = startup_framed;
+            r.query_framed = query_framed;
             r.cleanup_ok = true;
             r
         }
