@@ -1,0 +1,50 @@
+name: P1 Windows ConPTY Framed Diagnostic
+
+on:
+  push:
+    branches: [p1/integration]
+    paths:
+      - .github/workflows/p1-windows-conpty-framed-diagnostic.yml
+      - tests/native/conpty-framed-report.mjs
+      - tests/native/conpty-framed-report.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-conpty-framed:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: "1.99.0"
+      CARGO_BUILD_JOBS: "2"
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.0.0"
+      - name: Validate diagnostic helpers
+        run: node --test tests/native/*.test.mjs
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      # One bounded framed-startup experiment; see docs/p1/CONPTY_FRAMED_PLAN.zh-CN.md.
+      - name: Test and build the worker, then validate framed startup and exit cleanup with at most two workers
+        run: node tests/native/conpty-framed-report.mjs
+      - name: Preserve sanitized framed ConPTY report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: powershell-conpty-framed-${{ matrix.os }}
+          path: .artifacts/p1/powershell-conpty-framed/report.json
+          if-no-files-found: error
