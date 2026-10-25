@@ -102,6 +102,20 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 新 `startup-framed` 用连续字节的 nonce frame 与原 5 秒内 READY writer ACK 双确认，独立 19 键 schema；旧模式的严格 LF 行规则与旧失败不改。CPR FIFO/入队后 arm、实际脚本回显隔离、控制字符串隔离、重复/残缺尾部及原预算均已离线验证。本轮无查询、无产品环境变更，每平台最多两个 worker、首失败停止，不追加重试。两平台 tests 输出字节为 22846/22814，进程均观察到退出、未请求 tree kill、本地资源释放；这些不是 worker cleanup 结果。原始输出未落工件，exit 101 不能区分编译错误或测试断言失败。下一步另开局部取证定位此前置失败，不预写原因、不重跑本轮或改冻结代码；文件 SHA-256 及完整状态见[执行记录](RESULTS.zh-CN.md#conpty-ready-frame-独立诊断工作流-40161857832)。这不解除 stderr 或普通目录查询门禁；P1/第四批未验收，P2 仅准备，main 不合并。
 
+## 本机已复现：READY frame 构建前置条件缺口
+
+在精确 `b0ee3324ead6f18f243ab949837dde43fa0af86f` 的两个干净 macOS worktree 中分别验证：无 `dist`/无 `TAURI_CONFIG` 时，`cargo check --locked --all-features --bin powershell_conpty_qualified_probe` 返回 101，内存分类为 `frontend-dist-missing`，宏位置 `src/lib.rs:596`；另一副本真实 `npm ci`、`npm run build`（TypeScript/Vite）均返回 0、前端入口存在后，`cargo test --locked --all-features` 专项 **55/55** 通过。使用 Node 26.0.0、npm 12.0.2、Rust 1.99.0；测试线程数 2。未修改受跟踪文件或创建占位资产，原始输出未落盘。
+
+已核对旧 wrapper 的 `--features dev-tools` 与新 wrapper 的 `--all-features` 差异：后者启用 `custom-protocol`，锁定 Tauri 宏要求 `frontendDist`，而新 workflow 未构建前端。这个本机可复现的编译前置缺口不等于 Windows 历史失败已定因；负向是 check、正向是 test，不能称为完全同命令的红绿测试，也不提供 Windows 链接或执行证据。随后独立预注册的真实资产准备与 Windows 验证见下节，历史运行与门禁保持。详细证据见[执行记录](RESULTS.zh-CN.md#2026-10-25ready-frame-构建前置条件的本机对照)。
+
+## 已完成、有限诊断通过：真实构建准备与 frame 验证 `40163001613`
+
+按[新预注册](CONPTY_FRAMED_PREPARED_PLAN.zh-CN.md)，准备 wrapper/测试/方案第一推 `06e7768` 使用 `[skip ci]`，新 workflow 第二推准确 HEAD 为 `74c6bf97377810167fdb49af5b21016db303c7c1`。唯一 [push 运行 40163001613](https://github.com/mofyer/new-windterm/actions/runs/40163001613) 已 `completed/success`，两平台全部步骤成功，报告独立核验通过；本机专项 18/18、全 native 311/311 与 Windows 进程结果分别记录。
+
+两平台 npm 安装/前端构建、Cargo tests/build 均 exit 0，输出字节分别为 141/447/27410/499，`distReady=true`。2022 两个 worker 的 startup 为 3508.3862/413.6288 ms，2025 为 2036.043/458.3029 ms；四样本均 CPR 1/frame 1、READY write/flush 已确认、startup/complete/cleanup true、exit 0、kill false、`exitObservedBeforeKill=true`、`after-frame` 且无失败。两平台顶层 `phase=done/status=pass/diagnosticPassed=true`，嵌套三个聚合字段均 true。所有外层进程 cleanup 均 observed/not-requested/released；没有重试或补样本。工件只存 Cargo 进程结果，没有 Windows 测试计数原文。完整计时、8 键顶层/19 键 worker 核验及报告 SHA-256 见[执行记录](RESULTS.zh-CN.md#conpty-frame-真实构建准备与验证工作流-40163001613)。
+
+本轮只证明准备后四个有限样本的 frame 启动与有界退出通过。旧实验不重跑、旧失败不重判，无查询或产品环境修改；ConPTY 合流不证明 PowerShell 独立 stderr 为空，也不确定旧 Cargo 失败根因。下一步独立预注册严格 frame 查询协议，保留原未限定查询、白名单及两次查询共用原 30 秒总窗。all-features/wincheck 资产前置说明已另行补齐 `CLAUDE.md`（`3664ee2`），旧 frame workflow 仍待处置。P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：

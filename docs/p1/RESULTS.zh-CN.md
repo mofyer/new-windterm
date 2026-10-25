@@ -708,3 +708,52 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 两份内容受限 `powershell-conpty-framed-windows-{2022,2025}/report.json` 已独立核验准确 run/SHA、精确结构/隐私、前置失败停止、聚合与 cleanup。SHA-256：2022 为 `2fa333b5d2f3fb9865d8096879b9e885187933ceb1dd6a4b43357b4d24003441`；2025 为 `3d2c0e09b221e2796e67cd68e07fa6e50edcb122f9122d0886cbe7164c8d0e47`。报告结构核验通过不等于诊断通过，也不以本机或 Windows cfg 通过覆盖实际平台失败。
 
 下一步只定位 Windows Cargo test 前置失败，另开局部取证，不预写原因、不重跑本轮或修改冻结代码/预注册来补成功。旧 `--sample` schema 2 与 `--startup-only` schema 1 的接受规则/结果保留，不倒推旧 embedded 已通过，不改产品白名单或原生普通查询。ConPTY 合流仍不能证明独立 stderr 为空；P1/第四批未验收，P2 仅准备，main 不合并。
+
+### 2026-10-25：READY frame 构建前置条件的本机对照
+
+对比上一轮 `7d4d7bb` 与本轮 `b0ee332`，旧 `conpty-startup-report.mjs` 使用 `--features dev-tools`，新 `conpty-framed-report.mjs` 使用 `--all-features`；Cargo manifest/lock、目标 bin、Windows target、Rust 1.99.0 和构建并发数 2 未改变。新增启用的 package features 为 `custom-protocol`、`pty-diagnostics`、`pty-readiness`，未发现新增外部链接库的直接证据。`custom-protocol` 经 `tauri/custom-protocol` 开启资源嵌入，`src/lib.rs:596` 的 `tauri::generate_context!()` 按 `tauri.conf.json` 读取 `../dist`；新 workflow 没有前端安装/构建步骤，`dist` 不在提交中。
+
+锁定的 `tauri-macros 2.7.2` 在 `src/context.rs:155` 将 `custom-protocol` 下的 `dev` 设为 false；`tauri-codegen 2.7.2` 在 `src/context.rs:178–190` 跳过开发服务器路径并检查 `frontendDist`，目录不存在即报错。这是构建前置条件的源码证据，不能仅凭该分支推断历史 Windows Cargo 进程实际报错内容。
+
+执行代理使用两个独立、精确提交均为 `b0ee3324ead6f18f243ab949837dde43fa0af86f` 的干净 macOS worktree 完成本机对照；各自开始时确认 `apps/desktop/dist` 不存在且无 `TAURI_CONFIG` 注入。使用 `rustc 1.99.0 (b940084d7 2026-09-28)`、构建并发数 2，复用本机 Cargo 缓存但切换 crate 路径。未修改受跟踪文件，未运行 Windows worker，也未创建占位资源。
+
+| 本机条件 | 执行命令与结果 | 可以支持的结论 |
+| --- | --- | --- |
+| 未准备前端资产 | `cargo check --locked --all-features --bin powershell_conpty_qualified_probe` 返回 101；内存分类为 `frontend-dist-missing`，宏位置 `src/lib.rs:596` | 干净副本可复现缺少前端资产的编译前置失败；这是 check，不是测试运行或链接结果 |
+| 真实准备前端资产 | Node 26.0.0 / npm 12.0.2；`npm ci` 返回 0，`npm run build`（`tsc --noEmit && vite build`）返回 0，`dist/index.html` 存在；随后 `cargo test --locked --all-features --bin powershell_conpty_qualified_probe` 返回 0，`RUST_TEST_THREADS=2`，55 passed / 0 failed | 真实前端构建后，本机同功能开关的专项测试通过；不是 Windows 链接、执行或产品验收证据 |
+
+两条 Cargo 命令均显式指定相同 manifest 与 bin；负向运行是 `cargo check`、正向运行是 `cargo test`，不称为完全同命令的红绿测试。正向准备的 npm ci、前端构建和 Cargo test 输出字节分别为 355、440、5090；原始输出只在内存中分类，npm 文件日志关闭，未保存编译/测试原文。本机内容受限记录为 `/tmp/p1-frame-assets-positive-evidence.json`，临时路径不是公开 CI 工件。
+
+新增 24 个 Rust 测试包括 19 个纯 parser 测试、3 个脚本/快照/schema 测试和 2 个宿主流程测试；未发现新增 Windows 专属断言。宿主测试仍有线程同步与时限，但没有证据将其认定为该轮失败原因。当前已确认一个本机可复现的构建前置缺口；历史 `40161857832` 未保留原始 Cargo 输出，仍不能确定其编译、链接或测试运行失败类别，更不能把本机对照写成 Windows 历史根因已确认。
+
+本机对照后的独立准备流程与 Windows 验证见下节：先真实构建前端资产，再执行相同 Rust 功能开关与原 frame/ACK/退出门禁，另一次验证绑定新的准确 SHA 与唯一运行。不改旧实验判定，不放宽时限、输出或 stderr 门禁；P1/第四批未验收，P2 仅准备，main 不合并。
+
+### ConPTY frame 真实构建准备与验证（工作流 `40163001613`）
+
+按[独立准备预注册](CONPTY_FRAMED_PREPARED_PLAN.zh-CN.md)，新 wrapper/专项测试/方案第一推为 `06e77682b88c96b95105bcbcf5b4dc3822db1535`，使用 `[skip ci]`；新 workflow 第二推的准确被测 HEAD 为 `74c6bf97377810167fdb49af5b21016db303c7c1`，唯一 [push 运行 40163001613](https://github.com/mofyer/new-windterm/actions/runs/40163001613) 已 `completed/success`，两平台全部步骤成功，报告完成独立核验。未执行额外 dispatch、重试或补样本。
+
+新准备 wrapper 的专项测试 **18/18**、协调者本机全 native **311/311** 通过，实现已经独立审查。准备先拒绝已有 dist，再通过已验证 npm CLI 真实执行依赖安装与 TypeScript/Vite 构建，成功后确认非软链 dist 及非空普通入口文件；两个准备步骤共享 180 秒期限，npm 文件日志关闭，原文只在内存消费。准备失败不调用 Cargo 或 worker。准备成功后复用原 framed runner：Cargo 仍为 `--locked --all-features`，测试/构建共享 14 分钟，原 frame、READY ACK、退出、清理和输出门禁不变。
+
+新顶层 `startup-framed-prepared` 报告分别保存准备与嵌套诊断状态，准备成功不等于 startup 成功。实际两平台均取得两个顺序 worker，四个均 startup/complete true、exit 0；没有查询或环境矩阵。
+
+| 平台 | dependencyInstall exit / outputBytes | frontendBuild exit / outputBytes | tests exit / outputBytes | build exit / outputBytes | distReady / prepared diagnosticPassed |
+| --- | --- | --- | --- | --- | --- |
+| Windows 2022 | 0 / 141 | 0 / 447 | 0 / 27410 | 0 / 499 | true / true |
+| Windows 2025 | 0 / 141 | 0 / 447 | 0 / 27410 | 0 / 499 | true / true |
+
+上述准备、Cargo 和四个外层 worker 进程均为 `failure=null`，cleanup 为 `termination=observed`、`treeKill=not-requested`、`localResources=released`。Windows 工件只保留 Cargo 进程结果与输出字节数，不保存测试原文，因此这里记录 tests exit 0，不把本机 55 项计数冒充为 Windows 工件中的测试计数。
+
+| 平台 / 顺序 | startupMs | READY writeMs | wallMs | mergedBytes | 外层 worker outputBytes |
+| --- | --- | --- | --- | --- | --- |
+| Windows 2022 / 1 | 3508.3862 | 33.293499999999995 | 3601.8237 | 885 | 392 |
+| Windows 2022 / 2 | 413.6288 | 7.152699999999999 | 445.2767 | 941 | 389 |
+| Windows 2025 / 1 | 2036.043 | 8.7918 | 2110.4822 | 946 | 379 |
+| Windows 2025 / 2 | 458.3029 | 7.9164 | 486.174 | 1377 | 378 |
+
+四个测量均为 `cprReplies=1/frameCount=1/versionOk=true/readyWriteCompleted=true/startupComplete=true/complete=true/cleanupOk=true/exitCode=0`；`expectedStage=after-frame`、`failure/protocolReason=null`、`killRequested=false/exitObservedBeforeKill=true`。READY writeMs 是启动脚本 write/flush ACK 时点，不是退出 ACK。两平台嵌套 `experimentComplete/startupSuccess/diagnosticPassed` 均 true；顶层 `phase=done/status=pass/failure=null/diagnosticPassed=true`。这些结果确认本次四个有限样本的帧启动与有界退出，不证明普遍稳定、旧行协议已通过或历史退出原因。
+
+独立审查核对了准确 run/SHA、固定 8 键顶层、准备字段、嵌套诊断及每个 19 键 worker 记录、顺序/聚合/cleanup 与隐私边界。唯一上传内容为 `powershell-conpty-framed-prepared-windows-{2022,2025}/report.json`，SHA-256：2022 为 `f27bd7189d95e636034d4fcc3ce5159839f056f5e0129afa2feeb9864fe8a482`；2025 为 `34d857fad11b71f545ab6ca5bc2ed5f01c7c094730daf74b530c39f5c26614a3`。新运行通过不改写旧 `40161857832` 的前置失败，也不补出其缺失的编译/测试原因。
+
+下一步独立预注册严格的 frame 查询协议，分别定义 READY、查询结果与结束事件的阶段、顺序、重复及残缺规则，先完成离线和独立审查，再决定一次有限查询对照。原未限定 `(Get-Location).Path`、产品白名单、默认 progress 和精确 cwd 断言保留；两次查询及其协议仍共享从构造/投递查询脚本前开始的原 **30 秒总窗口**，不按新 frame 或第二次查询重置。模块限定命令只能作为独立对照，不能替代原生普通查询。本轮没有查询性能或独立 PowerShell stderr 证据，不解除旧未知 stderr、目录慢路径或第四批验收门禁；P1/第四批未验收，P2 仅准备，main 不合并。
+
+协调者并行审计保留了未在本轮修复或复测的入口：旧 `.github/workflows/p1-windows-conpty-framed-diagnostic.yml` 仍可由其路径或手动 dispatch 触发，且没有资产准备；`tools/wincheck/wincheck.sh:15–16` 虽不链接，启用全部功能时仍需满足宏资产前置条件。主 `p0-cross-platform.yml` 已先执行真实前端安装/构建；本轮只隔离新 prepared 触发路径，没有统一改造其他入口。`CLAUDE.md` 的 all-features/wincheck 真实资产前置说明已另行审查并集成为 `3664ee2`；旧 frame workflow 的入口处置仍待后续，不能把文档说明补齐写成所有独立调用入口均已自动准备资产。
