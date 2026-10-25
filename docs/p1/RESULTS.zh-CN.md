@@ -788,3 +788,38 @@ Windows 2022 仅取得两条记录，第二条失败后停止，反序第二轮�
 内容受限工件为 `powershell-conpty-framed-query-windows-{2022,2025}/report.json`，不保存原文、nonce、路径或环境值。独立核验包含准确 SHA/run、精确 schema/模式、准备前置、U/Q/轮次顺序、首停、数值/状态、聚合和清理。文件 SHA-256：2022 为 `92cca76e2c3cd9b39e6a36853e2450570e135849287e4a7e0b5ebf3df33d451d`；2025 为 `db2c98c0d50dc8c475d2b54abd830f99c5fa4769cc3638ef38c84bca013f239e`。不与旧提交样本拼接，不重判旧失败；ConPTY 合流仍不证明 PowerShell 独立 stderr 为空。
 
 下一步先对照既有 ConPTY 环境干预证据，选择尚未重复的最小归因实验。历史 spawn 前加回父 `PSModulePath` 已有多轮仍慢的记录，不能将同一 A/B 再称为首次验证。候选是先以不落原值的布尔证据确认启动后实际环境是否与父值不同，再判断运行时单变量干预是否有比较意义；若无差异，不据此重复已有矩阵。该候选尚未预注册或执行，不修改产品白名单或普通查询。原生首次/重开、中文空格 cwd、原 30 秒及独立 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 不合并。
+
+### ConPTY 运行时环境有限干预（工作流 `40166224227`）
+
+按[独立运行时预注册](CONPTY_RUNTIME_ENV_PLAN.zh-CN.md)，新增 `--runtime-env-framed control|parent` 与固定 31 键 worker schema。观察和干预合并在同一 worker 内但拆为两个宿主门控脚本，共用从第一段构造前开始的原 30 秒窗口；READY/ACK 同 5 秒，O 观察有效且不同后才投递第二段赋值/回读/普通查询脚本。成功顺序 R/O/V/S1/Q1/S2/Q2/D，共 8 frame；O 完整不等于可干预，V 成功不等于查询或完整样本成功。
+
+父参考值来自 worker 启动器 Process 环境，父/child 值都必须存在、非空、合法且不超过 4096 UTF-16 units，比较为 Ordinal；父缺失/空值在 spawn 前 `contrast-absent`，child 缺失/空值或相同在 O 后 `contrast-absent`，均不查询、不放行平台后续样本。非法值为 `environment-invalid`；读取异常 `environment-read-error` 保留未观察 null；赋值/回读异常 `assignment-failed` 保留 assignmentVerified=null，明确 V0 保存 false。只保存布尔状态、计时与有限原因，不保留原值或路径。Ordinal 比较仅针对整个字符串，不解析/规范化路径段、顺序或大小写，不核目录可访问性或网络；false 不证明缺少某个目录。父参考不是 PowerShell 默认值或推荐产品策略，V 只确认当次 Process 回读与目标相符，不保证跨时间状态。
+
+每平台最多四个 fresh worker，control/parent/parent/control（ABBA）。control 赋回实际原值，parent 只替换当前 child 的 `PSModulePath`，两者都用相同 .NET Process API 并回读验证，然后执行原两次普通 `(Get-Location).Path`。`environment=spawn-product-whitelist` 仅指 spawn 八项白名单，不误称 parent arm 的查询时环境完全未变。本轮不重复已做的 spawn 前父值矩阵，不修改产品；即便有差异也只支持整个变量替换的有限效果，不定位路径段、扫描、缓存或网络机制。
+
+Node 新专项 **96/96**、协调者全 native **471/471**、语法/diff 检查及 Node/方案/workflow 独立审查通过；实现/测试/方案来源 `ffe828c`，Rust 集成 `02218642f56aa3610bafd541f32441bd8c262e7f` 与 Node/方案集成 `ae796f5ede95635251d1414b33028bf50d2f874f` 首推均 `[skip ci]`；新 workflow 第二推准确测试 HEAD 为 `fa2a09ba9d7bbda5a0cae55dc8168a6c0729ca97`，唯一 [push 运行 40166224227](https://github.com/mofyer/new-windterm/actions/runs/40166224227) 已 `completed/success`，两平台全部步骤成功；准确 SHA 下 run list 仅此一条 push，无额外 dispatch、重试或补样本。Rust 专项 **77/77** 在审查修正前通过；审查发现赋值异常 catch 必须阻止后续查询、生产序列化不能依赖仅 dev 可用的 serde_json，两项均在 Windows 实测前修正，未改 Cargo 依赖。修正后脚本门控定向 **1/1**、固定 JSON 序列化定向 **1 test / 13 cases**，真实 Rust JSON→冻结 Node 接受与 deepEqual **13/13**；check/clippy（`-D warnings`）/fmt 及最终 Windows cfg 全目标/全部 feature clippy 通过，Rust 最终独立审查批准。没有把审查前 77/77 写成最终哈希完整重跑，也不把离线/类型检查当 Windows 运行。Windows 工件及实际观察/赋值/查询状态已独立核验，有限结果见下表。新入口复用原 prepared 层且不修改其默认行为，真实前端准备 3 分钟、Cargo `--locked --all-features` 14 分钟、四 worker 各 45 秒的名义总上限已到 job 20 分钟，工具链/调度/清理还占时间；硬限不扩，缺样本不补跑。首失败保留合法前缀、不追加观测轮，旧实验结论不变。ConPTY 合流仍不证明独立 stderr 为空，P1/第四批未验收，P2 仅准备，main 不合并。
+
+两平台均完成真实 npm ci/前端构建、Cargo test/build 和预注册的四个 fresh worker，共 **8/8 完整诊断样本**。准备进程 exit 0、输出字节 141/447、distReady=true；Cargo test/build exit 0、输出字节 29371/499。各进程均 failure null、退出已观察、本地资源释放、未请求 tree kill。Windows 工件只有 Cargo 进程结果，没有逐项测试计数，不能补写 Windows 77/77。
+
+八个样本的环境六字段均为 `parentPresent=true,parentUsable=true,effectivePresent=true,effectiveNonempty=true,effectiveEqualsParent=false,assignmentVerified=true`：完整 O 证明当次父/实际字符串有效且 Ordinal 不同，V 证明各 arm 目标值已在 child Process 中回读确认。parent arm 实际完成运行时替换，control 实际赋回原值；本轮未触发 contrast-absent、值无效或赋值失败路径。以下按 ABBA 原顺序列出，宿主 f64 显示至四位小数，q 保留 F4：
+
+| 平台 | 轮次/次序 | arm | q1 ms | q2 ms | startup ms | host ms | wall ms | READY write ms | 合流 bytes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2022 | 1/1 | control | 16859.9057 | 0.1520 | 2940.8183 | 17581.7745 | 20588.5628 | 20.3695 | 38901 |
+| 2022 | 1/2 | parent | 11405.0151 | 0.1336 | 225.4758 | 12099.2211 | 12364.4862 | 5.2175 | 35050 |
+| 2022 | 2/1 | parent | 11615.0356 | 0.1557 | 207.1660 | 12286.2783 | 12517.7345 | 4.6952 | 40262 |
+| 2022 | 2/2 | control | 11578.1321 | 0.1346 | 217.2241 | 12299.5081 | 12556.8397 | 4.9832 | 32926 |
+| 2025 | 1/1 | control | 28551.4060 | 0.2974 | 2177.7939 | 29669.0781 | 31907.8537 | 11.6208 | 66902 |
+| 2025 | 1/2 | parent | 22326.6272 | 0.3239 | 425.2677 | 23410.3500 | 23872.4836 | 9.3978 | 62480 |
+| 2025 | 2/1 | parent | 22985.8476 | 0.3291 | 422.9253 | 24067.3103 | 24527.5739 | 11.5402 | 65751 |
+| 2025 | 2/2 | control | 22421.7305 | 0.2688 | 431.8012 | 23495.5045 | 23962.0467 | 11.4074 | 65079 |
+
+所有样本 version/cwd1/cwd2/startupComplete/complete/cleanupOk=true、CPR=1、frameCount=8、stage=after-end、failure/protocolReason=null、exitCode=0、killRequested=false、exitObservedBeforeKill=true。READY write/flush 均在原启动 5 秒内，host 均小于原 30000 ms；2025 首 control 的 q1=28551.4060 ms、host=29669.0781 ms、wall=31907.8537 ms。wall 包含启动、host 与退出清理，超过 30 秒不等于查询超时；外层 worker 原上限是 45 秒，本轮没有放宽门限。八个外层 worker 均 exit 0、failure null、退出已观察、本地资源释放、未请求 tree kill；stdout 固定报告字节为 2022 的 635/633/632/642、2025 的 638/643/634/638。
+
+两平台顶层 `phase=done/status=pass/diagnosticPassed=true/failure=null`，内层 `startupSuccess/experimentComplete/commandSuccess/diagnosticPassed` 均 true。此处通过的是有限观察、宿主门控、赋值、普通查询、退出和清理诊断，不表示慢路径已修复或所有边界已由 Windows 触发。
+
+运行时 parent 替换后，2022 首次 q1 仍为 **11405.0151/11615.0356 ms**，2025 为 **22326.6272/22985.8476 ms**；各平台第二个 control 分别为 **11578.1321/22421.7305 ms**，与 parent 样本接近。各平台第一个 control 更慢（16859.9057/28551.4060 ms），不能把第一次与后续样本的差异直接当替换效果，顺序/缓存/宿主负载等仍可能影响。两 arm 第二次 q2 为 0.1336–0.3291 ms，可能已被第一次预热。本轮已验证存在可用差异并确实赋值，但 **没有消除秒级首次慢路径**，削弱“单独运行时恢复父 PSModulePath 足以修复或充分解释该延迟”的候选；不等于完全排除该变量及其与其他因素的交互，也不定位具体路径或内部机制。
+
+内容受限工件 `powershell-conpty-runtime-env-windows-{2022,2025}/report.json` 已独立核验准确 run/SHA、固定 schema/枚举、环境三态与阶段/count/cwd 关系、ABBA 顺序、准备前置、首停、聚合与清理。SHA-256：2022 为 `6c2a7537630539c5e6206517914c29e6d5628f76d4aaacbbb34cc4671ac8af21`；2025 为 `63a7e55e97d456d4e73771953179fadee2e4f6aca18d8491dc4470359883ace5`。工件不保留值、路径、脚本或原始输出；ConPTY 合流仍不能证明 PowerShell 独立 stderr 为空，不重判历史失败或拼接不同提交样本。
+
+下一步候选转向尚未在真实 ConPTY 完成的精确命令发现/显式 Management 模块导入阶段对照。既有 stdio `39819222771` 的精确 Get-Command 约 21–23 秒、显式导入约 44–59 ms，仅是跨层线索；若立项，应先独立预注册 D/I/I/D 的准备阶段及随后原两普通查询，共用原 30 秒窗口，不把 stdio 数值移作 ConPTY 证据，不把操作时间称为纯发现/纯加载或通过相减归因。该候选本轮未实施、未预注册，不再追加环境 arm 或重跑已完成 ABBA。产品白名单、普通原生查询与首次/重开、中文空格 cwd、独立 stderr 门禁保持；P1/第四批未验收，P2 仅准备，main 不合并。

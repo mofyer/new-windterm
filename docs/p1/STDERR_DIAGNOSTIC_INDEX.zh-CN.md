@@ -122,6 +122,12 @@ cold 首次查询为 21.396–29.322 秒（2022）及 22.752–28.074 秒（2025
 
 真实前端准备复用原安全流程，旧默认行为、产品白名单、普通原生查询、5 秒启动/500 ms 退出/30 秒查询/45 秒 worker 均保持。准备 3 分钟 + Cargo 14 分钟 + 四 worker 3 分钟已占满 20 分钟名义预算，job 硬限不扩，缺样本不补跑。普通首次 q1 为 11299.5118–27513.9404 ms，模块限定为 22.3006–37.4313 ms，第二次均 0.1351–0.2345 ms；所有样本 frameCount=6、cwd 正确、exit 0、未请求 kill、`exitObservedBeforeKill=true`，各 host 均在原 30 秒内。这只支持有限路径耗时差异，普通首次慢路径与具体根因仍未解决。下一步先核对既有 ConPTY 父 PSModulePath 干预证据，避免重做已有 spawn 前 A/B；运行时有效环境差异仅为待评估候选，未预注册/执行。ConPTY 合流不证明独立 stderr 为空，旧失败不改判；P1/第四批未验收，P2 仅准备，main 不合并。
 
+## 有限诊断通过：运行时 PSModulePath 干预 `40166224227`
+
+[新预注册](CONPTY_RUNTIME_ENV_PLAN.zh-CN.md)在同一原 30 秒内由宿主先接收实际环境 O 观察，再仅在父/实际值有效非空且不同的情况下投递 V 赋值验证与普通两查询；固定 ABBA 最多四个 fresh worker。父参考来自 worker 启动器，spawn 白名单不变；control 赋回实际值，parent 只改当前 child 的 Process 变量，二者读写 API 相同。缺失/空值/相同为 contrast-absent 非通过，非法与读写异常分别保留固定原因及 null/false 区别，不查询或追加样本。
+
+新 31 键 schema、Node 专项 96/96、全 native 471/471 与 Node/方案/workflow 独立审查已完成，Rust 最终独立审查通过：77/77 为审查修正前结果，修正后定向脚本与序列化各 1/1、真实 JSON→Node 13/13、check/clippy/fmt/Windows cfg 通过，未重称最终全套。首推 Rust/Node `0221864`/`ae796f5` 使用 `[skip ci]`，新 workflow 第二推准确 HEAD `fa2a09ba9d7bbda5a0cae55dc8168a6c0729ca97` 的唯一 [push 运行 40166224227](https://github.com/mofyer/new-windterm/actions/runs/40166224227) 已 `completed/success`，两平台准备/Cargo 与 8/8 worker 完整通过，工件独立核验，详见[执行记录](RESULTS.zh-CN.md#conpty-运行时环境有限干预工作流-40166224227)。八样本均父/实际值有效非空、Ordinal 不同、assignmentVerified=true、frameCount=8、cwd 正确、exit 0、未请求 kill、cleanup true；parent 替换后 q1 仍 11405.0151–22985.8476 ms，未消除首次慢路径，不能将更慢的首 control 与后续样本差异当稳定效果。该结果削弱单变量替换足以修复的解释，不全面排除 PSModulePath 交互。2025 首 control host 29669.0781 ms 符合原 30 秒，wall 31907.8537 ms 属启动+host+清理总量，仍受原 45 秒 worker 上限；没有放宽门禁。下一步候选是真实 ConPTY 精确发现/显式导入阶段对照，当前未预注册/实施，不以 stdio 替代或相减归因。产品白名单与普通查询保持，ConPTY 合流不证明独立 stderr 为空；P1/第四批未验收，P2 仅准备，main 不合并。
+
 ## 历史矩阵停止条件与后续取证边界
 
 原先约定的包含 `9be5c39` 复测已执行，未知 stderr 阻塞仍未解除；后续受控取证继续保留以下边界：
