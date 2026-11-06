@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { createAuthPrompts, type AuthPrompts } from "./ssh-kbdint";
 import { createRouteForm, ROUTE_FIELDS, routeStep, routeSummary, type JumpCredential, type RouteSummary, type Stage, type SshTargetRequest } from "./ssh-route";
 import { icon } from "./icons";
+import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 
 type Trust = "new" | "known" | "changed";
 type Challenge = {
@@ -402,7 +403,7 @@ export function createSshVerification(
       const started = purpose === "terminal" ? openTerminal(handoff) : openFiles(handoff);
       if (!started) {
         error.textContent = purpose === "terminal"
-          ? "P0 最多同时打开 8 个会话。请先关闭一个会话，再信任并连接。"
+          ? `P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。请先关闭一个会话，再信任并连接。`
           : "已有真实文件浏览正在进行。请先在文件面板断开，再信任并连接。";
         return;
       }

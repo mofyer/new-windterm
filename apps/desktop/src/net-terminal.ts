@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { icon } from "./icons";
+import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 
 export type NetKind = "telnet" | "raw";
 /** What the desktop backend's `net_open` receives as `target`. */
@@ -74,7 +75,7 @@ export function createNetTerminalDialog(
     }
     const name = `${netLabel(target.kind)} ${target.host}:${target.port}`;
     if (!openTerminal({ ...target, name })) {
-      error.textContent = "无法打开新标签：P0 最多同时打开 8 个会话。";
+      error.textContent = `无法打开新标签：P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`;
       return;
     }
     close();
