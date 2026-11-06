@@ -1,61 +1,19 @@
-import type { Terminal, ITheme } from "@xterm/xterm";
-import { createWorkspaceSession, describeVtNotice } from "./terminal";
-import type { VtAdapters } from "./terminal-compat/vt-adapters";
-import { authPromptsFor, createSshVerification, type SshTerminalRequest } from "./ssh-verification";
+import type { ITheme } from "@xterm/xterm";
+import { createSshVerification, type SshTerminalRequest } from "./ssh-verification";
 import { createSftpPanel } from "./sftp-panel";
-import { createNetTerminalDialog, netLabel, type NetTerminalRequest } from "./net-terminal";
+import { createNetTerminalDialog, type NetTerminalRequest } from "./net-terminal";
 import { createPortForwardSheet } from "./port-forward";
-import { createLocalLaunchOptions, snapshotLaunchOptions, type LaunchOptions } from "./local-launch";
+import { createLocalLaunchOptions } from "./local-launch";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
-import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
-import { Utf8Boundary } from "./utf8-boundary";
 import { icon } from "./icons";
 import {
-  attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, clipToGraphemes, dropLastGrapheme,
-  sendUnmappedControl,
-} from "./terminal-input";
-import { FitAddon } from "@xterm/addon-fit";
-import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+  createSessionLifecycle, forwardable, reopenable, type Session, type SessionHost,
+} from "./session-lifecycle";
+import { sample, stress } from "./demo-session";
+import { isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 
-type PtyEvent =
-  | { kind: "data"; id: string; sequence: number; data: number[] }
-  | { kind: "exit"; id: string; code: number | null }
-  | { kind: "error"; id: string; message: string };
-type Mode = "demo" | "pty" | "ssh" | "net";
-type InputSource = "user" | "reply";
-type Session = {
-  key: number;
-  name: string;
-  mode: Mode;
-  /** Deep immutable local launch configuration, held in memory only. */
-  launch: LaunchOptions;
-  /** Telnet or Raw TCP, for "net" sessions. */
-  netKind?: string;
-  terminal: Terminal;
-  /** VT adapters: terminal type, OSC 52 opt-in (off by default). */
-  vt: VtAdapters;
-  fit: FitAddon;
-  element: HTMLElement;
-  observer: ResizeObserver;
-  ptyId?: string;
-  operationId?: string;
-  closing: boolean;
-  line: string;
-  disposed: boolean;
-  outputRun: number;
-  status: string;
-  ended: boolean;
-  bytes: number;
-  // Input produced before the native ID exists, e.g. xterm's automatic reply
-  // to ConPTY's startup cursor-position query. Flushed in order once opened.
-  early: Uint8Array[];
-  earlyBytes: number;
-  ack: Promise<unknown>;
-  input: InputQueue;
-};
-const EARLY_INPUT_LIMIT = 4096;
 const $ = <T extends Element = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
 $("#app").innerHTML = `
@@ -72,13 +30,36 @@ $("#app").innerHTML = `
 <dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">主机验证 · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
 <dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="搜索命令"/><kbd>Esc</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
 <dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>原型能力与边界</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。Telnet 与 Raw TCP 终端为明文连接，仅按 UTF-8 显示，尚未与真实 telnetd 或网络设备验收。文件面板可另行只读连接 SFTP（列目录、属性、64 KiB 预览），不上传、删除或改名；演示会话与传输队列仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
-const sessions = new Map<number, Session>();
-let nextKey = 1,
-  activeKey = 0,
+let activeKey = 0,
   split = false,
   compact = false,
   selectedFile = 1;
-const encoder = new TextEncoder();
+/** The workbench side of the session lifecycle: selection, painting, status and notices. */
+const sessionHost: SessionHost = {
+  theme: () => colors(),
+  mount: (pane) => $("#terminals").append(pane),
+  notify: (message) => toast(message),
+  registered: (s) => {
+    activeKey = s.key;
+  },
+  focused: (s) => {
+    if (activeKey !== s.key) {
+      activeKey = s.key;
+      paintSessions();
+    }
+  },
+  changed: () => paintSessions(),
+  status: () => updateStatus(),
+  progress: (key) => {
+    if (key === activeKey) scheduleStatusUpdate();
+  },
+  removed: (key) => {
+    if (activeKey === key) activeKey = sessions.keys().next().value ?? 0;
+    paintSessions();
+  },
+};
+const lifecycle = createSessionLifecycle(sessionHost);
+const sessions = lifecycle.sessions;
 const native = isTauri();
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 let themeChoice = "light";
@@ -140,8 +121,6 @@ let toastTimer = 0;
 function active() {
   return sessions.get(activeKey);
 }
-/** IPC command prefix of the session's terminal transport. */
-const transport = (s: Session) => (s.mode === "ssh" || s.mode === "net" ? s.mode : "pty");
 const modeName = (s: Session) =>
   s.mode === "demo" ? "演示" : s.mode === "ssh" ? "SSH" : s.mode === "net" ? s.netKind ?? "TCP" : "本机";
 type DotState = "demo" | "live" | "ended" | "none";
@@ -231,7 +210,7 @@ function paintSessions() {
     close.className = "tab-close";
     close.setAttribute("aria-label", `关闭 ${s.name}`);
     close.innerHTML = icon("close");
-    close.onclick = () => void closeSession(s.key);
+    close.onclick = () => void lifecycle.close(s.key);
     tab.append(button, close);
     $("#tabs").append(tab);
     if (s.name.toLowerCase().includes(query)) {
@@ -264,462 +243,13 @@ function selectSession(key: number) {
   paintSessions();
   sessions.get(key)?.terminal.focus();
 }
-function prompt(s: Session) {
-  s.terminal.write("\r\n\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % ");
-}
-function sample(s: Session) {
-  s.outputRun++;
-  s.terminal.write("\r\n\x1b[1m字符 / 列宽 / ANSI 样本\x1b[0m\r\n");
-  const bytes = encoder.encode(
-    "中文输入 · 日本語 · café · e\u0301 · 👋 🌏\r\n",
-  );
-  for (let i = 0; i < bytes.length; i += 3)
-    s.terminal.write(bytes.slice(i, i + 3));
-  s.terminal.write(
-    "\x1b[31m■ red  \x1b[32m■ green  \x1b[34m■ blue  \x1b[38;2;145;90;190m■ true color\x1b[0m\r\n┌───────────────┐\r\n│  Terminal P0  │\r\n└───────────────┘",
-  );
-  prompt(s);
-}
-function stress(s: Session) {
-  const run = ++s.outputRun;
-  let n = 0;
-  const start = performance.now();
-  s.status = "持续输出中 · Ctrl-C 可停止";
-  const step = () => {
-    if (s.disposed || s.outputRun !== run) return;
-    const block = Array.from(
-      { length: 80 },
-      () =>
-        `${String(++n).padStart(6, "0")}  P0 bounded write · 中文 / UTF-8 / \x1b[32mOK\x1b[0m\r\n`,
-    ).join("");
-    const bytes = encoder.encode(block);
-    s.bytes += bytes.length;
-    s.terminal.write(bytes, () => {
-      if (s.key === activeKey) scheduleStatusUpdate();
-      if (n < 20000 && s.outputRun === run) window.setTimeout(step, 8);
-      else if (s.outputRun === run) {
-        s.status = `20,000 行样本结束 · ${(performance.now() - start).toFixed(0)} ms（非性能验收）`;
-        updateStatus();
-        prompt(s);
-      }
-    });
-  };
-  s.terminal.write("\r\n");
-  step();
-}
-/** Demo line length bound, in UTF-16 code units (cut back to a whole grapheme). */
-const DEMO_LINE_LIMIT = 4096;
-/** The demo echoes like a line editor: a paste may hold several lines; escape sequences are not emulated. */
-function demoInput(s: Session, data: string) {
-  if (data.startsWith("\x1b")) return;
-  for (const [token] of data.matchAll(/[\x00-\x1f\x7f]|[^\x00-\x1f\x7f]+/g)) demoToken(s, token);
-}
-/** Redraws the prompt row(s) after an erase; wide characters can make the line wrap early. */
-function demoRedraw(s: Session) {
-  const buffer = s.terminal.buffer.active;
-  let up = 0;
-  while (up < buffer.cursorY && buffer.getLine(buffer.baseY + buffer.cursorY - up)?.isWrapped) up++;
-  s.terminal.write(
-    `${up ? `\x1b[${up}A` : ""}\r\x1b[J\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % ${s.line}`,
-  );
-}
-function demoToken(s: Session, data: string) {
-  if (data === "\x03") {
-    s.outputRun++;
-    s.line = "";
-    s.status = "演示就绪";
-    s.terminal.write("^C");
-    prompt(s);
-    updateStatus();
-    return;
-  }
-  if (data === "\r") {
-    const command = s.line.trim();
-    s.line = "";
-    if (command === "clear") s.terminal.clear();
-    else if (command === "help")
-      s.terminal.write(
-        "\r\n演示命令: help · clear · pwd · ls · sample · stress\r\n此会话不执行真实命令。使用「本地终端」启动本机 shell。",
-      );
-    else if (command === "pwd") s.terminal.write("\r\n/home/demo/workspace");
-    else if (command === "ls")
-      s.terminal.write(
-        "\r\n\x1b[34mdocuments/  projects/\x1b[0m  README.md  部署说明.txt",
-      );
-    else if (command === "sample") {
-      sample(s);
-      return;
-    } else if (command === "stress") {
-      stress(s);
-      return;
-    } else if (command)
-      s.terminal.write("\r\n演示模式：输入 help 查看支持的演示命令。");
-    prompt(s);
-    return;
-  }
-  if (data === "\x7f") {
-    if (s.line) {
-      // One Backspace removes one visible character, not one code point of it.
-      s.line = dropLastGrapheme(s.line);
-      demoRedraw(s);
-    }
-    return;
-  }
-  if (!/[\x00-\x1f\x7f]/.test(data)) {
-    const input = clipToGraphemes(data, Math.max(0, DEMO_LINE_LIMIT - s.line.length));
-    s.line += input;
-    s.terminal.write(input);
-  }
-}
-function sendInput(s: Session, bytes: Uint8Array) {
-  if (!s.ptyId || s.disposed || s.ended || s.closing) return;
-  if (!s.input.push(bytes))
-    toast(`输入队列已满（${INPUT_BACKLOG_BYTES / 1024 / 1024} MiB）；本次输入未发送，请等待前面的内容发送完成。`);
-}
-function inputQueue(s: () => Session) {
-  return new InputQueue({
-    write: (chunk) => invoke(`${transport(s())}_write`, { id: s().ptyId, data: Array.from(chunk) }),
-    writable: () => {
-      const session = s();
-      return !!session.ptyId && !session.disposed && !session.ended && !session.closing;
-    },
-    failed: (error, discarded) => {
-      const session = s();
-      if (session.ended || session.disposed) return;
-      backendError(session, error);
-      if (discarded) toast(`输入发送失败；已丢弃其后尚未发送的 ${discarded.toLocaleString()} B，避免内容出现缺口。`);
-    },
-  });
-}
-function queueInput(s: Session, bytes: Uint8Array, source: InputSource = "user") {
-  if (s.ptyId) {
-    sendInput(s, bytes);
-    return;
-  }
-  // Only a local shell's explicit terminal reply is safe to replay. User
-  // input must never sit in the early FIFO and execute after a delayed open.
-  if (source !== "reply" || s.mode !== "pty" || s.disposed || s.ended || s.closing) return;
-  if (s.earlyBytes + bytes.length > EARLY_INPUT_LIMIT) {
-    toast("会话仍在启动，输入暂未发送；请稍后重试。");
-    return;
-  }
-  s.early.push(bytes);
-  s.earlyBytes += bytes.length;
-}
-function flushEarlyInput(s: Session) {
-  const queued = s.early;
-  s.early = [];
-  s.earlyBytes = 0;
-  for (const bytes of queued) sendInput(s, bytes);
-}
-function backendError(s: Session, error: unknown) {
-  if (s.disposed) return;
-  s.status = `错误：${String(error)}`;
-  updateStatus();
-}
-function createSession(name: string, mode: Mode, options?: LaunchOptions): Session | undefined {
-  if (sessions.size >= 8) {
-    toast("P0 最多同时打开 8 个会话。");
-    return;
-  }
-  const element = document.createElement("section");
-  element.className = "terminal-pane";
-  element.setAttribute("aria-label", `${name} 终端`);
-  $("#terminals").append(element);
-  // Set once the session exists, so a notice can never touch `s` before its declaration.
-  let owner: Session | undefined;
-  let replyInputDepth = 0;
-  const { terminal, vt } = createWorkspaceSession(colors(), {
-    onNotice: (notice) => { if (owner && !owner.disposed) toast(`「${owner.name}」${describeVtNotice(notice)}`); },
-    onReply: (active) => {
-      replyInputDepth += active ? 1 : -1;
-    },
-  });
-  const fit = new FitAddon();
-  terminal.loadAddon(fit);
-  terminal.open(element);
-  const s: Session = {
-    key: nextKey++,
-    name,
-    mode,
-    launch: snapshotLaunchOptions(options),
-    terminal,
-    vt,
-    fit,
-    element,
-    observer: new ResizeObserver(() => {
-      if (!element.hidden && !s.disposed) fit.fit();
-    }),
-    line: "",
-    disposed: false,
-    closing: false,
-    outputRun: 0,
-    status: mode === "demo" ? "演示就绪" : "正在启动…",
-    ended: false,
-    bytes: 0,
-    early: [],
-    earlyBytes: 0,
-    ack: Promise.resolve(),
-    input: inputQueue(() => s),
-  };
-  owner = s;
-  s.observer.observe(element);
-  attachPasteGuard(element, terminal, (removed) =>
-    toast(`已从粘贴内容中移除 ${removed} 个控制字符（仅保留制表符和换行）。`),
-  );
-  attachInsertTextBridge(terminal);
-  attachKeyDefaultGuard(terminal);
-  sessions.set(s.key, s);
-  activeKey = s.key;
-  terminal.onData((data) => {
-    if (mode === "demo") demoInput(s, data);
-    else queueInput(s, encoder.encode(data), replyInputDepth > 0 ? "reply" : "user");
-  });
-  terminal.onBinary((data) => {
-    if (mode !== "demo")
-      queueInput(
-        s,
-        Uint8Array.from(data, (c) => c.charCodeAt(0) & 255),
-      );
-  });
-  terminal.onResize(({ cols, rows }) => {
-    updateStatus();
-    if (s.ptyId && !s.ended && !s.closing)
-      void invoke(`${transport(s)}_resize`, { id: s.ptyId, cols, rows }).catch((error) => {
-        if (!s.ended) backendError(s, error);
-      });
-  });
-  terminal.attachCustomKeyEventHandler(
-    (event) =>
-      !(
-        event.key.toLowerCase() === "k" &&
-        (event.metaKey || (event.ctrlKey && event.shiftKey))
-      ) && !sendUnmappedControl(terminal, event),
-  );
-  element.addEventListener("focusin", () => {
-    if (activeKey !== s.key) {
-      activeKey = s.key;
-      paintSessions();
-    }
-  });
-  paintSessions();
-  if (mode === "demo") {
-    terminal.write(
-      "\r\n  \x1b[1mNew WindTerm\x1b[0m\r\n\r\n  Terminal workspace  /  P0 preview\r\n\r\n  \x1b[34mP0 交互原型\x1b[0m\r\n  这是本地演示，不会连接远端或执行系统命令。\r\n  输入 \x1b[32mhelp\x1b[0m 查看命令，或从上方运行字符与输出样本。\r\n",
-    );
-    prompt(s);
-  } else if (mode === "pty") void openPty(s);
-  terminal.focus();
-  return s;
-}
-/** Shows a character the stream ended in the middle of as U+FFFD; output is over. */
-function endOutput(s: Session, utf8: Utf8Boundary) {
-  const tail = utf8.flush();
-  if (tail.length) s.terminal.write(tail);
-}
-function terminalChannel(s: Session) {
-  const onEvent = new Channel<PtyEvent>();
-  const utf8 = new Utf8Boundary();
-  onEvent.onmessage = (event) => {
-    if (s.disposed) return;
-    if (event.kind === "data") {
-      s.bytes += event.data.length;
-      const receivedAt = diagnostics ? performance.now() : 0;
-      if (diagnostics) {
-        diagnostics.receivedChunks++;
-        diagnostics.receivedBytes += event.data.length;
-      }
-      s.terminal.write(utf8.take(new Uint8Array(event.data)), () => {
-        if (s.disposed) return;
-        const parsedAt = diagnostics ? performance.now() : 0;
-        if (diagnostics) {
-          diagnostics.parsedChunks++;
-          diagnostics.maxParseWaitMs = Math.max(diagnostics.maxParseWaitMs, parsedAt - receivedAt);
-        }
-        s.ack = s.ack
-          .then(async () => {
-            if (diagnostics) {
-              diagnostics.ackSubmitted++;
-              diagnostics.maxAckQueueWaitMs = Math.max(diagnostics.maxAckQueueWaitMs, performance.now() - parsedAt);
-            }
-            if (s.disposed) return;
-            await invoke(`${transport(s)}_ack`, { id: event.id, sequence: event.sequence });
-            if (diagnostics) diagnostics.ackCompleted++;
-          })
-          .catch((error) => { if (!s.ended) backendError(s, error); });
-        if (s.key === activeKey) scheduleStatusUpdate();
-      });
-    } else if (event.kind === "exit") {
-      endOutput(s, utf8);
-      s.ended = true;
-      s.early = [];
-      s.earlyBytes = 0;
-      s.input.clear();
-      s.status = `已退出 · code ${event.code ?? "unknown"}`;
-      s.ptyId = undefined;
-      updateStatus();
-    } else {
-      // Network errors are terminal lifecycle events; the backend releases the session.
-      if (s.mode === "ssh" || s.mode === "net") {
-        endOutput(s, utf8);
-        s.ended = true;
-        s.ptyId = undefined;
-        s.input.clear();
-      }
-      backendError(s, event.message);
-    }
-  };
-  return onEvent;
-}
-async function openPty(s: Session) {
-  const onEvent = terminalChannel(s);
-  try {
-    const { id } = await invoke<{ id: string }>("pty_open", {
-      ...s.launch,
-      onEvent,
-      cols: s.terminal.cols,
-      rows: s.terminal.rows,
-    });
-    if (s.disposed) {
-      await invoke("pty_close", { id });
-      return;
-    }
-    if (s.ended) return;
-    s.ptyId = id;
-    flushEarlyInput(s);
-    s.status = "本机 shell 已启动";
-    updateStatus();
-    // A resize failure is recoverable; it must not turn a live or exited shell
-    // into a failed launch, including when exit arrives while resize is pending.
-    void invoke("pty_resize", {
-      id,
-      cols: s.terminal.cols,
-      rows: s.terminal.rows,
-    }).catch((error) => {
-      if (!s.ended && !s.disposed && !s.closing) backendError(s, error);
-    });
-  } catch (error) {
-    if (s.disposed || s.ended) return;
-    s.ended = true;
-    s.early = [];
-    s.earlyBytes = 0;
-    s.input.clear();
-    s.status = `启动失败：${String(error)}`;
-    updateStatus();
-    s.terminal.write("\r\n本地 PTY 启动失败。请查看底部状态，或点击「修改启动目录」修正后重试。\r\n");
-  }
-}
 function startSshTerminal(request: SshTerminalRequest): boolean {
   if (!native) return false;
-  const s = createSession(request.name, "ssh");
-  if (!s) return false;
-  s.operationId = request.operationId;
-  s.status = "正在认证并打开 SSH…";
-  updateStatus();
-  void openSsh(s, request);
-  return true;
-}
-async function openSsh(s: Session, request: SshTerminalRequest) {
-  // Prompted keyboard-interactive asks in a dialog; closing the tab cancels it.
-  const prompts = authPromptsFor(request.credential, request.operationId, request.name);
-  if (prompts) {
-    s.status = "正在连接；请在弹出的对话框中回答服务器提示…";
-    updateStatus();
-  }
-  try {
-    const { id } = await invoke<{ id: string }>("ssh_open", {
-      challengeToken: request.challengeToken, operationId: request.operationId,
-      scopeToken: request.scopeToken, credential: request.credential, onEvent: terminalChannel(s),
-      cols: s.terminal.cols, rows: s.terminal.rows, onAuth: prompts?.channel,
-      ...(request.agentForwarding ? { agentForwarding: true } : {}),
-    }).finally(() => prompts?.finish());
-    if (s.disposed || s.ended) {
-      await invoke("ssh_close", { id });
-      return;
-    }
-    s.ptyId = id;
-    flushEarlyInput(s);
-    s.status = request.agentForwarding ? "SSH 已连接 · 已转发本机 ssh-agent" : "SSH 已连接";
-    if (!s.closing) await invoke("ssh_resize", { id, cols: s.terminal.cols, rows: s.terminal.rows });
-    updateStatus();
-  } catch (error) {
-    if (s.disposed || s.ended) return;
-    s.ended = true;
-    backendError(s, error);
-    s.terminal.write("\r\nSSH 连接失败。请查看底部状态，再从真实 SSH 入口重新连接。\r\n");
-  } finally {
-    s.operationId = undefined;
-  }
+  return lifecycle.openSsh(request);
 }
 function startNetTerminal(request: NetTerminalRequest): boolean {
   if (!native) return false;
-  const s = createSession(request.name, "net");
-  if (!s) return false;
-  s.netKind = netLabel(request.kind);
-  // The client-chosen ID can be closed while the connection is still pending.
-  s.operationId = crypto.randomUUID();
-  s.status = `正在连接 ${s.netKind}…`;
-  paintSessions();
-  void openNet(s, request);
-  return true;
-}
-async function openNet(s: Session, { kind, host, port }: NetTerminalRequest) {
-  const id = s.operationId!;
-  try {
-    await invoke<{ id: string }>("net_open", {
-      target: { kind, host, port }, id, onEvent: terminalChannel(s),
-      cols: s.terminal.cols, rows: s.terminal.rows,
-    });
-    if (s.disposed || s.ended) {
-      await invoke("net_close", { id });
-      return;
-    }
-    s.ptyId = id;
-    s.status = `${s.netKind} 已连接`;
-    updateStatus();
-    // Resizes during connect were not sent; a peer that already hung up is not a failed open.
-    if (!s.closing)
-      void invoke("net_resize", { id, cols: s.terminal.cols, rows: s.terminal.rows }).catch((error) => {
-        if (!s.ended) backendError(s, error);
-      });
-  } catch (error) {
-    if (s.disposed || s.ended) return;
-    s.ended = true;
-    backendError(s, error);
-    s.terminal.write("\r\n连接失败。请查看底部状态，再从「新建连接」重新打开。\r\n");
-  } finally {
-    s.operationId = undefined;
-  }
-}
-async function closeSession(key: number) {
-  const s = sessions.get(key);
-  if (!s || s.closing) return;
-  s.closing = true;
-  try {
-    if (s.mode === "ssh" && s.operationId) {
-      await invoke("ssh_cancel", { operationId: s.operationId });
-    } else if (s.ptyId ?? s.operationId) {
-      // A pending network terminal is cancelled by closing its client-chosen ID.
-      await invoke(`${transport(s)}_close`, { id: s.ptyId ?? s.operationId });
-    }
-  } catch (error) {
-    s.closing = false;
-    backendError(s, error);
-    toast("会话关闭失败，请重试。");
-    return;
-  }
-  s.disposed = true;
-  s.early = [];
-  s.earlyBytes = 0;
-  s.input.clear();
-  s.outputRun++;
-  s.observer.disconnect();
-  s.vt.dispose();
-  s.terminal.dispose();
-  s.element.remove();
-  sessions.delete(key);
-  if (activeKey === key) activeKey = sessions.keys().next().value ?? 0;
-  paintSessions();
+  return lifecycle.openNet(request);
 }
 function toggleClipboardWrite() {
   const s = active();
@@ -744,10 +274,6 @@ function startSftpBrowser(request: SshTerminalRequest): boolean {
 const sshVerification = createSshVerification(startSshTerminal, startSftpBrowser);
 const netTerminal = createNetTerminalDialog(startNetTerminal);
 const forwardSheet = createPortForwardSheet();
-/** A connected SSH tab; its port forwards live and end with it in the backend. */
-function forwardable(s: Session) {
-  return s.mode === "ssh" && !!s.ptyId && !s.ended && !s.closing && !s.disposed;
-}
 function openForwards() {
   const s = active();
   const id = s?.ptyId;
@@ -794,35 +320,33 @@ $("#compact-toggle").onclick = () => {
 };
 $("#connect-open").onclick = () => showDialog("#connect-dialog");
 $("#sidebar-add").onclick = $("#demo-add").onclick = () =>
-  createSession(`Demo ${nextKey}`, "demo");
+  lifecycle.openDemo(`Demo ${lifecycle.nextKey}`);
 $("#local-open").onclick = () => {
   if (!native) {
     toast("本地 PTY 仅在 Tauri 桌面程序中可用。请使用 npm run tauri dev。");
     return;
   }
-  createSession(`Local ${nextKey}`, "pty");
+  lifecycle.openLocal(`Local ${lifecycle.nextKey}`);
 };
 const localOptions = createLocalLaunchOptions(
   $("#local-dialog") as HTMLDialogElement,
   native,
-  (options) => !!createSession(`Local ${nextKey}`, "pty", options),
+  (options) => !!lifecycle.openLocal(`Local ${lifecycle.nextKey}`, options),
 );
 $("#local-options-open").onclick = () => localOptions.open();
 $("#local-edit-cwd").onclick = () => {
   const s = active();
-  if (!s || s.mode !== "pty" || !s.ended || s.closing || s.disposed) return;
+  if (!s || !reopenable(s)) return;
   localOptions.open(s.launch);
 };
 $("#local-reopen").onclick = () => {
   const s = active();
-  if (!native || !s || s.mode !== "pty" || !s.ended || s.closing || s.disposed) return;
-  // Keep the old terminal for inspection. A new Session owns fresh queues and
-  // becomes active synchronously, so a second click cannot reopen it again.
-  createSession(`Local ${nextKey}`, "pty", s.launch);
+  if (!native || !s || !reopenable(s)) return;
+  lifecycle.reopenLocal(s, `Local ${lifecycle.nextKey}`);
   updateStatus();
 };
 $("#split-toggle").onclick = () => {
-  if (!split && sessions.size < 2) createSession(`Demo ${nextKey}`, "demo");
+  if (!split && sessions.size < 2) lifecycle.openDemo(`Demo ${lifecycle.nextKey}`);
   split = !split;
   paintSessions();
 };
@@ -838,7 +362,7 @@ $("#sample-run").onclick = () => {
 };
 $("#stress-run").onclick = () => {
   const s = active();
-  if (s?.mode === "demo") stress(s);
+  if (s?.mode === "demo") stress(s, sessionHost);
 };
 $("#about-open").onclick = () => showDialog("#about-dialog");
 let pendingName = "";
@@ -853,7 +377,7 @@ $("#connect-form").addEventListener("submit", (event) => {
 });
 $("#host-confirm").onclick = () => {
   ($("#host-dialog") as HTMLDialogElement).close();
-  if (createSession(pendingName, "demo")) {
+  if (lifecycle.openDemo(pendingName)) {
     toast("已打开演示会话；未建立 SSH 连接，未保存主机信任。");
   }
 };
@@ -966,7 +490,7 @@ const commands = [
   },
   {
     name: "新建演示终端",
-    action: () => createSession(`Demo ${nextKey}`, "demo"),
+    action: () => lifecycle.openDemo(`Demo ${lifecycle.nextKey}`),
   },
   {
     name: "打开本地终端 · 仅桌面",
@@ -1055,19 +579,11 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("beforeunload", () => {
   window.clearTimeout(statusTimer);
-  for (const s of sessions.values()) {
-    s.disposed = true;
-    s.outputRun++;
-    s.observer.disconnect();
-    s.vt.dispose();
-    s.terminal.dispose();
-    if (s.mode === "ssh" && s.operationId) void invoke("ssh_cancel", { operationId: s.operationId }).catch(() => {});
-    else if (s.ptyId ?? s.operationId) void invoke(`${transport(s)}_close`, { id: s.ptyId ?? s.operationId }).catch(() => {});
-  }
+  lifecycle.shutdown();
   for (const t of transfers) clearInterval(t.timer);
   sftpPanel.dispose();
 });
 $("#runtime-note").textContent = native
   ? "桌面原型 · 本地、真实 SSH、Telnet 与 Raw TCP 终端会实际执行或发送输入；文件面板可只读连接 SFTP；演示会话与传输队列仍为模拟数据。"
   : "交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。";
-createSession("Getting started", "demo");
+lifecycle.openDemo("Getting started");
