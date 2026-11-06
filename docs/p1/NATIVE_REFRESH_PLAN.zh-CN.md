@@ -35,13 +35,13 @@ gh run list --repo mofyer/new-windterm --workflow p0-cross-platform.yml --branch
 
 - `workflow_dispatch.inputs`：
   - `native_only`：boolean，默认 `false`，说明为 “Diagnostic run: only the two native WebView jobs (not the full acceptance gate)”。取 `true` 时，`gssapi` 和四个 `desktop` matrix 作业因 `if: ${{ !inputs.native_only }}` 跳过。
-  - `windows_shell_repeats`：number，默认 `0`。安装和构建之前，“Validate native diagnostic inputs before installing or building” 步骤用 `parseShellRepeats` 校验它是 0–10 的整数。该值只作为 `P1_NATIVE_SHELL_REPEATS` 传给 Windows 运行步骤；Linux 步骤不传，runner 视为 0。非 Windows 平台传入大于 0 的值会被 `scenarioPlan` 拒绝。
+  - `windows_shell_repeats`：number，默认 `0`。安装和构建之前，“Validate native diagnostic inputs before installing or building” 步骤用 `parseShellRepeats` 校验它是 0–10 的整数（输入声明为 number，经环境变量传递后为字符串，函数按字符串 `^(?:[0-9]|10)$` 校验）。该值只作为 `P1_NATIVE_SHELL_REPEATS` 传给 Windows 运行步骤；Linux 步骤不传，runner 视为 0。非 Windows 平台传入大于 0 的值会被 `scenarioPlan` 拒绝。
   - `windows_webview_timing`：boolean，默认 `false`，只映射为 Windows 步骤的 `P1_NATIVE_WEBVIEW_TIMING`（`1` 或 `0`），对 Linux 无作用。
 - `native-webview` 作业没有 `if`，matrix 为：
   - `ubuntu-24.04` / `x86_64-unknown-linux-gnu`，作业名 “Linux x64 — native WebKitGTK smoke (tauri-driver)”；
   - `windows-2022` / `x86_64-pc-windows-msvc`，作业名 “Windows x64 — native WebView2 smoke (tauri-driver)”。
 
-  作业设置 `fail-fast: false`、`timeout-minutes: 40`，使用 Node 26.0.0、Rust 1.99.0 和 `--locked` 安装的 `tauri-driver` 2.0.6。Linux 把 `webkit2gtk-driver` 精确钉在与 `libwebkit2gtk-4.1-0` 相同的版本，在 Xvfb `1600x1000x24` 下运行；Windows 安装与 WebView2 Runtime 匹配的 msedgedriver。步骤顺序为：helper 单测 → 生产前端 build → `--features custom-protocol` 链接 debug 桌面程序 → 以 `dev-tools` 构建 loopback russh `ssh_terminal_fixture` → 运行 runner → `if: always()` 上传。
+  作业设置 `fail-fast: false`、`timeout-minutes: 40`，使用 Node 26.0.0、Rust 1.99.0 和 `--locked` 安装的 `tauri-driver` 2.0.6。Linux 把 `webkit2gtk-driver` 精确钉在与 `libwebkit2gtk-4.1-0` 相同的版本，在 Xvfb `1600x1000x24` 下运行；Windows 安装与 WebView2 Runtime 匹配的 msedgedriver。步骤顺序为：helper 单测 → 生产前端 build → `--features custom-protocol` 链接 debug 桌面程序 → 以 `dev-tools` 构建 loopback russh `ssh_terminal_fixture` → `cargo install` 固定版本 tauri-driver → Windows 安装匹配的 msedgedriver → 记录 WebView 运行时与驱动版本（`versions.log`）→ 运行 runner → `if: always()` 上传。
 - 并发：`group: p0-platform-${{ github.workflow }}-${{ github.ref }}`，`cancel-in-progress: true`。同一 `refs/heads/p1/integration` 上再次 dispatch 会取消进行中的运行，因此本刷新期间不得再 dispatch 本 workflow。本 workflow 的 push 触发只针对 `main`，推送 `p1/integration` 不会触发它。各 `p1-windows-*` workflow 只在推送 `p1/integration` 且改动其列出的路径时触发，这些路径均不含 `docs/`。撰写时没有开放的 PR。
 - 上传的工件为 `p0-native-webview-x86_64-unknown-linux-gnu-ubuntu-24.04-<run_attempt>` 和 `p0-native-webview-x86_64-pc-windows-msvc-windows-2022-<run_attempt>`，内容是 `$RUNNER_TEMP/p0-native/`，设置 `if-no-files-found: warn`，保留 14 天。本刷新只接受 attempt 1，两个名称都应以 `-1` 结尾。
 
@@ -154,7 +154,7 @@ gh run watch <RUN_ID> --repo mofyer/new-windterm --exit-status
 由 dispatch 执行者以外的独立核验者完成以下步骤，结果写入[执行记录](RESULTS.zh-CN.md)新的小节“当前产品树有限原生验收刷新（工作流 `<RUN_ID>`）”：
 
 1. **run/SHA 绑定**：执行 `gh run view <RUN_ID> --repo mofyer/new-windterm --json headSha,headBranch,event,status,conclusion,attempt,jobs,createdAt,updatedAt`，并用 `gh run list --repo mofyer/new-windterm --commit <HEAD> --json databaseId,workflowName,event,status,conclusion` 列出同一 SHA 的全部运行。本 workflow 在该 SHA 下应只有这一条 dispatch；其他 workflow 的运行单独列出，不并入本刷新。
-2. **下载与 SHA-256**：用 `gh api repos/mofyer/new-windterm/actions/runs/<RUN_ID>/artifacts` 记录两个工件的 id、name、size_in_bytes 和 digest。逐个执行 `gh api repos/mofyer/new-windterm/actions/artifacts/<ARTIFACT_ID>/zip > <新空目录>/<name>.zip`，`shasum -a 256` 的结果须与 API 返回的 `digest` 一致；不一致即为核验失败，不自行改判。随后解压到各自的新空目录 `.artifacts/p1/native-refresh/<RUN_ID>/<name>/`。工件按不可信数据处理，核验脚本放在其他目录，只通过路径参数读取。须在 14 天保留期内完成。
+2. **下载与 SHA-256**：用 `gh api repos/mofyer/new-windterm/actions/runs/<RUN_ID>/artifacts` 记录两个工件的 id、name、size_in_bytes 和 digest。逐个执行 `gh api repos/mofyer/new-windterm/actions/artifacts/<ARTIFACT_ID>/zip > <新空目录>/<name>.zip`，API 返回的 `digest` 形如 `sha256:<64 位十六进制>`，去掉 `sha256:` 前缀后，须与 `shasum -a 256` 输出的前 64 位十六进制完全一致（统一按小写比较）；不一致即为核验失败，不自行改判。随后解压到各自的新空目录 `.artifacts/p1/native-refresh/<RUN_ID>/<name>/`。工件按不可信数据处理，核验脚本放在其他目录，只通过路径参数读取。须在 14 天保留期内完成。
 3. **固定字段**：按判据 1–4 逐项核对 summary 与 trace，并核对以下场景证据：
    - `workbench.href`；
    - 本地 Shell 身份行；
