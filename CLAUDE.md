@@ -134,7 +134,7 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 ### 前端
 
-- `main.ts` 用一个大的 `innerHTML` 模板构建整个工作台，负责选中、标签/列表绘制、状态栏和对话框；`isTauri()` 决定是走真实 IPC 还是浏览器演示。会话生命周期与终端传输在 `session-lifecycle.ts`：`Session` 注册表（`mode`: `demo` | `pty` | `ssh` | `net`，最多 8 个）、打开/输入/尺寸/ACK/关闭/重开/卸载入口、早期输入 FIFO 与 Channel 字节流；它只经 `SessionHost` 回调与工作台交互，不直接读写工作台 DOM。浏览器演示命令在 `demo-session.ts`。两者都不保存屏幕副本，xterm 仍是唯一屏幕状态。「新建连接」表单和传输队列是模拟数据；文件面板默认显示 `#file-demo` 模拟内容，只读 SFTP 连接后切换到 `sftp-panel.ts` 渲染的 `#sftp-view`。
+- `main.ts` 用一个大的 `innerHTML` 模板构建整个工作台，负责选中、标签/列表绘制、状态栏和对话框；`isTauri()` 决定是走真实 IPC 还是浏览器演示。会话生命周期与终端传输在 `session-lifecycle.ts`：`Session` 注册表（`mode`: `demo` | `pty` | `ssh` | `net`，最多 8 个）、打开/输入/尺寸/ACK/关闭/重开/卸载入口、早期输入 FIFO 与 Channel 字节流；它只经 `SessionHost` 回调与工作台交互，不直接读写工作台 DOM。浏览器演示命令在 `demo-session.ts`。两者都不保存屏幕副本，xterm 仍是唯一屏幕状态。历史行数与会话上限的命名预算在 `history-budget.ts`（热历史仍为 5,000 行，见 [历史预算预案](docs/p1/HISTORY_BUDGET_PLAN.zh-CN.md)）；关闭会话时会断开输出 Channel 回调对会话的引用，不依赖后端 `end` 才回收。图标集中在 `icons.ts`。「新建连接」表单和传输队列是模拟数据；文件面板默认显示 `#file-demo` 模拟内容，只读 SFTP 连接后切换到 `sftp-panel.ts` 渲染的 `#sftp-view`。
 - `ssh-verification.ts`：SSH 指纹确认与连接对话框流程；`terminal.ts`：xterm 工厂（启用 Unicode 11 宽度，并挂上 `terminal-compat/vt-adapters.ts` 的 VT 回复适配：设备身份、DECSCL、DECRQSS、DECOM 下的 CPR、默认关闭的 OSC 52 写入）；`terminal-compat/vt52-stream.ts`：隔离的 VT52 实验，未接入生产终端。
 - 终端输出、文件名、窗口标题都是不可信数据，不能拼进 `innerHTML`。
 - E2E 通过 `page.addInitScript` 注入 `window.__TAURI_INTERNALS__`（以及 `isTauri`）来 stub IPC；新增前端 IPC 调用时，相关 spec 中的 stub 也要同步更新。

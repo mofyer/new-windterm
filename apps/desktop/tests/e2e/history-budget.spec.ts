@@ -378,7 +378,7 @@ test('Chrome GC observation: an exited tab keeps its history until closed, then 
   });
 });
 
-test('Chrome GC observation: a closed running tab stays reachable until its channel ends', async ({ page }, testInfo) => {
+test('Chrome GC observation: closing a running tab releases it before its channel ends', async ({ page }, testInfo) => {
   await installChannelIpc(page);
   await openFilledLocal(page);
   const cdp = await page.context().newCDPSession(page);
@@ -388,19 +388,20 @@ test('Chrome GC observation: a closed running tab stays reachable until its chan
   await page.getByRole('button', { name: /^关闭 Local/ }).click();
   await expect(page.getByRole('tab')).toHaveCount(1);
   expect(await page.evaluate(() => (window as any).historyIpc.closes)).toBe(1);
-  // The registered channel callback still reaches the session, so the xterm and its history stay.
+  // The callback stays registered until `end`, but close detached its handler (R1),
+  // so it no longer reaches the session, its xterm or its history.
   expect(await page.evaluate(() => (window as any).historyIpc.callbacks.size)).toBe(1);
   await settle(page);
-  expect(await liveTerminals(cdp)).toBe(2);
-  const pending = await heap(cdp);
+  expect(await liveTerminals(cdp)).toBe(1);
+  const closed = await heap(cdp);
   await page.evaluate(() => (window as any).historyIpc.end());
   expect(await page.evaluate(() => (window as any).historyIpc.callbacks.size)).toBe(0);
   await settle(page);
   expect(await liveTerminals(cdp)).toBe(1);
   const ended = await heap(cdp);
   await record(testInfo, 'history-budget-close-channel', {
-    releasedByCloseMiB: mib(total(filled) - total(pending)),
-    releasedAfterEndMiB: mib(total(pending) - total(ended)),
+    releasedByCloseMiB: mib(total(filled) - total(closed)),
+    releasedAfterEndMiB: mib(total(closed) - total(ended)),
   });
-  expect(total(pending) - total(ended)).toBeGreaterThan(MIB);
+  expect(total(filled) - total(closed)).toBeGreaterThan(MIB);
 });

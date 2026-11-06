@@ -11,6 +11,7 @@ import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
 import { Utf8Boundary } from "./utf8-boundary";
 import { attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, sendUnmappedControl } from "./terminal-input";
 import { demoInput, demoWelcome, type DemoView } from "./demo-session";
+import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 
 /**
  * Session lifecycle and terminal transport. Each session has one entry per action: open
@@ -55,6 +56,8 @@ export type Session = {
   early: Uint8Array[];
   earlyBytes: number;
   ack: Promise<unknown>;
+  /** Output channel of a native session; detached on close so it cannot keep the session alive. */
+  channel?: Channel<PtyEvent>;
   input: InputQueue;
 };
 
@@ -95,7 +98,6 @@ export interface SessionLifecycle {
 }
 
 /** At most this many sessions exist at once. */
-const SESSION_LIMIT = 8;
 const EARLY_INPUT_LIMIT = 4096;
 
 /** IPC command prefix of the session's terminal transport. */
@@ -170,8 +172,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   }
 
   function createSession(name: string, mode: Mode, options?: LaunchOptions): Session | undefined {
-    if (sessions.size >= SESSION_LIMIT) {
-      host.notify("P0 最多同时打开 8 个会话。");
+    if (sessions.size >= MAX_WORKSPACE_SESSIONS) {
+      host.notify(`P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`);
       return;
     }
     const element = document.createElement("section");
@@ -278,6 +280,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   }
   function terminalChannel(s: Session) {
     const onEvent = new Channel<PtyEvent>();
+    s.channel = onEvent;
     const utf8 = new Utf8Boundary();
     onEvent.onmessage = (event) => {
       if (s.disposed) return;
@@ -458,6 +461,10 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       return;
     }
     s.disposed = true;
+    // The backend may still hold its channel clone until `end`; drop the handler so the
+    // registered callback no longer reaches this session, its xterm or its history.
+    if (s.channel) s.channel.onmessage = () => {};
+    s.channel = undefined;
     s.early = [];
     s.earlyBytes = 0;
     s.input.clear();
