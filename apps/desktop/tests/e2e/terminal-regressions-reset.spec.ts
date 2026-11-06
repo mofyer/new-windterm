@@ -111,6 +111,7 @@ test.describe('RIS (ESC c)', () => {
     // VT100 RIS returns to the power-on state, where the text cursor is shown. xterm.js 6.0.0 keeps
     // CoreService.isCursorHidden across Terminal.reset(); only DECSTR clears it. After a program
     // hides the cursor and the host sends a bare RIS, the cursor stays invisible until CSI ? 25 h.
+    // Remove test.fail once the raw pin below ("xterm.js 6.0.0 alone keeps ...") starts failing.
     const s = await Session.open(page, 'pty', { size: SIZE });
     const cursor = page.locator('.terminal-pane:not([hidden]) .xterm-rows .xterm-cursor');
     await expect(cursor).toHaveCount(1);
@@ -126,6 +127,7 @@ test.describe('RIS (ESC c)', () => {
   test.fail('known defect: RIS leaves line feed/new line mode (LNM, CSI 20 h) set (xterm.js 6.0.0 core)', async ({ page }) => {
     // xterm.js stores LNM in options.convertEol, which Terminal.reset() does not restore, so after
     // RIS every LF still returns to column 1 and DECRQM 20 still reports "set".
+    // Remove test.fail once the raw pin below ("xterm.js 6.0.0 alone keeps ...") starts failing.
     const s = await Session.open(page, 'pty', { size: SIZE });
     await s.send(`${E}[20h`, `${E}c`, 'A\nB');
     await s.mark();

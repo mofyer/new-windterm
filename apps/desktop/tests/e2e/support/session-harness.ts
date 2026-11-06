@@ -318,7 +318,11 @@ export class Session {
     return this.page.evaluate(() => (window as any).qaTools.snapshot());
   }
 
-  /** Lets xterm's zero-delay timers and the IPC promise chain run. */
+  /**
+   * Lets xterm's zero-delay timers and the IPC promise chain run. A key handled by xterm reaches
+   * the stub's `*_write` synchronously or a few microtasks later, so this fixed wait is only the
+   * window for asserting that nothing was sent; positive checks poll through {@link expectWritten}.
+   */
   async settle(): Promise<void> {
     await this.page.evaluate(() => new Promise(resolve => setTimeout(resolve, 30)));
   }
@@ -385,7 +389,7 @@ export class Session {
   }
 }
 
-/** Seeded cut lists with 2–8 random cuts, so runs are reproducible. */
+/** Seeded cut lists with 2–8 random cuts; the seed is arbitrary but fixed so failures reproduce. */
 export function randomCuts(length: number, count: number, seed = 7): number[][] {
   let state = seed;
   const next = (n: number) => { state = (state * 1103515245 + 12345) & 0x7fffffff; return state % n; };
