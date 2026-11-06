@@ -18,7 +18,8 @@ export const DEFAULT_SCROLLBACK_LINES = 5000;
 /**
  * Workspace sessions (tabs of every kind, demo included) one window holds at
  * once. main.ts currently enforces the same literal; the Rust PTY and
- * Telnet/TCP registries keep their own limit of 8 live sessions each.
+ * Telnet/TCP registries keep their own limit of 8 sessions each (the PTY
+ * count is application-wide and includes closing sessions not yet reaped).
  */
 export const MAX_WORKSPACE_SESSIONS = 8;
 

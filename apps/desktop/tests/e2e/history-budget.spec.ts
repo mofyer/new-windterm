@@ -399,7 +399,7 @@ test('Chrome GC observation: a closed running tab stays reachable until its chan
   expect(await liveTerminals(cdp)).toBe(1);
   const ended = await heap(cdp);
   await record(testInfo, 'history-budget-close-channel', {
-    retainedAfterCloseMiB: mib(total(filled) - total(pending)),
+    releasedByCloseMiB: mib(total(filled) - total(pending)),
     releasedAfterEndMiB: mib(total(pending) - total(ended)),
   });
   expect(total(pending) - total(ended)).toBeGreaterThan(MIB);
