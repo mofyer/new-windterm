@@ -29,6 +29,7 @@ gh run list --repo mofyer/new-windterm --workflow p0-cross-platform.yml --branch
 
 - diff 若涉及该 workflow 或上列 runner、场景、helper 文件，本方案对场景和判据的描述不再自动适用，须先修订、复审再 dispatch。diff 若涉及产品源码，结果记录须逐项列出被测树相对 `c3b3a68` 的产品差异。
 - 撰写时，本机 macOS（Node 26.0.0）在 `c3b3a68` 上运行该 helper 命令为 40 passed / 0 failed / 0 skipped。这只是本机 helper 结果，不代表 Linux 或 Windows 上的执行。
+- 方案集成时（2026-11-07）被测树相对 `c3b3a68` 已多一个产品提交 `734d98b`（界面去模板化打磨：样式、图标、标签与侧栏状态点、状态栏去掉 `●` / `◌` 前缀、连接弹窗入口改为分组列表，DOM id 不变）。协调者已只读核对：它未改上列 workflow、runner、场景或 helper 文件；场景使用的 `#tabs .tab`、`[role="tab"]`、`.tab-close`、`#terminal-state`、`#local-open`、`#local-options-open`、`#connect-open`、`#ssh-terminal-open` 等选择器均保留，状态判断只用 `includes` 匹配的「本机 shell 已启动」等子串未变。本条只是静态兼容核对，不代表这些场景已在新树上通过；若集成时又加入其他产品提交，仍按上一条逐项列出。
 - 本 workflow 在 `p1/integration` 上不得有 queued 或 in_progress 的运行。若存在，等待其结束或由用户决定，不得用新 dispatch 取消它（见下文并发规则）。
 
 ## 入口、输入与并发（按 workflow 文件核实）
