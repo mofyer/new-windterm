@@ -122,6 +122,8 @@
 
 - `InputQueue` 要为单次 `push` 提供结果回调或等价机制，只用于启动命令；普通输入的重试与丢弃规则不变。
 - 队列满时重发同一块不违背“一次”：后端已明确表示没有接收这一块。
+- 结果回调必须覆盖一条静默路径：`#send` 在队列满后的等待中发现队列已被清空或会话不可写时，直接返回，不抛错，`#pump` 的 catch 不会触发（`input-queue.ts` `#send`）。这时最后一次尝试已被后端明确拒绝，应记为 `not-sent`。
+- 兜底：会话退出、启动失败、关闭或销毁时，若 `startup` 仍为 `queued`，按当时是否有写请求在途，转为 `unconfirmed` 或 `not-sent`。不依赖 `InputQueue` 一定回调。
 
 “恰好一次”在两个层面的含义：
 
@@ -162,7 +164,7 @@
 
 **Linux**
 
-- 默认 Bash，locale 为 `C.UTF-8`。N_TTY 行缓冲为 4096 字节。
+- 默认 Bash，locale 为 `C.UTF-8`。头文件常量 `MAX_CANON` 为 255，但内核 N_TTY 的实际缓冲（`N_TTY_BUF_SIZE`）为 4096 字节，可以容纳更长的规范模式行。1000 字节上限同样须实测。
 - CI 没有安装 Zsh，PowerShell 7 也未实测，都记为未验证。
 
 **Windows cmd**
