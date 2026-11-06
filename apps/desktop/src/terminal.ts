@@ -3,6 +3,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import {
   attachVtAdapters, type VtAdapterOptions, type VtAdapters, type VtNotice,
 } from "./terminal-compat/vt-adapters";
+import { DEFAULT_SCROLLBACK_LINES } from "./history-budget";
 
 export interface WorkspaceTerminal {
   readonly terminal: Terminal;
@@ -17,7 +18,8 @@ export function createWorkspaceSession(theme?: ITheme, vt: VtAdapterOptions = {}
     fontFamily: '"SFMono-Regular", Menlo, Monaco, "Cascadia Code", monospace',
     fontSize: 14,
     lineHeight: 1.45,
-    scrollback: 5000,
+    // Hot history only; see history-budget.ts before changing it.
+    scrollback: DEFAULT_SCROLLBACK_LINES,
     theme,
     // The official Unicode provider API is still marked experimental in xterm 6.
     allowProposedApi: true,
