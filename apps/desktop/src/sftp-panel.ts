@@ -6,6 +6,7 @@ import {
   MAX_DOWNLOAD_BYTES, MAX_UPLOAD_BYTES, READ_ONLY_ERROR, type AskOptions, type Downloaded, type TransferProgress,
 } from "./sftp-write";
 import { scpUploadHeaders, SCP_NOTE, SCP_OPTION_LABEL, SCP_UPLOAD_CANCELLED } from "./sftp-scp";
+import { icon } from "./icons";
 
 type RemoteKind = "directory" | "file" | "symlink" | "other";
 interface RemoteEntry {
@@ -226,7 +227,8 @@ export function createSftpPanel(root: HTMLElement, toast: (message: string) => v
       const name = document.createElement("span");
       const label = document.createElement("span");
       label.textContent = entry.name;
-      name.append(document.createTextNode(entry.kind === "directory" ? "▸ " : entry.kind === "symlink" ? "↪ " : "· "), label);
+      name.innerHTML = icon(entry.kind === "directory" ? "folder" : entry.kind === "symlink" ? "link" : "file");
+      name.append(label);
       const size = document.createElement("small");
       size.textContent = entry.kind === "directory" ? "目录" : entry.kind === "file" ? formatSize(entry.size) : KIND_LABEL[entry.kind];
       row.append(name, size);

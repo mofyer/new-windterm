@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { icon } from "./icons";
 
 export type NetKind = "telnet" | "raw";
 /** What the desktop backend's `net_open` receives as `target`. */
@@ -26,7 +27,7 @@ export function createNetTerminalDialog(
   dialog.id = "net-terminal-dialog";
   dialog.setAttribute("aria-labelledby", "net-terminal-title");
   dialog.innerHTML = `
-    <div class="dialog-heading"><div><span class="eyebrow">TELNET · RAW TCP · P0</span><h2 id="net-terminal-title">打开 Telnet / Raw TCP 终端</h2></div><button type="button" id="net-close" aria-label="关闭 Telnet / Raw TCP 窗口">✕</button></div>
+    <div class="dialog-heading"><div><span class="eyebrow">Telnet · Raw TCP · P0</span><h2 id="net-terminal-title">打开 Telnet / Raw TCP 终端</h2></div><button type="button" id="net-close" class="icon-button" aria-label="关闭 Telnet / Raw TCP 窗口">${icon("close")}</button></div>
     <p id="net-browser-note" hidden>Telnet 与 Raw TCP 仅在 Tauri 桌面程序中可用。浏览器不会发起连接。</p>
     <form id="net-terminal-form" autocomplete="off" novalidate>
       <fieldset id="net-fields">

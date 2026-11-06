@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { createAuthPrompts, type AuthPrompts } from "./ssh-kbdint";
 import { createRouteForm, ROUTE_FIELDS, routeStep, routeSummary, type JumpCredential, type RouteSummary, type Stage, type SshTargetRequest } from "./ssh-route";
+import { icon } from "./icons";
 
 type Trust = "new" | "known" | "changed";
 type Challenge = {
@@ -48,7 +49,7 @@ export function createSshVerification(
   dialog.id = "ssh-verification-dialog";
   dialog.setAttribute("aria-labelledby", "ssh-verification-title");
   dialog.innerHTML = `
-    <div class="dialog-heading"><div><span class="eyebrow">SSH · P0</span><h2 id="ssh-verification-title">验证真实连接</h2></div><button type="button" id="ssh-close" aria-label="关闭 SSH 连接窗口">✕</button></div>
+    <div class="dialog-heading"><div><span class="eyebrow">SSH · P0</span><h2 id="ssh-verification-title">验证真实连接</h2></div><button type="button" id="ssh-close" class="icon-button" aria-label="关闭 SSH 连接窗口">${icon("close")}</button></div>
     <p id="ssh-description"></p>
     <p id="ssh-browser-note" hidden>真实 SSH 仅在 Tauri 桌面程序中可用。浏览器不会发起连接。</p>
     <form id="ssh-verification-form" autocomplete="off">

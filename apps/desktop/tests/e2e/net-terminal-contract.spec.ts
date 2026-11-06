@@ -82,7 +82,7 @@ test('telnet tab opens over net IPC; split UTF-8 parses before ordered ACKs and 
   await expect(page.getByRole('tab').last()).toContainText('Telnet 127.0.0.1:2323');
   await expect(page.locator('#terminal-state')).toContainText('正在连接 Telnet');
   await ready(page);
-  await expect(page.locator('#terminal-state')).toContainText('● Telnet · Telnet 已连接');
+  await expect(page.locator('#terminal-state')).toContainText('Telnet · Telnet 已连接');
   await expect(page.locator('#session-detail')).toContainText('远端 Telnet');
   expect((await calls(page, 'net_resize')).map(c => c.id)).toEqual([opened[0].id]);
   await expect(page.locator('#sample-run')).toBeDisabled();
@@ -105,7 +105,7 @@ test('raw TCP input is bounded and split into ordered writes; resizing uses net 
   await setup(page); await opening(page, 'raw', 'router-1.example', '7000');
   expect((await calls(page, 'net_open'))[0].target).toEqual({ kind: 'raw', host: 'router-1.example', port: 7000 });
   await ready(page);
-  await expect(page.locator('#terminal-state')).toContainText('● Raw TCP');
+  await expect(page.locator('#terminal-state')).toContainText('Raw TCP · Raw TCP 已连接');
   await expect(page.locator('.session-item.selected small')).toHaveText('Raw TCP');
   await page.evaluate(() => (window as any).netQa.holdWrite = true);
   await paste(page, 5000);

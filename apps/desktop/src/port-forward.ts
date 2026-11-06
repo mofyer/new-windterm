@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { icon } from "./icons";
 
 export type ForwardKind = "local" | "dynamic" | "remote";
 /** One forward as `ssh_forward_add` / `ssh_forward_list` return it. */
@@ -129,7 +130,7 @@ export function createPortForwardSheet(): PortForwardSheet {
   dialog.id = "port-forward-dialog";
   dialog.setAttribute("aria-labelledby", "forward-title");
   dialog.innerHTML = `
-    <div class="dialog-heading"><div><span class="eyebrow">SSH · 端口转发 · P0</span><h2 id="forward-title">端口转发</h2></div><button type="button" id="forward-close" aria-label="关闭端口转发">✕</button></div>
+    <div class="dialog-heading"><div><span class="eyebrow">SSH · 端口转发 · P0</span><h2 id="forward-title">端口转发</h2></div><button type="button" id="forward-close" class="icon-button" aria-label="关闭端口转发">${icon("close")}</button></div>
     <strong id="forward-session"></strong>
     <p id="forward-ended" hidden>SSH 会话已结束，它的端口转发已随之关闭。</p>
     <section aria-label="当前转发"><div class="forward-head"><span>类型</span><span>监听</span><span>目标</span><span>状态</span><span id="forward-count" aria-label="当前转发数"></span></div><div id="forward-list" role="list"></div></section>

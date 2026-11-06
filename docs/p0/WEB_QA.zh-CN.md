@@ -151,6 +151,16 @@ npx playwright test --config playwright.config.ts
 
 VT52 独立 PoC 的 6 项和原始探针的 5 项随全套再次通过；PoC 没有接入实际应用/PTY。具体控制序列与未覆盖边界见 [TERMINAL_COMPAT](TERMINAL_COMPAT.zh-CN.md)。DECSCL 已采用前后 conformance 查询及源码判据，修正旧的仅用 primary DA 判断方式。
 
+## 2026-11-07 去模板化打磨回归
+
+界面按 unslop 流程做打磨（细节见 [DESIGN_SYSTEM](DESIGN_SYSTEM.zh-CN.md#2026-11-07-去模板化打磨unslop)），只改视觉、图标、文案与少量 DOM 结构，不改 IPC、会话生命周期或安全边界。测试侧只改了 `net-terminal-contract.spec.ts` 的两条状态栏断言：状态栏不再带 `●` 前缀，改为 `Telnet · Telnet 已连接` 与更精确的 `Raw TCP · Raw TCP 已连接`。
+
+- 本机 Chrome 浏览器 E2E 全量 **435 / 435** 通过（2.7 分钟，workers 2），含 `contrast.spec.ts` 两种主题全部探针 ≥ 4.5:1。首轮全量为 434 / 435：`conpty-framed-layout` 的 `wide-first-column` 在 `beforeEach` 中报 `Execution context was destroyed`，发生在源码刚修改、Vite 触发整页重载的时刻；该文件单独重复 3 次 18 / 18 通过，代码不变的最终全量通过。
+- 截图核对：1440×900 浅色与深色工作台（文件面板与传输队列展开）、浅色与深色连接 sheet、1000×650 深色，均无横向溢出，pageerror 为 0。截图存于会话临时目录，未提交仓库。
+- 独立只读审查结论 APPROVE：未发现 CRITICAL / HIGH；采纳一条 LOW（深色补 `--warning`），一条 MEDIUM（状态点每次刷新扫描至多约 16 个元素）因开销可忽略暂不处理。审查确认不可信数据仍只经 `textContent` 进入 DOM，侧栏行不再使用 `innerHTML`。
+
+以上均为浏览器与 IPC stub 结果，不代表原生 WKWebView / WebView2 / WebKitGTK 渲染、IME、读屏或完整可访问性验收。
+
 ## 证据与未验收范围
 
 - 本轮新增测试源码：`apps/desktop/tests/e2e/ssh-verification.spec.ts`。

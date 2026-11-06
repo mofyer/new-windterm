@@ -9,6 +9,7 @@ import { createLocalLaunchOptions, snapshotLaunchOptions, type LaunchOptions } f
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
 import { Utf8Boundary } from "./utf8-boundary";
+import { icon } from "./icons";
 import {
   attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, clipToGraphemes, dropLastGrapheme,
   sendUnmappedControl,
@@ -55,41 +56,22 @@ type Session = {
   input: InputQueue;
 };
 const EARLY_INPUT_LIMIT = 4096;
-const icon = (name: string) => {
-  const paths: Record<string, string> = {
-    sidebar:
-      '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
-    terminal: '<path d="m5 6 5 6-5 6m8 0h6"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>',
-    search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
-    split:
-      '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 4v16"/>',
-    folder: '<path d="M3 7V5h6l2 2h10v12H3Z"/>',
-    arrow: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>',
-    chevron: '<path d="m9 6 6 6-6 6"/>',
-    close: '<path d="m6 6 12 12M6 18 18 6"/>',
-    shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9S4 17 4 12V6Zm-4 9 3 3 5-6"/>',
-    settings:
-      '<path d="M5 5h14M5 12h14M5 19h14"/><circle cx="9" cy="5" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="19" r="2"/>',
-  };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] ?? paths.terminal}</svg>`;
-};
 const $ = <T extends Element = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
 $("#app").innerHTML = `
 <header class="toolbar">
   <div class="toolbar-leading"><button id="sidebar-toggle" class="icon-button" aria-label="切换会话侧栏" title="会话侧栏">${icon("sidebar")}</button><div class="brand"><strong>New WindTerm</strong><span class="badge">P0</span></div></div>
-  <div class="toolbar-actions"><button id="connect-open" class="toolbar-connect">${icon("plus")}新建连接</button><button id="local-open">${icon("terminal")}本地终端</button><button id="local-options-open" class="icon-button" aria-label="本地终端启动选项" title="启动选项">${icon("settings")}</button><span class="toolbar-divider"></span><button id="palette-open" class="search-button" aria-label="搜索命令与操作">${icon("search")}<span>搜索命令</span><kbd>⌘ K</kbd></button><button id="split-toggle" class="icon-button" aria-label="切换分屏" title="分屏">${icon("split")}</button><button id="files-toggle" class="icon-button" aria-label="切换文件面板" title="文件面板">${icon("folder")}</button></div>
+  <div class="toolbar-actions"><button id="connect-open" class="toolbar-connect">${icon("plus")}新建连接</button><button id="local-open">${icon("terminal")}本地终端</button><button id="local-options-open" class="icon-button" aria-label="本地终端启动选项" title="启动选项">${icon("settings")}</button><span class="toolbar-divider"></span><button id="palette-open" class="search-button" aria-label="搜索命令与操作">${icon("search")}<span>搜索命令</span><kbd>⌘K</kbd></button><button id="split-toggle" class="icon-button" aria-label="切换分屏" title="分屏">${icon("split")}</button><button id="files-toggle" class="icon-button" aria-label="切换文件面板" title="文件面板">${icon("folder")}</button></div>
 </header>
 <div class="app-body">
-  <aside class="sidebar"><div class="sidebar-top"><span>会话</span><button id="sidebar-add" class="icon-button" aria-label="新建演示会话">${icon("plus")}</button></div><label class="session-search">${icon("search")}<input id="session-search" aria-label="筛选会话" placeholder="筛选会话"/></label><div class="section-label">已打开 <span id="session-count"></span></div><div id="session-list"></div><div class="sidebar-bottom"><label>${icon("settings")}外观<select id="theme" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><button id="compact-toggle">紧凑布局 <span>关</span></button></div></aside>
-  <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button type="button" id="local-reopen" aria-label="重新打开本地终端" hidden>重新打开</button><button type="button" id="local-edit-cwd" hidden>修改启动选项</button><button type="button" id="forward-open" hidden>端口转发</button><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div id="file-demo"><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")} /home/demo/project</div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性。</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">以上为模拟数据，不读取本机或服务器文件。</p><button type="button" id="sftp-connect" class="ssh-verification-entry">${icon("shield")}只读连接 SFTP · 仅桌面</button></div><div id="sftp-view" hidden></div></aside></div><div class="terminal-status"><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列 <span class="badge" id="transfer-count">0</span></span><span id="transfer-summary">暂无任务 · 模拟交互 ${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
+  <aside class="sidebar"><div class="sidebar-top"><span>会话</span><button id="sidebar-add" class="icon-button" aria-label="新建演示会话">${icon("plus")}</button></div><label class="session-search">${icon("search")}<input id="session-search" aria-label="筛选会话" placeholder="筛选会话"/></label><div class="section-label"><span>已打开</span><span id="session-count" class="count"></span></div><div id="session-list"></div><div class="sidebar-bottom"><label class="setting-row">${icon("settings")}外观<select id="theme" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><button id="compact-toggle" class="setting-row">紧凑布局 <span>关</span></button></div></aside>
+  <main class="workspace"><section class="terminal-workspace" aria-label="终端工作区"><div class="tabbar"><div id="tabs" role="tablist" aria-label="终端标签"></div><button id="demo-add" class="icon-button" aria-label="添加演示终端">${icon("plus")}</button></div><div class="terminal-tools"><span id="session-detail"></span><div><button type="button" id="local-reopen" aria-label="重新打开本地终端" hidden>重新打开</button><button type="button" id="local-edit-cwd" hidden>修改启动选项</button><button type="button" id="forward-open" hidden>端口转发</button><button id="sample-run">字符与颜色样本</button><button id="stress-run">持续输出样本</button></div></div><div class="terminal-row"><div id="terminals"></div><aside class="file-inspector" hidden><div id="file-demo"><div class="inspector-title"><strong>文件浏览器</strong><span class="badge">演示</span></div><div class="file-path">${icon("folder")}<span>/home/demo/project</span></div><div class="file-head"><span>名称</span><span>大小</span></div><div id="file-list"></div><div id="file-detail">选择文件查看模拟属性</div><button id="transfer-add">${icon("arrow")}模拟下载所选文件</button><p class="caption">以上为模拟数据，不读取本机或服务器文件</p><button type="button" id="sftp-connect" class="ssh-verification-entry">${icon("shield")}只读连接 SFTP · 仅桌面</button></div><div id="sftp-view" hidden></div></aside></div><div class="terminal-status"><i id="terminal-dot" class="status-dot" data-state="none" aria-hidden="true"></i><span id="terminal-state"></span><span id="terminal-size"></span></div></section><section class="transfer-panel"><button id="transfers-toggle" aria-expanded="false"><span>${icon("arrow")}传输队列<span class="count" id="transfer-count">0</span></span><span class="transfer-meta"><span id="transfer-summary">暂无任务 · 模拟交互</span>${icon("chevron")}</span></button><div id="transfer-list" hidden><p class="empty">队列为空。打开文件面板可体验模拟下载、取消与失败反馈。</p></div></section><div class="notice"><span class="notice-dot"></span><span id="runtime-note">交互原型 · 演示会话不会连接服务器，文件列表与传输均为模拟数据。</span><button id="about-open">查看边界 ${icon("chevron")}</button></div></main>
 </div>
 <dialog id="local-dialog" aria-labelledby="local-title"><form id="local-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("folder")}</div><h2 id="local-title">本地终端启动选项</h2></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><label for="local-shell-select">Shell<select id="local-shell-select" aria-describedby="local-shell-status local-shell-missing"><option value="">默认 Shell</option></select></label><p id="local-shell-status" role="status" aria-live="polite"></p><ul id="local-shell-missing"></ul><label for="local-cwd-input">启动目录<input id="local-cwd-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="local-cwd-hint" placeholder="留空使用默认目录"/></label><p id="local-cwd-hint">请输入当前系统的绝对目录路径；留空使用默认目录。路径按原样使用，不展开 ~、环境变量或命令。</p><section class="local-config-section" aria-labelledby="local-env-title"><div class="local-config-heading"><h3 id="local-env-title">环境变量</h3><button type="button" id="local-env-add">添加变量</button></div><p>名称和值分开填写，值按原样传入，不展开变量或命令。PATH 可覆盖；启动脚本、加载器及运行时保留变量由后端拒绝。</p><div id="local-env-rows" class="local-variable-rows"></div></section><section class="local-config-section" aria-labelledby="local-locale-title"><h3 id="local-locale-title">Locale</h3><label for="local-locale-mode">语言环境<select id="local-locale-mode"><option value="default">平台默认</option><option value="custom">自定义变量</option></select></label><div id="local-locale-custom" hidden><p>自定义会先清除默认 LANG / LC_*；不添加变量即保持未设置。LC_ALL 优先于 LANG，不能与其他 LC_* 同时设置。Windows 仅传递变量，不切换代码页或界面语言。</p><button type="button" id="local-locale-add">添加 Locale 变量</button><div id="local-locale-rows" class="local-variable-rows"></div></div></section><p id="local-runtime-hint">配置只用于当前会话，不保存到磁盘；重新打开沿用初始配置。在新的标签中启动本机 shell，不更改已有会话。</p><p id="local-options-error" role="alert" tabindex="-1"></p><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button id="local-start" type="submit" class="primary">打开终端</button></div></form></dialog>
-<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程。</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接。<br/>真实 SSH 请使用下方独立入口；只读 SFTP 在文件面板中连接。</span></div><button type="button" id="ssh-terminal-open" class="ssh-verification-entry">打开真实 SSH 终端 · 仅桌面</button><button type="button" id="ssh-verification-open" class="ssh-verification-entry">打开真实 SSH 验证 · 仅桌面</button><button type="button" id="net-terminal-open" class="ssh-verification-entry">打开 Telnet / Raw TCP 终端 · 仅桌面</button><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
-<dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">HOST VERIFICATION · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
-<dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="你想执行什么操作？"/><kbd>ESC</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
-<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>一个可交互的起点</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。Telnet 与 Raw TCP 终端为明文连接，仅按 UTF-8 显示，尚未与真实 telnetd 或网络设备验收。文件面板可另行只读连接 SFTP（列目录、属性、64 KiB 预览），不上传、删除或改名；演示会话与传输队列仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
+<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接<br/>真实连接请使用下方入口，只读 SFTP 在文件面板中连接</span></div><section class="alt-connect" aria-labelledby="alt-connect-title"><h3 id="alt-connect-title">桌面真实连接</h3><button type="button" id="ssh-terminal-open" class="alt-connect-row">${icon("terminal")}<span>打开真实 SSH 终端</span><small>仅桌面</small></button><button type="button" id="ssh-verification-open" class="alt-connect-row">${icon("shield")}<span>打开真实 SSH 验证</span><small>仅桌面</small></button><button type="button" id="net-terminal-open" class="alt-connect-row">${icon("terminal")}<span>打开 Telnet / Raw TCP 终端</span><small>仅桌面</small></button></section><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
+<dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">主机验证 · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
+<dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="搜索命令"/><kbd>Esc</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
+<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>原型能力与边界</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。Telnet 与 Raw TCP 终端为明文连接，仅按 UTF-8 显示，尚未与真实 telnetd 或网络设备验收。文件面板可另行只读连接 SFTP（列目录、属性、64 KiB 预览），不上传、删除或改名；演示会话与传输队列仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
 const sessions = new Map<number, Session>();
 let nextKey = 1,
   activeKey = 0,
@@ -162,7 +144,23 @@ function active() {
 const transport = (s: Session) => (s.mode === "ssh" || s.mode === "net" ? s.mode : "pty");
 const modeName = (s: Session) =>
   s.mode === "demo" ? "演示" : s.mode === "ssh" ? "SSH" : s.mode === "net" ? s.netKind ?? "TCP" : "本机";
+type DotState = "demo" | "live" | "ended" | "none";
+/** The workbench signature: one dot per session, shared by tab, sidebar row and status bar. */
+const dotState = (s: Session | undefined): DotState =>
+  !s ? "none" : s.mode === "demo" ? "demo" : s.ended ? "ended" : "live";
+function statusDot(s: Session) {
+  const dot = document.createElement("i");
+  dot.className = "status-dot";
+  dot.setAttribute("aria-hidden", "true");
+  dot.dataset.key = String(s.key);
+  dot.dataset.state = dotState(s);
+  return dot;
+}
+function syncDot(dot: HTMLElement, state: DotState) {
+  if (dot.dataset.state !== state) dot.dataset.state = state;
+}
 const statusElements = {
+  dot: $("#terminal-dot"),
   state: $("#terminal-state"),
   size: $("#terminal-size"),
   detail: $("#session-detail"),
@@ -183,7 +181,7 @@ function updateStatus() {
   if (diagnostics) diagnostics.statusFlushes++;
   const s = active();
   const state = s
-    ? `${s.mode === "demo" ? "◌ 演示" : s.mode === "pty" ? "● 本机 PTY" : `● ${modeName(s)}`} · ${s.status}`
+    ? `${s.mode === "pty" ? "本机 PTY" : modeName(s)} · ${s.status}`
     : "无打开的会话";
   const size = s
     ? `${s.terminal.cols} × ${s.terminal.rows} · ${s.bytes.toLocaleString()} B 接收`
@@ -195,6 +193,9 @@ function updateStatus() {
       : s.mode === "ssh" ? "远端 SSH / 输入将实际执行" : `远端 ${modeName(s)} / 输入将实际发送`
     : "";
   const clipboard = s?.vt.clipboardWrite ? " · OSC 52 可写剪贴板" : "";
+  syncDot(statusElements.dot, dotState(s));
+  for (const dot of document.querySelectorAll<HTMLElement>(".status-dot[data-key]"))
+    syncDot(dot, dotState(sessions.get(Number(dot.dataset.key))));
   if (statusElements.state.textContent !== state) statusElements.state.textContent = state;
   if (statusElements.size.textContent !== size) statusElements.size.textContent = size;
   if (statusElements.detail.textContent !== detail + clipboard) statusElements.detail.textContent = detail + clipboard;
@@ -221,7 +222,10 @@ function paintSessions() {
     const button = document.createElement("button");
     button.setAttribute("role", "tab");
     button.setAttribute("aria-selected", String(s.key === activeKey));
-    button.textContent = `${s.mode !== "demo" ? "›_" : "◌"}  ${s.name}`;
+    const label = document.createElement("span");
+    label.className = "tab-label";
+    label.textContent = s.name;
+    button.append(statusDot(s), label);
     button.onclick = () => selectSession(s.key);
     const close = document.createElement("button");
     close.className = "tab-close";
@@ -233,9 +237,11 @@ function paintSessions() {
     if (s.name.toLowerCase().includes(query)) {
       const row = document.createElement("button");
       row.className = `session-item ${s.key === activeKey ? "selected" : ""}`;
-      row.innerHTML = `${icon("terminal")}<span></span><small></small>`;
-      row.querySelector("span")!.textContent = s.name;
-      row.querySelector("small")!.textContent = modeName(s);
+      const name = document.createElement("span");
+      name.textContent = s.name;
+      const mode = document.createElement("small");
+      mode.textContent = modeName(s);
+      row.append(statusDot(s), name, mode);
       row.onclick = () => selectSession(s.key);
       $("#session-list").append(row);
     }
@@ -862,7 +868,7 @@ function paintFiles() {
   files.forEach((file, index) => {
     const button = document.createElement("button");
     button.className = `file-row ${index === selectedFile ? "selected" : ""}`;
-    button.innerHTML = `<span>${icon(index === 0 ? "folder" : "terminal")}<span></span></span><small></small>`;
+    button.innerHTML = `<span>${icon(index === 0 ? "folder" : "file")}<span></span></span><small></small>`;
     button.querySelector("span span")!.textContent = file.name;
     button.querySelector("small")!.textContent = file.size;
     button.onclick = () => {
