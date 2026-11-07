@@ -1,11 +1,14 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { icon } from "./icons";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
+import { DEFAULT_ENCODING, type EncodingId } from "./text-encoding";
+import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
 
 export type NetKind = "telnet" | "raw";
 /** What the desktop backend's `net_open` receives as `target`. */
 export type NetTarget = { kind: NetKind; host: string; port: number };
-export type NetTerminalRequest = NetTarget & { name: string };
+/** `encoding` stays in the frontend; `net_open` receives only the target. */
+export type NetTerminalRequest = NetTarget & { name: string; encoding: EncodingId };
 
 export const netLabel = (kind: NetKind) => (kind === "telnet" ? "Telnet" : "Raw TCP");
 
@@ -13,8 +16,8 @@ export const netLabel = (kind: NetKind) => (kind === "telnet" ? "Telnet" : "Raw 
 const HOST = /^[A-Za-z0-9.:-]{1,253}$/;
 const NOTES: Record<NetKind, string> = {
   telnet:
-    "Telnet 为明文协议，输入（包括密码）不加密。终端类型报告为 xterm-256color，窗口大小通过 NAWS 告知服务器；仅按 UTF-8 显示。",
-  raw: "Raw TCP 原样收发字节，不做协议协商、不在本地回显；回车按 CR 发送，仅按 UTF-8 显示。",
+    "Telnet 为明文协议，输入（包括密码）不加密。终端类型报告为 xterm-256color，窗口大小通过 NAWS 告知服务器；默认按 UTF-8 显示，可在下方选择其他字符编码。",
+  raw: "Raw TCP 原样收发字节，不做协议协商、不在本地回显；回车按 CR 发送，默认按 UTF-8 显示，可在下方选择其他字符编码。",
 };
 
 /**
@@ -45,6 +48,8 @@ export function createNetTerminalDialog(
   const host = get<HTMLInputElement>("net-host");
   const port = get<HTMLInputElement>("net-port");
   const error = get("net-error");
+  const { field: encodingField, select: encoding } = createEncodingField("net", ENCODING_HINT);
+  get("net-note").after(encodingField);
   const desktop = isTauri();
   const showNote = () => {
     get("net-note").textContent = NOTES[kind.value as NetKind];
@@ -74,7 +79,7 @@ export function createNetTerminalDialog(
       return;
     }
     const name = `${netLabel(target.kind)} ${target.host}:${target.port}`;
-    if (!openTerminal({ ...target, name })) {
+    if (!openTerminal({ ...target, name, encoding: readEncoding(encoding) })) {
       error.textContent = `无法打开新标签：P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`;
       return;
     }
@@ -85,6 +90,7 @@ export function createNetTerminalDialog(
       kind.value = "telnet";
       port.value = "23";
       host.value = "";
+      encoding.value = DEFAULT_ENCODING;
       error.textContent = "";
       showNote();
       get("net-browser-note").hidden = desktop;

@@ -8,6 +8,8 @@
  * status text, notice, error message, log, storage or URL; validation messages never echo it.
  */
 
+import { encodeText, encodingLabel, type EncodingId } from "./text-encoding";
+
 /** UTF-8 bytes, without the CR that submits the line. Below macOS's 1024-byte canonical line limit. */
 export const STARTUP_COMMAND_MAX_BYTES = 1000;
 
@@ -46,9 +48,28 @@ export function startupNotice(state: StartupState): string {
   }
 }
 
-/** The bytes typed into the shell: the command as written, then CR (the Return key). */
+/** The text typed into the shell: the command as written, then CR (the Return key). */
+export function startupCommandLine(command: string): string {
+  return `${command}\r`;
+}
+
+/** Its UTF-8 bytes; a session encodes the line with its own encoding, identical for UTF-8. */
 export function startupCommandBytes(command: string): Uint8Array {
-  return new TextEncoder().encode(`${command}\r`);
+  return new TextEncoder().encode(startupCommandLine(command));
+}
+
+/**
+ * For a session encoding other than UTF-8: the command must be representable in it, and its
+ * encoded form must also stay within {@link STARTUP_COMMAND_MAX_BYTES}. Never echoes the value.
+ */
+export function validateStartupCommandEncoding(value: string, encoding: EncodingId): string | null {
+  if (value === "" || encoding === "utf-8") return null;
+  const encoded = encodeText(encoding, value);
+  if (!encoded.ok)
+    return `启动后执行命令中有 ${encoded.unencodable} 个字符无法用 ${encodingLabel(encoding)} 表示；请修改命令或选择其他字符编码。`;
+  if (encoded.bytes.length > STARTUP_COMMAND_MAX_BYTES)
+    return `启动后执行命令按 ${encodingLabel(encoding)} 编码后最多 ${STARTUP_COMMAND_MAX_BYTES} 字节，当前为 ${encoded.bytes.length.toLocaleString()} 字节。`;
+  return null;
 }
 
 const LINE_BREAK = /[\r\n]/;

@@ -6,10 +6,11 @@ import type { VtAdapters } from "./terminal-compat/vt-adapters";
 import { authPromptsFor, type SshTerminalRequest } from "./ssh-verification";
 import { netLabel, type NetTerminalRequest } from "./net-terminal";
 import { nativeLaunchArguments, snapshotLaunchOptions, type LaunchOptions } from "./local-launch";
-import { advanceStartup, startupCommandBytes, type StartupState } from "./startup-command";
+import { advanceStartup, startupCommandLine, type StartupState } from "./startup-command";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { INPUT_BACKLOG_BYTES, InputQueue, type InputOutcome } from "./input-queue";
-import { Utf8Boundary } from "./utf8-boundary";
+import { SessionCodec } from "./session-encoding";
+import { encodingLabel, type EncodingId } from "./text-encoding";
 import { attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, sendUnmappedControl } from "./terminal-input";
 import { demoInput, demoWelcome, type DemoView } from "./demo-session";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
@@ -44,6 +45,8 @@ export type Session = {
   terminal: Terminal;
   /** VT adapters: terminal type, OSC 52 opt-in (off by default). */
   vt: VtAdapters;
+  /** Character encoding of output and input; UTF-8 unless chosen (see `session-encoding.ts`). */
+  codec: SessionCodec;
   fit: FitAddon;
   element: HTMLElement;
   observer: ResizeObserver;
@@ -98,6 +101,11 @@ export interface SessionLifecycle {
   reopenLocal(s: Session, name: string): Session | undefined;
   openSsh(request: SshTerminalRequest): boolean;
   openNet(request: NetTerminalRequest): boolean;
+  /**
+   * Switches a running native session's encoding for later output and input; false for a demo,
+   * ended, closing or closed session.
+   */
+  setEncoding(key: number, id: EncodingId): boolean;
   /** Closes the backend session first; the tab is kept for retry if that fails. */
   close(key: number): Promise<void>;
   /** Page unload: disposes every terminal and best-effort closes or cancels its backend. */
@@ -121,7 +129,6 @@ export function reopenable(s: Session) {
 export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   const sessions = new Map<number, Session>();
   let nextKey = 1;
-  const encoder = new TextEncoder();
 
   function sendInput(s: Session, bytes: Uint8Array) {
     if (!s.ptyId || s.disposed || s.ended || s.closing) return;
@@ -195,7 +202,9 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       return;
     }
     setStartup(s, "queued");
-    if (!s.input.push(startupCommandBytes(command), (outcome) => setStartup(s, STARTUP_RESULT[outcome])))
+    // The form checked that the command is encodable in the session's encoding; CR submits the line.
+    const encoded = s.codec.encode(startupCommandLine(command));
+    if (!encoded.ok || !s.input.push(encoded.bytes, (outcome) => setStartup(s, STARTUP_RESULT[outcome])))
       setStartup(s, "not-sent");
   }
   /**
@@ -213,7 +222,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     host.status();
   }
 
-  function createSession(name: string, mode: Mode, options?: LaunchOptions): Session | undefined {
+  function createSession(name: string, mode: Mode, options?: LaunchOptions, encoding?: EncodingId): Session | undefined {
     if (sessions.size >= MAX_WORKSPACE_SESSIONS) {
       host.notify(`P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`);
       return;
@@ -243,6 +252,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       startup: mode === "pty" && launch.command ? "pending" : "none",
       terminal,
       vt,
+      // A local session's encoding is part of its launch snapshot, so reopening keeps it.
+      codec: new SessionCodec(mode === "pty" ? launch.encoding : encoding),
       fit,
       element,
       observer: new ResizeObserver(() => {
@@ -270,8 +281,16 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     sessions.set(s.key, s);
     host.registered(s);
     terminal.onData((data) => {
-      if (mode === "demo") demoInput(s, data, host);
-      else queueInput(s, encoder.encode(data), replyInputDepth > 0 ? "reply" : "user");
+      if (mode === "demo") {
+        demoInput(s, data, host);
+        return;
+      }
+      // A keystroke, paste or IME commit is encoded as a whole; if any character cannot be
+      // represented, none of it is sent. The notice gives a count only, never the input itself.
+      const encoded = s.codec.encode(data);
+      if (encoded.ok) queueInput(s, encoded.bytes, replyInputDepth > 0 ? "reply" : "user");
+      else
+        host.notify(`「${s.name}」的输入中有 ${encoded.unencodable} 个字符无法用 ${encodingLabel(s.codec.encoding)} 表示；本次输入未发送。`);
     });
     terminal.onBinary((data) => {
       if (mode !== "demo")
@@ -301,8 +320,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   }
 
   /** Shows a character the stream ended in the middle of as U+FFFD; output is over. */
-  function endOutput(s: Session, utf8: Utf8Boundary) {
-    const tail = utf8.flush();
+  function endOutput(s: Session) {
+    const tail = s.codec.end();
     if (tail.length) s.terminal.write(tail);
   }
   /**
@@ -327,7 +346,6 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     s.channel = onEvent;
     // An ended tab's archive is trimmed first; a drop refreshes the status bar notice.
     s.history ??= createSessionHistory(s.terminal, { ended: () => s.ended, dropped: () => host.progress(s.key) });
-    const utf8 = new Utf8Boundary();
     onEvent.onmessage = (event) => {
       if (s.disposed) return;
       if (event.kind === "data") {
@@ -337,7 +355,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
           diagnostics.receivedChunks++;
           diagnostics.receivedBytes += event.data.length;
         }
-        s.terminal.write(utf8.take(new Uint8Array(event.data)), () => {
+        // The only output decoding point; a UTF-8 session passes bytes through exactly as before.
+        s.terminal.write(s.codec.decode(new Uint8Array(event.data)), () => {
           if (s.disposed) return;
           const parsedAt = diagnostics ? performance.now() : 0;
           if (diagnostics) {
@@ -350,7 +369,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
           host.progress(s.key);
         });
       } else if (event.kind === "exit") {
-        endOutput(s, utf8);
+        endOutput(s);
         s.ended = true;
         s.early = [];
         s.earlyBytes = 0;
@@ -362,7 +381,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       } else {
         // Network errors are terminal lifecycle events; the backend releases the session.
         if (s.mode === "ssh" || s.mode === "net") {
-          endOutput(s, utf8);
+          endOutput(s);
           s.ended = true;
           s.ptyId = undefined;
           s.input.clear();
@@ -419,7 +438,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     }
   }
   function openSsh(request: SshTerminalRequest): boolean {
-    const s = createSession(request.name, "ssh");
+    const s = createSession(request.name, "ssh", undefined, request.encoding);
     if (!s) return false;
     s.operationId = request.operationId;
     s.status = "正在认证并打开 SSH…";
@@ -460,7 +479,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     }
   }
   function openNet(request: NetTerminalRequest): boolean {
-    const s = createSession(request.name, "net");
+    const s = createSession(request.name, "net", undefined, request.encoding);
     if (!s) return false;
     s.netKind = netLabel(request.kind);
     // The client-chosen ID can be closed while the connection is still pending.
@@ -497,6 +516,16 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     } finally {
       s.operationId = undefined;
     }
+  }
+
+  function setEncoding(key: number, id: EncodingId): boolean {
+    const s = sessions.get(key);
+    if (!s || s.mode === "demo" || s.ended || s.closing || s.disposed) return false;
+    // Queued behind every chunk already written, so earlier output keeps its old decoding.
+    const tail = s.codec.switchTo(id);
+    if (tail.length) s.terminal.write(tail);
+    host.status();
+    return true;
   }
 
   async function close(key: number) {
@@ -561,6 +590,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     reopenLocal: (s, name) => (reopenable(s) ? createSession(name, "pty", s.launch) : undefined),
     openSsh,
     openNet,
+    setEncoding,
     close,
     shutdown,
   };

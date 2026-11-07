@@ -4,6 +4,7 @@ import { createSftpPanel } from "./sftp-panel";
 import { createNetTerminalDialog, type NetTerminalRequest } from "./net-terminal";
 import { createPortForwardSheet } from "./port-forward";
 import { createLocalLaunchOptions } from "./local-launch";
+import { createEncodingSwitchDialog, encodingStatus } from "./session-encoding-ui";
 import { startupNotice } from "./startup-command";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 import { icon } from "./icons";
@@ -32,7 +33,7 @@ $("#app").innerHTML = `
 <dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><div class="sheet-title"><div class="dialog-icon">${icon("terminal")}</div><div><h2>新建连接</h2><span class="caption">SSH 会话配置 <span class="badge">演示</span></span></div></div><button type="button" class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><p class="sheet-description">配置连接信息，预览主机身份确认流程</p><div class="form-section"><label>会话名称<input name="name" value="Development" maxlength="48" required/></label><div class="form-row"><label>主机<input name="host" value="demo.example.com" maxlength="253" required/></label><label class="port">端口<input name="port" type="number" value="22" min="1" max="65535" required/></label></div><label>用户名<input name="user" value="developer" maxlength="64" required/></label></div><div class="form-info">${icon("shield")}<span>仅预览，不发起网络连接<br/>真实连接请使用下方入口，只读 SFTP 在文件面板中连接</span></div><section class="alt-connect" aria-labelledby="alt-connect-title"><h3 id="alt-connect-title">桌面真实连接</h3><button type="button" id="ssh-terminal-open" class="alt-connect-row">${icon("terminal")}<span>打开真实 SSH 终端</span><small>仅桌面</small></button><button type="button" id="ssh-verification-open" class="alt-connect-row">${icon("shield")}<span>打开真实 SSH 验证</span><small>仅桌面</small></button><button type="button" id="net-terminal-open" class="alt-connect-row">${icon("terminal")}<span>打开 Telnet / Raw TCP 终端</span><small>仅桌面</small></button></section><div class="dialog-actions"><button type="button" class="dialog-close">取消</button><button class="primary" type="submit">预览主机确认</button></div></form></dialog>
 <dialog id="host-dialog"><div class="dialog-heading"><div class="dialog-icon amber">${icon("shield")}</div><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><span class="eyebrow">主机验证 · 模拟</span><h2>确认主机身份</h2><p>真实连接必须通过可信渠道核对服务器指纹。以下是固定的演示数据，确认不会保存到 known_hosts。</p><div class="host-card"><strong id="host-name"></strong><span>算法 · ssh-ed25519</span><code>SHA256:DEMO-ONLY-NOT-A-REAL-HOST-FINGERPRINT</code></div><div class="dialog-actions"><button class="dialog-close">拒绝并返回</button><button id="host-confirm" class="primary">仅打开演示会话</button></div></dialog>
 <dialog id="palette-dialog"><div class="palette-search">${icon("search")}<input id="command-search" aria-label="搜索命令" placeholder="搜索命令"/><kbd>Esc</kbd></div><div id="command-list"></div><p class="caption">↑ ↓ 选择 · Enter 执行 · Esc 返回终端</p></dialog>
-<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>原型能力与边界</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。Telnet 与 Raw TCP 终端为明文连接，仅按 UTF-8 显示，尚未与真实 telnetd 或网络设备验收。文件面板可另行只读连接 SFTP（列目录、属性、64 KiB 预览），不上传、删除或改名；演示会话与传输队列仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
+<dialog id="about-dialog"><div class="dialog-heading"><span class="badge">P0 验证边界</span><button class="icon-button dialog-close" aria-label="关闭">${icon("close")}</button></div><h2>原型能力与边界</h2><p>当前已接入真实 xterm.js；桌面构建可启动本机 PTY。浏览器中的会话是确定性演示，无法执行系统命令。</p><p>桌面的真实 SSH 终端入口支持核对指纹、未加密 Ed25519 密钥认证与交互 shell；独立验证入口仍只执行固定测试命令。Telnet 与 Raw TCP 终端为明文连接，尚未与真实 telnetd 或网络设备验收。本地、SSH、Telnet 与 Raw TCP 终端默认按 UTF-8 收发，可按会话选择 Big5、EUC-JP 等字符编码（不修改远端 locale）。文件面板可另行只读连接 SFTP（列目录、属性、64 KiB 预览），不上传、删除或改名；演示会话与传输队列仍为模拟。历史暂保留 5,000 行，未实现无限历史与压缩。</p><p>请勿在演示会话输入真实密码。中文输入法、VoiceOver、Retina 与全量终端兼容性仍需实机验收。</p><div class="dialog-actions"><button class="primary dialog-close">返回工作台</button></div></dialog><div id="toast" role="status" aria-live="polite"></div>`;
 let activeKey = 0,
   split = false,
   compact = false,
@@ -181,7 +182,7 @@ function updateStatus() {
     : "无打开的会话";
   const resends = s?.mode === "pty" && !!s.launch.command;
   const size = s
-    ? `${s.terminal.cols} × ${s.terminal.rows} · ${s.bytes.toLocaleString()} B 接收`
+    ? `${s.terminal.cols} × ${s.terminal.rows} · ${s.bytes.toLocaleString()} B 接收${encodingStatus(s.codec.encoding)}`
     : "";
   const detail = s
     ? s.mode === "demo"
@@ -303,6 +304,15 @@ function startSftpBrowser(request: SshTerminalRequest): boolean {
 }
 const sshVerification = createSshVerification(startSshTerminal, startSftpBrowser);
 const netTerminal = createNetTerminalDialog(startNetTerminal);
+const encodingSwitch = createEncodingSwitchDialog(toast);
+function openEncodingSwitch() {
+  const s = active();
+  if (!s || s.mode === "demo" || s.ended || s.closing) {
+    toast("字符编码只适用于正在运行的本地、SSH、Telnet 或 Raw TCP 终端；请先切换到该标签。");
+    return;
+  }
+  encodingSwitch.open({ name: s.name, encoding: s.codec.encoding, apply: (id) => lifecycle.setEncoding(s.key, id) });
+}
 const forwardSheet = createPortForwardSheet();
 const bellSheet = createBellSettingsSheet(bell);
 function openForwards() {
@@ -552,6 +562,7 @@ const commands = [
   { name: "SSH 验证 · 真实指纹与固定命令 · 仅桌面", action: () => sshVerification.open() },
   { name: "只读浏览远端文件 · SFTP · 仅桌面", action: () => sshVerification.open("files") },
   { name: "打开 Telnet / Raw TCP 终端 · 仅桌面", action: () => netTerminal.open() },
+  { name: "切换当前会话字符编码 · 之后的输出与输入", action: openEncodingSwitch },
   { name: "切换当前会话 OSC 52 剪贴板写入 · 默认关闭", action: toggleClipboardWrite },
   { name: "SSH 端口转发 · 当前 SSH 标签 · 仅桌面", action: openForwards },
   { name: "终端响铃设置 · 样式与重复间隔", action: () => bellSheet.open() },

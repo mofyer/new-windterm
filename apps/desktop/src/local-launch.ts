@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { validateStartupCommand } from "./startup-command";
+import { validateStartupCommand, validateStartupCommandEncoding } from "./startup-command";
+import { DEFAULT_ENCODING, isEncodingId, type EncodingId } from "./text-encoding";
+import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
 
 export type EnvironmentVariable = Readonly<{ name: string; value: string }>;
 export type LocaleOptions = Readonly<{ mode: "default" | "custom"; variables: readonly EnvironmentVariable[] }>;
@@ -13,6 +15,11 @@ export type LaunchOptions = Readonly<{
    * only: it is never part of the `pty_open` arguments ({@link nativeLaunchArguments}).
    */
   command: string | null;
+  /**
+   * Character encoding of the session's output and input (see `session-encoding.ts`). Frontend
+   * only, like `command`: Rust keeps forwarding raw bytes and never receives it.
+   */
+  encoding: EncodingId;
 }>;
 /** Exactly the launch fields `pty_open` takes. */
 export type NativeLaunchArguments = Readonly<Pick<LaunchOptions, "cwd" | "shell" | "env" | "locale">>;
@@ -26,6 +33,7 @@ export function snapshotLaunchOptions(options?: Partial<LaunchOptions>): LaunchO
     env: copy(options?.env ?? []),
     locale: options?.locale ? Object.freeze({ mode: options.locale.mode, variables: copy(options.locale.variables) }) : null,
     command: options?.command || null,
+    encoding: isEncodingId(options?.encoding) ? options.encoding : DEFAULT_ENCODING,
   });
 }
 
@@ -62,6 +70,12 @@ export function createLocalLaunchOptions(
   const localeAdd = dialog.querySelector<HTMLButtonElement>("#local-locale-add")!;
   const localeMode = dialog.querySelector<HTMLSelectElement>("#local-locale-mode")!;
   const error = dialog.querySelector<HTMLElement>("#local-options-error")!;
+  // Next to the startup command: both decide which bytes reach the shell.
+  const { field: encodingField, select: encoding } = createEncodingField(
+    "local",
+    `${ENCODING_HINT}本地 Shell 的 locale 请在下方 Locale 中另行设置（例如 zh_TW.Big5）。`,
+  );
+  dialog.querySelector("#local-command-hint")!.after(encodingField);
   let generation = 0;
   let choices: ShellChoice[] = [];
   let discovered = false;
@@ -222,7 +236,8 @@ export function createLocalLaunchOptions(
   dialog.querySelector<HTMLFormElement>("#local-form")!.onsubmit = event => {
     event.preventDefault();
     if (!native || start.disabled) return;
-    const commandError = validateStartupCommand(command.value);
+    const chosenEncoding = readEncoding(encoding);
+    const commandError = validateStartupCommand(command.value) ?? validateStartupCommandEncoding(command.value, chosenEncoding);
     if (commandError) {
       command.setAttribute("aria-invalid", "true");
       error.textContent = commandError;
@@ -245,6 +260,7 @@ export function createLocalLaunchOptions(
       locale: { mode: localeMode.value === "custom" ? "custom" : "default", variables },
       // Exactly as typed: no trimming, quoting or expansion; empty means no command.
       command: command.value === "" ? null : command.value,
+      encoding: chosenEncoding,
     }))) dialog.close();
   };
   if (!native) {
@@ -258,6 +274,7 @@ export function createLocalLaunchOptions(
         cwd.value = options.cwd ?? "";
         command.value = options.command ?? "";
         command.removeAttribute("aria-invalid");
+        encoding.value = options.encoding;
         render(options.shell ?? "");
         envRows.replaceChildren();
         localeRows.replaceChildren();

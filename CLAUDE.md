@@ -99,6 +99,7 @@ Windows 专属代码在 macOS 上只能做类型检查：`tools/wincheck/winchec
 
 PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` → 前端 `xterm.write` → 每块按 `sequence` 顺序调用 `pty_ack`/`ssh_ack`。`PtyEvent` 有 `data`/`exit`/`error` 三种，`data` 保持原始字节（每块 4096 字节，64 KiB / 64 块未 ACK 预算，ACK 超时 15 秒）。不要按网络块转 UTF-8，也不要在 Rust 再维护一份 vt100/alacritty 屏幕：xterm.js 是唯一的终端状态来源。
 
+- 会话字符编码（T28/T29/T33 第一部分，分支 `p1/session-encoding`，仅前端，见 [设计](docs/p1/SESSION_ENCODING_PLAN.zh-CN.md)）：每个原生会话一个 `session-encoding.ts` 的 `SessionCodec`，是唯一的输出解码点（`terminalChannel` 写入 xterm 前）和输入编码点（`onData` 与启动命令进入 `InputQueue` 前）。默认 UTF-8 仍是 `Utf8Boundary` + `TextEncoder` 原路径；Big5、EUC-JP、Shift_JIS、GBK、GB18030、EUC-KR 用 WebView 的流式 `TextDecoder` 解码，输入用 `text-encoding.ts` 由同一解码器反推的表编码，无法往返的字符整段不发送并只提示数量。编码在本地启动选项、SSH 终端、Telnet/Raw TCP 对话框中选择，只存内存，不进入任何 IPC 参数；命令面板可切换运行中会话（只影响之后的字节，已显示内容不重新解码，本地重开用启动快照的编码）。Rust 不变；只在 Chrome + IPC stub 验证。
 - `pty.rs`：`Sessions` 注册表（每窗口有代际 generation，最多 8 个会话）、reader/writer 线程、ACK 流控与子进程回收。
 - Unix PTY 的输入写入端由 `platform::input_writer` 提供（master 的 CLOEXEC 副本），**不要改用 portable-pty 的 `take_writer`**：0.9.0 的 `UnixMasterWriter` 在 Drop 时会写入换行与 VEOF，关闭会话时可能提交 Shell 行编辑器中未按回车的文本（`P1-PTY-CLOSE-002`）。Windows 仍用 ConPTY 输入管道。
 - `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash、Windows `cmd.exe /D /Q /K`）。Windows 细节在 `platform_windows.rs`：kill-on-close Job Object 回收进程树；等待线程在子进程退出后关闭 pseudoconsole，使阻塞读取得到 EOF；会话关闭时终止 Job，而不是在 IPC 线程上关闭 pseudoconsole（可能阻塞）；reader 结束后要排空管道。ConPTY 启动时会发 `ESC[6n` 并等待回复，前端会暂存会话 ID 到达前的输入。Windows 测试在 `pty.rs` 的 `windows_tests` 中，只能在 Windows CI 上运行。
