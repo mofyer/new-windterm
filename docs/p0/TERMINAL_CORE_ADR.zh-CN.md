@@ -290,3 +290,9 @@ npm run build
 ## 后续评估
 
 2026-11-07：主机 RIS 不恢复 DECTCEM 与 LNM 两项 xterm.js 6.0.0 缺陷的门禁评估见 [RIS ADR 评估](../p1/RIS_ADR_EVALUATION.zh-CN.md)；本文的门禁与结论未改。
+
+2026-11-07（实施）：用户采用评估中的 R1（E1 + E2），并认定 E1 不触及本文门禁。实现是 `terminal.ts` 工厂第一个加载的 [`ris-repair.ts`](../../apps/desktop/src/terminal-compat/ris-repair.ts)：一个返回 `false` 的公开 `ESC c` 解析器钩子，在 xterm.js 执行 RIS 的同一解析位置恢复公开选项 `convertEol`（E1），并经 [`xterm-private.ts`](../../apps/desktop/src/terminal-compat/xterm-private.ts) 把 `_core.coreService.isCursorHidden` 置回 false（E2）。不改 xterm.js 版本、代码或主机字节，不新增第二份终端状态，不属于 G-CORE。
+
+- **生产包第一次依赖 xterm 私有 API**：只有这一个字段，只在 `xterm-private.ts` 中访问，带运行时特性检测；字段缺失、类型不符、不可写或写入无效时什么都不做、不抛错，光标退回 xterm.js 原样行为（已知缺陷），开发诊断计数 `risCursorUnavailable`。H1 路线“回复类缺口只用公开 parser 适配层”的约定对 VT 适配器继续有效，本项是有记录的例外。
+- **G-UPGRADE 复核要求**（每次升级 `@xterm/xterm` 前，在“重新核实……私有 API”一项下执行）：确认候选版本中 `Terminal._core`、`coreService`、`isCursorHidden` 的名字、类型与语义（DECSET/DECRST 25、DECSTR、DECRQM `?25` 与 DOM 渲染器仍读写同一字段）；确认 RIS 仍不恢复它与 `convertEol`，或上游已修复；运行 [`terminal-ris-repair.spec.ts`](../../apps/desktop/tests/e2e/terminal-ris-repair.spec.ts) 的守护测试（失效时以“re-check … under G-UPGRADE”明确失败）、[`terminal-regressions-reset.spec.ts`](../../apps/desktop/tests/e2e/terminal-regressions-reset.spec.ts) 的原样固定测试与 VT 矩阵 X02。上游修复后原样固定测试会失败，届时评估删除 E1/E2；上游已知改名先例：master 已把 6.0.0 的 `coreMouseService` 改名为 `mouseStateService`。
+- 证据仅为浏览器（Chrome + IPC stub），原生 WebView、真实主机程序、vttest 与 WindTerm 2.7.0 对照均未做；实施与测试记录见评估文档第 9 节。

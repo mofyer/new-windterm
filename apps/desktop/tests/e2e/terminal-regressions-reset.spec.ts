@@ -5,9 +5,10 @@ import { installHarness, run } from './support/vt-harness';
 // P1 slice 4 reset regressions through the production session path (stub IPC -> Channel ->
 // session-lifecycle -> xterm.js + VT adapters -> ordered ACK, and terminal-input -> queueInput ->
 // stubbed *_write). RIS (ESC c) and DECSTR (CSI ! p) arrive as host output, split across chunks.
-// Expected values are xterm.js 6.0.0's behaviour in Chrome unless a test is marked as a known
-// defect; differences from VT manuals are named "observed". Nothing here reaches Rust, a native
-// PTY or a native WebView, and no claim is made about WindTerm 2.7.0, xterm or DEC hardware.
+// Expected values are xterm.js 6.0.0's behaviour in Chrome, completed for RIS by the RIS repair
+// (ris-repair.ts: DECTCEM and LNM); differences from VT manuals are named "observed". Nothing here
+// reaches Rust, a native PTY or a native WebView, and no claim is made about WindTerm 2.7.0, xterm
+// or DEC hardware.
 const E = '\x1b';
 const ST = `${E}\\`;
 const SIZE = { cols: 40, rows: 10 };
@@ -107,34 +108,37 @@ test.describe('RIS (ESC c)', () => {
     await expectOrderedAcks(s);
   });
 
-  test.fail('known defect: RIS leaves a cursor hidden by DECTCEM hidden (xterm.js 6.0.0 core)', async ({ page }) => {
-    // VT100 RIS returns to the power-on state, where the text cursor is shown. xterm.js 6.0.0 keeps
-    // CoreService.isCursorHidden across Terminal.reset(); only DECSTR clears it. After a program
-    // hides the cursor and the host sends a bare RIS, the cursor stays invisible until CSI ? 25 h.
-    // Remove test.fail once the raw pin below ("xterm.js 6.0.0 alone keeps ...") starts failing.
-    const s = await Session.open(page, 'pty', { size: SIZE });
-    const cursor = page.locator('.terminal-pane:not([hidden]) .xterm-rows .xterm-cursor');
-    await expect(cursor).toHaveCount(1);
-    await s.send(`${E}[?25l`);
-    await expect(cursor).toHaveCount(0);
-    await s.send(`${E}c`);
-    await s.mark();
-    await s.send(`${E}[?25$p`);
-    await s.expectWritten(`${E}[?25;1$y`);
-    await expect(cursor).toHaveCount(1);
-  });
+  for (const transport of ['pty', 'ssh', 'net'] as const) {
+    test(`${transport}: RIS shows a cursor hidden by DECTCEM (RIS repair over xterm.js 6.0.0)`, async ({ page }) => {
+      // VT100 RIS returns to the power-on state, where the text cursor is shown. xterm.js 6.0.0 keeps
+      // CoreService.isCursorHidden across Terminal.reset() (raw pin below); the RIS repair
+      // (ris-repair.ts, E2) clears that private field at the RIS, and RIS's own refresh draws the cursor.
+      const s = await Session.open(page, transport, { size: SIZE });
+      const cursor = page.locator('.terminal-pane:not([hidden]) .xterm-rows .xterm-cursor');
+      await expect(cursor).toHaveCount(1);
+      await s.send(`${E}[?25l`);
+      await expect(cursor).toHaveCount(0);
+      await s.send(`${E}c`);
+      await s.mark();
+      await s.send(`${E}[?25$p`);
+      await s.expectWritten(`${E}[?25;1$y`);
+      await expect(cursor).toHaveCount(1);
+      await expectOrderedAcks(s);
+    });
 
-  test.fail('known defect: RIS leaves line feed/new line mode (LNM, CSI 20 h) set (xterm.js 6.0.0 core)', async ({ page }) => {
-    // xterm.js stores LNM in options.convertEol, which Terminal.reset() does not restore, so after
-    // RIS every LF still returns to column 1 and DECRQM 20 still reports "set".
-    // Remove test.fail once the raw pin below ("xterm.js 6.0.0 alone keeps ...") starts failing.
-    const s = await Session.open(page, 'pty', { size: SIZE });
-    await s.send(`${E}[20h`, `${E}c`, 'A\nB');
-    await s.mark();
-    await s.send(`${E}[20$p`);
-    await s.expectWritten(`${E}[20;2$y`);
-    expect((await s.snapshot()).rows.slice(0, 2)).toEqual(['A', ' B']);
-  });
+    test(`${transport}: RIS resets line feed/new line mode (LNM, CSI 20 h) (RIS repair over xterm.js 6.0.0)`, async ({ page }) => {
+      // xterm.js stores LNM in options.convertEol, which Terminal.reset() does not restore (raw pin
+      // below); the RIS repair (E1) sets the option back to the session's initial value at the RIS,
+      // so the LF after it keeps the column and DECRQM 20 reports "reset".
+      const s = await Session.open(page, transport, { size: SIZE });
+      await s.send(`${E}[20h`, `${E}c`, 'A\nB');
+      await s.mark();
+      await s.send(`${E}[20$p`);
+      await s.expectWritten(`${E}[20;2$y`);
+      expect((await s.snapshot()).rows.slice(0, 2)).toEqual(['A', ' B']);
+      await expectOrderedAcks(s);
+    });
+  }
 
   test('observed: OSC 4/10/11/12 colour changes survive RIS and DECSTR', async ({ page }) => {
     // Neither reset restores the palette or the dynamic colours in xterm.js 6.0.0; the theme set by
@@ -157,8 +161,9 @@ test.describe('RIS (ESC c)', () => {
   });
 
   test('xterm.js 6.0.0 alone keeps DECTCEM and LNM across RIS (upstream root cause of the two defects)', async ({ page }) => {
-    // Raw @xterm/xterm without the application or its adapters. When this starts failing, the pinned
-    // xterm.js resets them itself and the two known-defect tests above should pass.
+    // Raw @xterm/xterm without the application, its RIS repair or its adapters. When this starts
+    // failing, the pinned xterm.js resets them itself: review removing ris-repair.ts and
+    // xterm-private.ts (docs/p1/RIS_ADR_EVALUATION.zh-CN.md, section 4); the tests above stay.
     await page.goto('/');
     await page.evaluate(installHarness);
     const observed = await run(page, async (h) => {

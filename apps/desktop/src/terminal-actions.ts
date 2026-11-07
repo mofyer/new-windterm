@@ -45,8 +45,9 @@ const ACTIONS: Readonly<Record<TerminalAction, ActionSpec>> = Object.freeze({
   // CUP home + ED 2 + ED 3: what `clear` sends, without the prompt.
   "clear-all": { label: "全部清除", sequence: `${CAN}${CSI}H${CSI}2J${CSI}3J`, normalOnly: true, clearsArchive: true },
   // RIS, then the two power-on states xterm.js 6.0.0's RIS keeps (DECTCEM shown, LNM reset) are
-  // restored in the same write, so no host output can come between. Only the user's own action
-  // gets them; a host RIS is parsed unchanged (terminal-regressions-reset.spec.ts).
+  // restored in the same write, so no host output can come between. Any RIS, this one and a host's,
+  // is also completed by ris-repair.ts at parse time; these two public sequences stay so the user's
+  // hard reset still shows the cursor if that repair's private xterm.js field is unavailable.
   "reset-hard": { label: "硬复位", sequence: `${CAN}\x1bc${CSI}?25h${CSI}20l`, normalOnly: false, clearsArchive: false },
   // DECSTR.
   "reset-soft": { label: "软复位", sequence: `${CAN}${CSI}!p`, normalOnly: false, clearsArchive: false },

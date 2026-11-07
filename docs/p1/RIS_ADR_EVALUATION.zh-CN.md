@@ -1,6 +1,6 @@
 # 主机 RIS 两项 xterm.js 缺陷：终端内核 ADR 评估
 
-日期：2026-11-07。分支 `p1/ris-adr`，基于 `p1/integration` 的 `35aee13`。**只写评估文档**：没有改产品代码、测试、依赖或 VT 矩阵状态。依据是用户 2026-11-07 决定第 3 项（[执行记录](RESULTS.zh-CN.md#2026-11-07-用户决定15-项全部采用推荐项)）：两项 RIS 缺陷进入[终端内核 ADR](../p0/TERMINAL_CORE_ADR.zh-CN.md#p0-决策门禁与后续启用门禁) 门禁，先评估，再在“上游修复后升级 / 受控补丁 / 字节流改写”等路线中选择。
+日期：2026-11-07。分支 `p1/ris-adr`，基于 `p1/integration` 的 `35aee13`。**只写评估文档**：没有改产品代码、测试、依赖或 VT 矩阵状态。（补记：用户同日决定采用 R1，实施见[第 9 节](#9-实施记录2026-11-07分支-p1ris-fix)；第 1–8 节保留评估时的原文。）依据是用户 2026-11-07 决定第 3 项（[执行记录](RESULTS.zh-CN.md#2026-11-07-用户决定15-项全部采用推荐项)）：两项 RIS 缺陷进入[终端内核 ADR](../p0/TERMINAL_CORE_ADR.zh-CN.md#p0-决策门禁与后续启用门禁) 门禁，先评估，再在“上游修复后升级 / 受控补丁 / 字节流改写”等路线中选择。
 
 范围只限**主机发来的 RIS**（`ESC c`）。T32 用户硬复位在本地写入中补写 `CSI ? 25 h CSI 20 l`，不改主机字节，用户已认定它不触及 ADR（同表第 6 项，见 [T32 预案第 5 节](CLEAR_RESET_PLAN.zh-CN.md#5-硬复位补写与-adr请审查者重点核对)），本文不重新讨论。
 
@@ -217,6 +217,8 @@ Node 探针（每例先写入 `XYZ CSI ? 25 l CSI 20 h`）：
 
 本文不实施任何方案；上述决定作出前，产品行为、测试与 X02 状态保持不变。
 
+用户已于 2026-11-07 作出决定（[执行记录第二组](RESULTS.zh-CN.md#2026-11-07-用户决定第二组-16-项全部采用推荐项)第 1–4 项）：第 1 项 R1；第 2 项授权提 issue，正文先交用户审阅；第 3 项 E1 不触及 ADR；第 4 项两项修好并通过测试后 X02 生产列改回 supported。实施见第 9 节。
+
 ## 7. 未验证与边界
 
 - Node 探针没有 DOM 渲染器，也不是浏览器或原生 WebView；本次没有新跑浏览器测试；原生 WebView、真实 Shell/SSH/Telnet 程序、vttest 与 WindTerm 2.7.0 均未对照。
@@ -230,3 +232,60 @@ Node 探针（每例先写入 `XYZ CSI ? 25 l CSI 20 h`）：
 - 本仓库：[ADR](../p0/TERMINAL_CORE_ADR.zh-CN.md)、[路线决定表](../p0/TERMINAL_ROUTE_DECISION_2026-10-15.zh-CN.md)、[VT 矩阵](../p0/VT_MATRIX.zh-CN.md) X02、[T32 预案](CLEAR_RESET_PLAN.zh-CN.md)、[历史预算预案](HISTORY_BUDGET_PLAN.zh-CN.md)第 11 节（RIS 计为清除）、[`session-lifecycle.ts`](../../apps/desktop/src/session-lifecycle.ts)（`terminalChannel`、`acknowledge`）、[`session-encoding.ts`](../../apps/desktop/src/session-encoding.ts)、[`utf8-boundary.ts`](../../apps/desktop/src/utf8-boundary.ts)、[`terminal-core.ts`](../../apps/desktop/src/terminal-core.ts)、[`vt-adapters.ts`](../../apps/desktop/src/terminal-compat/vt-adapters.ts)、[`terminal-actions.ts`](../../apps/desktop/src/terminal-actions.ts)。
 - xterm.js：[#814](https://github.com/xtermjs/xterm.js/issues/814)、[#1532](https://github.com/xtermjs/xterm.js/issues/1532)、[#4119](https://github.com/xtermjs/xterm.js/issues/4119)、[#6278](https://github.com/xtermjs/xterm.js/pull/6278)、[#5686](https://github.com/xtermjs/xterm.js/issues/5686)；master [`08829c7`](https://github.com/xtermjs/xterm.js/commit/08829c7eb6279dda2a9e86df901353a1a89858ca)。
 - 规范：[VT100 用户指南第 3 章](https://vt100.net/docs/vt100-ug/chapter3.html)、[VT510 RIS](https://vt100.net/docs/vt510-rm/RIS.html)、[VT510 DECTCEM](https://vt100.net/docs/vt510-rm/DECTCEM.html)、[VT510 LNM](https://vt100.net/docs/vt510-rm/LNM.html)；xterm [`charproc.c`](https://github.com/ThomasDickey/xterm-snapshots/blob/a73913e0e5435f24d530336f90822d21e7afdd08/charproc.c)（`ReallyReset`）。
+
+## 9. 实施记录（2026-11-07，分支 `p1/ris-fix`）
+
+基于 `p1/integration` 的 `9ba1ad3`，按用户决定第二组第 1–4 项实施 R1。只改前端、测试与文档；未改 Rust、Tauri 命令、ACL、IPC 参数或依赖；未推送、未运行 CI。所有证据为 macOS 本机系统 Chrome + IPC stub。
+
+### 9.1 实现与时机
+
+- **文件**：[`ris-repair.ts`](../../apps/desktop/src/terminal-compat/ris-repair.ts)（xterm.js 插件 `risRepair`）；[`xterm-private.ts`](../../apps/desktop/src/terminal-compat/xterm-private.ts)（`showHiddenCursor`，生产代码中唯一访问 xterm 私有字段的地方）；[`terminal.ts`](../../apps/desktop/src/terminal.ts) 工厂加载插件；`responsiveness.ts` 增加三个开发诊断计数。
+- **时机**：插件注册一个 `parser.registerEscHandler({ final: "c" })` 处理器，返回 `false`，所以 xterm.js 仍执行内置 RIS（`fullReset`）。处理器与内置 RIS 在同一个解析位置同步运行，第 2 节列出的跨块、字符串结束、ESC 与 `c` 之间夹 C0/DEL、中间字节、C1、编码与写入路径的规则都由 xterm 的解析器决定，应用不复刻任何规则。修改发生在 `fullReset` 之前；`fullReset` 不碰这两个值，其末尾的整屏刷新画出光标（浏览器 DOM 断言已验证，见 9.2）。
+- **注册点与先后关系**：工厂在 `new Terminal()` 之后**第一个** `loadAddon`，早于 Unicode 11 插件、VT 适配器（同在工厂内）与冷归档观察者（`session-lifecycle` 建立 Channel 时由 `terminal-core.ts` 注册）。xterm.js 后注册的先执行，RIS 时的顺序是：冷归档观察者 → 适配器 `resetAll` → RIS 补全 → 内置 `fullReset`；前三者都返回 `false`。补全紧挨内置 RIS，没有处理器能夹在两者之间，所以补全当且仅当 RIS 真正执行时运行：若更新的处理器返回 `true` 吞掉 `ESC c`，两者都不执行（有测试）。VT 矩阵夹具按同一顺序挂载。
+- **与第 3.5 节“放置”的差异**：评估建议 E1 放进 `vt-adapters.ts`、E2 单独成模块；实施把 E1 与 E2 放进同一个处理器，以保证两者时机完全相同并紧挨内置 RIS，E2 的私有字段访问仍单独放在 `xterm-private.ts`。这样 VT 适配器继续“只用公开 API”，H4 边界（`terminal-core.ts`）仍只读、不写终端。
+- **E1**：加载时记下 `terminal.options.convertEol`（会话初值；工厂不设置，即 false），RIS 时若不同就写回，走 `CSI 20 l` 相同的公开选项设置器；值相同不写、不触发选项事件。
+- **E2**：`terminal._core.coreService.isCursorHidden` 存在且为布尔值时，若为 true 则置回 false，并回读确认。`_core` 或 `coreService` 缺失、字段缺失或不是布尔值、对象冻结、只有 getter、setter 忽略写入，一律什么都不改、不抛错，返回 `unavailable`，光标保持 xterm.js 原样（退回已知缺陷）。
+- **诊断**（仅开发构建 `?p0Diagnostics`，只有计数）：`risRepairs`（xterm 解析到的每次 RIS，包括用户硬复位里的那次）、`risCursorUnavailable`（E2 跳过）、`risLineFeedFailed`（E1 的选项抛错，正常不会发生）。计数回调在解析器内被 try/catch 包住，不会中断解析和 ACK。
+- **释放**：插件随 `Terminal.dispose()` 释放（xterm.js 释放已加载的插件），会话关闭时与终端一起释放；单元测试验证 `dispose()` 后不再补全。
+- **不变的部分**：主机字节原样到达 xterm，ACK 每块一次且按序，状态栏字节数按原始块；冷归档每次 RIS 计 1 次清除、0 次缺口；VT 适配器在 RIS 上的复位、DECRQM/DECRQSS 回复与非 UTF-8 解码不变；T31 的会话初始 DECCKM 在主机 RIS 后回到常规模式（用户决定第 5 项）；T32 硬复位的本地写入 `CAN ESC c CSI ? 25 h CSI 20 l`（加 T31 初始模式）逐字不变，与补全叠加只是重复设置同一状态，并在私有字段失效时仍能经公开序列让光标可见。
+- **不覆盖**：公开的 `terminal.reset()`（绕过解析器，生产代码不调用）；DECCOLM 触发的整机复位（需开启 `windowOptions.setWinLines`，生产关闭，不可达）。
+
+### 9.2 测试（对应第 5 节清单）
+
+| 第 5 节 | 用例位置（浏览器 IPC stub） | 内容 |
+| --- | --- | --- |
+| 1 | `terminal-regressions-reset.spec.ts` | 两项 `test.fail` 转为正常断言，并扩展到 pty、ssh、net 各 1 次（共 6 项）：DECRQM `?25;1$y`、DOM 中出现 `.xterm-cursor`；DECRQM `20;2$y`、`A LF B` 后 `B` 在第 2 列。原样固定测试（`vt: false`）不变且仍通过 |
+| 2 | `terminal-ris-repair.spec.ts` | pty、ssh、net 各 1 项：`ESC c`、`ESC LF c`、`ESC DEL c` 整块、每个切点、逐字节与固定步长多切点，结果逐项相同；DOM 光标存在 |
+| 3 | 同上 | 同块 `ESC c CSI ? 25 l`、`ESC c CSI 20 h` 保留主机设置；连续两次 RIS |
+| 4 | 同上 | OSC、C1 OSC、DCS DECRQSS、APC、PM、SOS 之后的 `ESC c`，以及 `ESC BEL c`、`ESC ESC c`、`CSI 1 ESC c`、`E4 ESC c`：与原样 xterm 一样执行 RIS（标题、屏幕、DCS 应答逐项相同），生产路径得到补全；DECRQSS 被 ESC 结束时照常应答（只记录） |
+| 5 | 同上 | `ESC CAN c`、`ESC SUB c`、`ESC # c`、`ESC U+0085 c`：不复位、不补全，屏幕与回复与原样 xterm 完全相同 |
+| 6 | 同上 | GBK、Big5、Shift_JIS 与 UTF-8：多字节字符紧挨 RIS、孤立前导字节后接 `ESC c`，每个切点与逐字节，四种编码结果相同 |
+| 7 | 同上 | 逐次记录 `Terminal.write`：主机块原样、无本地写入、无 `*_write`，状态栏字节数等于原始字节数，ACK 每块一次且按序；ACK 挂起时 RIS 前后的键入与粘贴顺序不变，释放后序号连续 |
+| 8 | 同上 | 两次主机 RIS 加一次用户硬复位：冷归档已归档行全部保留，`clears` 3、`gaps` 0；诊断 `risRepairs` 3、`historyClears` 3 |
+| 9 | `terminal-regressions-reset.spec.ts` 既有「VT adapters across resets」4 项 | DA/XTVERSION、DECSCL、DECOM 下的 CPR、OSC 52 策略在 RIS 后不变（未修改，照常通过）；吞掉 `ESC c` 的测试另验证适配器 SGR 影子仍随 RIS 复位 |
+| 10 | `terminal-ris-repair.spec.ts`、`terminal-clear-reset.spec.ts` | T31 初始应用光标键：主机 RIS 后回到常规光标键并补全；主机 DECSTR 不触发补全（光标由 xterm 自己恢复，LNM 仍置位，与原来相同）；用户硬复位的本地写入逐字不变、不向主机发送、回到初始应用光标键。T32 原有硬复位用例改为断言主机 RIS 现在也恢复两项 |
+| 11 | 上述各项 | RIS 后 DOM 中出现 `.xterm-cursor`；读屏树（`screenReaderMode`）仍在；新 spec 每项都断言没有页面异常 |
+| 12 | `terminal-ris-repair.spec.ts` | 守护：生产会话中 `_core.coreService.isCursorHidden` 存在、为布尔值、随 DECTCEM 变化、RIS 后被清除，失败信息要求按 G-UPGRADE 复核；退回：字段改为数字或被删除时不抛错、块剩余部分照常解析、E1 仍生效、光标保持隐藏（原缺陷）、`risCursorUnavailable` 计数，主机 `CSI ? 25 h/l` 放回布尔值后再次补全；单元：12 种不可用的对象形状（缺失、null、数字、字符串、冻结、只有 getter、忽略写入、getter 抛错等）全部返回 `unavailable` 且对象不变，另 2 种（隐藏、可见）分别返回 `shown`（被改为可见）与 `visible`（不改）；原样 xterm + 插件：初值 `convertEol: true` 时恢复为 true，计数回调抛错不影响解析，`dispose()` 后不再补全 |
+| 13 | 反向验证（临时修改，已还原） | 工厂与 VT 夹具临时不加载补全：22 项失败（上述 1–8、10–12 中经生产路径的用例与 X02），还原后通过 |
+| 14 | `vt-matrix.spec.ts` X02 | 原样与适配后双列：DECRQM `?25`、`20` 与 `A LF B`；矩阵见 9.3 |
+
+### 9.3 结果
+
+- `npm run build`：通过；生产 JS 536.74 kB（gzip 155.10 kB），基线 536.06 kB（154.88 kB）。
+- 新增与改动：`terminal-ris-repair.spec.ts` 新增 16 项；`terminal-regressions-reset.spec.ts` 由 2 项 `test.fail` 变为 6 项正常断言（+4）；X02 探针改为双列；`terminal-clear-reset.spec.ts` 1 项改写断言。
+- `--repeat-each 5`：`terminal-ris-repair.spec.ts` + `terminal-regressions-reset.spec.ts` 共 175/175；`vt-matrix.spec.ts` X02 + `terminal-clear-reset.spec.ts` 硬复位 10/10。
+- 全量浏览器 E2E：基线 `9ba1ad3` 实测 639/639（两项 `test.fail` 当时按预期失败、计为通过）；修改后 659/659（639 + 新 spec 16 + 两项 `test.fail` 扩为 6 项正常断言的 4），本机 4.6 分钟。
+- **X02 与统计**：生产列 partial → supported（RIS 补全），原样 `vt: false` 列保持 partial。生产统计 supported 38 → 39、partial 16 → 15、unsupported 9 不变（63 项）；原样统计 34/17/12 不变。见 [VT 矩阵](../p0/VT_MATRIX.zh-CN.md#ris-补全x02)。
+- **夹具发现**：`session-harness.ts` 的 `randomCuts` 对部分长度（实测 13、25）找不到足够的不同切点，在 Node 侧同步死循环，Playwright 超时无法中断。本次改用固定步长切点，未修改共享夹具，建议另行修复。
+
+### 9.4 上游 issue
+
+英文正文见 [`RIS_UPSTREAM_ISSUE_DRAFT.md`](RIS_UPSTREAM_ISSUE_DRAFT.md)：**草稿，待用户审阅后由协调者提交，尚未提交**。要点：最小复现（`CSI ? 25 l CSI 20 h ESC c` 后 DECRQM 与 `A LF B`，已在本机 Node 中对 6.0.0 `lib/xterm.js` 运行确认）、预期与实际、VT100/VT510 与 xterm `ReallyReset` 的依据、源码中 `CoreService.reset()` 不碰 `isCursorHidden` 与 LNM 存在 `convertEol` 选项里的位置描述、公开 `Terminal.reset()` 同样不恢复、修复设想（D1 简单；D2 需维护者决定，可能与 #4119 相关）。不含本项目名称、内部文件或路径。按用户决定第 2 项，内部等待上限为 P1 第 6 片组合验收。
+
+### 9.5 未验证
+
+- 原生 WKWebView、WebView2、WebKitGTK 中的光标绘制与补全；真实 Shell、SSH、Telnet 主机程序（`reset`、`tput reset`、`TERM=linux`、BBS/网络设备的裸 RIS）；vttest；WindTerm 2.7.0、真实 xterm 或 DEC 实机对照。
+- 读屏只检查了 DOM 读屏树仍在、没有页面异常，未用 VoiceOver/NVDA 实测。
+- 每次 RIS 多一次处理器调用，开销未测（RIS 罕见，不在热路径）。
+- xterm.js 6.1/7.0 中该私有字段的情况只在评估阶段读过 master 源码，未实测；升级时按 G-UPGRADE 复核。
+- 上游 issue 尚未提交，没有维护者反馈。

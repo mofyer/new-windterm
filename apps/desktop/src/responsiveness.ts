@@ -38,6 +38,11 @@ function createDiagnostics() {
     // User clears of the scrollback (T32): how often, and how many archived lines they discarded.
     historyUserClears: 0,
     historyUserClearedLines: 0,
+    // RIS repair (ris-repair.ts): every RIS xterm.js parsed, host or the user's hard reset, and the
+    // repairs skipped because xterm.js's private cursor field or the convertEol option was unusable.
+    risRepairs: 0,
+    risCursorUnavailable: 0,
+    risLineFeedFailed: 0,
   };
   Object.defineProperty(window, "__WINDTERM_P0_DIAGNOSTICS__", {
     value: Object.freeze({ snapshot: () => Object.freeze({ ...counters }) }),

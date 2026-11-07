@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 import { ESC, ST, installHarness, probe, rawAndAdapted, run, type Harness } from './support/vt-harness';
 
 // VT compatibility matrix for the exact @xterm/xterm 6.0.0 in package-lock.json plus the
-// production adapters (src/terminal-compat/vt-adapters.ts), which the harness attaches by
-// default exactly as the workspace factory does. Probes whose result the adapters change also
-// record the raw xterm.js evidence (`vt: false`) next to the adapted result.
+// production RIS repair and adapters (src/terminal-compat/ris-repair.ts, vt-adapters.ts), which
+// the harness attaches by default exactly as the workspace factory does. Probes whose result they
+// change also record the raw xterm.js evidence (`vt: false`) next to the adapted result.
 // Every probe drives a real, independent xterm in the page and asserts the behaviour observed
 // today, so a dependency bump that changes it fails loudly. Titles carry the matrix status:
 //   [supported]   behaves as the cited reference for the probed case;
@@ -876,21 +876,31 @@ test.describe('soft and hard reset', () => {
   });
 
   probe({
-    id: 'X02', status: 'partial', title: 'RIS (ESC c) leaves a DECTCEM-hidden cursor hidden and LNM set (pinned in terminal-regressions-reset); screen, cursor, other modes and buffers reset',
-    sequence: '"text", CSI ? 2004 h, CSI ? 1000 h, CSI ? 1049 h, CSI 2;3 r, ESC c', expected: 'VT100 RIS',
+    id: 'X02', status: 'supported',
+    title: 'RIS (ESC c) resets screen, cursor, modes, margins and buffers; the RIS repair also shows a DECTCEM-hidden cursor and resets LNM (raw xterm.js keeps both)',
+    sequence: '"text", CSI ? 2004 h, CSI ? 1000 h, CSI ? 1049 h, CSI 2;3 r, CSI ? 25 l, CSI 20 h, ESC c; DECRQSS r, DECRQM ?25 and 20, "A" LF "B"',
+    expected: 'VT100 RIS: the power-on state, including a visible cursor (VT510 DECTCEM default) and LNM reset (LF only moves down)',
     features: ['T07', 'T21'],
-  }, page => run(page, async h => {
-    await h.write('text\x1b[?2004h\x1b[?1000h\x1b[?1049h\x1b[2;3r\x1bc');
-    return {
+  }, page => rawAndAdapted(page, async (h: Harness) => {
+    await h.write('text\x1b[?2004h\x1b[?1000h\x1b[?1049h\x1b[2;3r\x1b[?25l\x1b[20h\x1bc');
+    const reset = {
       type: h.bufferType(), lines: h.lines(), cursor: h.cursor(),
       paste: h.term.modes.bracketedPasteMode, mouse: h.term.modes.mouseTrackingMode,
       margins: await h.query(`\x1bP$qr${'\x1b\\'}`),
     };
+    const dectcem = await h.query('\x1b[?25$p');
+    const lnm = await h.query('\x1b[20$p');
+    await h.write('A\nB');
+    return { reset, dectcem, lnm, lineFeed: h.lines().slice(0, 2) };
   }), observed => {
-    expect(observed).toEqual({
+    const reset = {
       type: 'normal', lines: ['', '', '', '', '', ''], cursor: { x: 0, y: 0 }, paste: false, mouse: 'none',
       margins: `${ESC}P1$r1;6r${ST}`,
-    });
+    };
+    // Raw xterm.js 6.0.0 keeps both (CoreService.isCursorHidden and options.convertEol survive
+    // reset(); also pinned in terminal-regressions-reset.spec.ts).
+    expect(observed.raw).toEqual({ reset, dectcem: `${ESC}[?25;2$y`, lnm: `${ESC}[20;1$y`, lineFeed: ['A', 'B'] });
+    expect(observed.adapted).toEqual({ reset, dectcem: `${ESC}[?25;1$y`, lnm: `${ESC}[20;2$y`, lineFeed: ['A', ' B'] });
   });
 });
 

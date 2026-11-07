@@ -253,18 +253,19 @@ test.describe('effects in detail (local PTY)', () => {
     await expectOrderedAcks(s);
   });
 
-  test('hard reset returns to the new-session state, cursor shown and LNM off; a host RIS keeps both (unchanged)', async ({ page }) => {
+  test('hard reset returns to the new-session state, cursor shown and LNM off; a host RIS now ends the same way', async ({ page }) => {
     const s = await Session.open(page, 'pty', { size: SIZE });
     const initial = await s.snapshot();
     const dirty = `${HISTORY}${E}[?1h${E}=${E}[?2004h${E}[?1000;1006h${E}[?1004h${E}[4h${E}[?7l${E}[2;5r${E}[?6h${E}(0${E}[1;31m${E}[4 q`
       + `${E}[?25l${E}[20h${E}[?1049hALT`;
     await expect(cursor(page)).toHaveCount(1);
-    // Host RIS: xterm.js 6.0.0 keeps the cursor hidden and LNM set; this feature does not change that.
+    // Host RIS: the RIS repair (ris-repair.ts) shows the cursor and resets LNM that xterm.js 6.0.0's
+    // RIS keeps; the host bytes are parsed unchanged.
     await s.send(dirty, `${E}c`);
-    await expect(cursor(page)).toHaveCount(0);
-    expect(await decrqm(s, `${E}[?25$p${E}[20$p`)).toBe(`${E}[?25;2$y${E}[20;1$y`);
-    // The user's hard reset from the same state.
-    await s.send(`${E}[?25h${E}[20l`, dirty);
+    await expect(cursor(page)).toHaveCount(1);
+    expect(await decrqm(s, `${E}[?25$p${E}[20$p`)).toBe(`${E}[?25;1$y${E}[20;2$y`);
+    // The user's hard reset from the same state; its own CSI ? 25 h CSI 20 l are kept.
+    await s.send(dirty);
     await expect(cursor(page)).toHaveCount(0);
     await act(s, 'reset-hard');
     await expect(page.locator('#toast')).toContainText('已硬复位「Local 2」');

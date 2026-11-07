@@ -2,9 +2,9 @@ import { test, type Page, type TestInfo } from '@playwright/test';
 
 // Page-side harness for the VT matrix specs: one real, independent @xterm/xterm instance per
 // probe, plus helpers that observe it only through public xterm APIs, onData / onBinary replies
-// and the rendered DOM rows. By default the production VT adapters
-// (src/terminal-compat/vt-adapters.ts) are attached, exactly as the workspace factory does;
-// `vt: false` measures raw xterm.js instead.
+// and the rendered DOM rows. By default the production RIS repair
+// (src/terminal-compat/ris-repair.ts) and VT adapters (src/terminal-compat/vt-adapters.ts) are
+// attached in the order the workspace factory uses; `vt: false` measures raw xterm.js instead.
 
 export type Status = 'supported' | 'partial' | 'unsupported';
 export interface Meta {
@@ -66,8 +66,11 @@ export function installHarness() {
   target.vtHarness = async ({ cols = 20, rows = 6, options = {}, vt = {} }: HarnessOptions) => {
     const modulePath = '/node_modules/@xterm/xterm/lib/xterm.mjs';
     const adapterPath = '/src/terminal-compat/vt-adapters.ts';
+    const repairPath = '/src/terminal-compat/ris-repair.ts';
     const { Terminal } = await import(/* @vite-ignore */ modulePath);
     const term = new Terminal({ cols, rows, allowProposedApi: true, ...options });
+    // As in terminal.ts: the RIS repair first, before any other ESC c handler; disposed with term.
+    if (vt !== false) term.loadAddon((await import(/* @vite-ignore */ repairPath)).risRepair());
     const notices: { kind: string }[] = [];
     const clipboard: string[] = [];
     const adapters = vt === false ? null : (await import(/* @vite-ignore */ adapterPath)).attachVtAdapters(term, {
@@ -153,7 +156,7 @@ export async function run<T>(page: Page, body: (h: Harness) => Promise<T>, optio
   }, [body.toString(), options] as [string, HarnessOptions]) as Promise<T>;
 }
 
-const ADAPTERS = 'src/terminal-compat/vt-adapters.ts attached unless the probe passes vt: false ("raw")';
+const ADAPTERS = 'src/terminal-compat/ris-repair.ts and vt-adapters.ts attached unless the probe passes vt: false ("raw")';
 
 /** Run the same body on raw xterm.js (`vt: false`) and with the production adapters. */
 export async function rawAndAdapted<T>(page: Page, body: (h: Harness) => Promise<T>, options: HarnessOptions = {}) {

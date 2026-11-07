@@ -137,9 +137,9 @@ function installTools() {
     },
     /**
      * Runs one sample once per cut list. Before each run a separate RIS chunk returns the terminal
-     * to its initial state; the run's own bytes are then cut at the given offsets. xterm.js 6.0.0's
-     * RIS keeps DECTCEM, LNM and OSC 4/10/11/12 colours (terminal-regressions-reset.spec.ts), so a
-     * sample must not leave those changed unless every run reports them the same way.
+     * to its initial state; the run's own bytes are then cut at the given offsets. RIS keeps OSC
+     * 4/10/11/12 colours (terminal-regressions-reset.spec.ts; DECTCEM and LNM are restored by the
+     * RIS repair), so a sample must not leave those changed unless every run reports them the same way.
      */
     async splits(sample: number[], cutLists: number[][], probe: number[]) {
       const out = [];

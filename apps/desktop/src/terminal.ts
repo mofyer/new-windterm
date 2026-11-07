@@ -3,7 +3,9 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import {
   attachVtAdapters, type VtAdapterOptions, type VtAdapters, type VtNotice,
 } from "./terminal-compat/vt-adapters";
+import { risRepair, type RisRepairOutcome } from "./terminal-compat/ris-repair";
 import { DEFAULT_SCROLLBACK_LINES } from "./history-budget";
+import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 
 export interface WorkspaceTerminal {
   readonly terminal: Terminal;
@@ -11,7 +13,15 @@ export interface WorkspaceTerminal {
   readonly vt: VtAdapters;
 }
 
-/** Keep every workspace terminal on the same tested width provider and VT adapters. */
+/** Development diagnostics only: how often RIS was repaired and which part had to be skipped. */
+function countRisRepair(outcome: RisRepairOutcome): void {
+  if (!diagnostics) return;
+  diagnostics.risRepairs++;
+  if (outcome.cursor === "unavailable") diagnostics.risCursorUnavailable++;
+  if (outcome.lineFeed === "failed") diagnostics.risLineFeedFailed++;
+}
+
+/** Keep every workspace terminal on the same tested width provider, RIS repair and VT adapters. */
 export function createWorkspaceSession(theme?: ITheme, vt: VtAdapterOptions = {}): WorkspaceTerminal {
   const terminal = new Terminal({
     cursorBlink: true,
@@ -25,6 +35,9 @@ export function createWorkspaceSession(theme?: ITheme, vt: VtAdapterOptions = {}
     allowProposedApi: true,
     screenReaderMode: true,
   });
+  // First, before any other ESC c handler: it must be the last to run before xterm's own RIS
+  // (ris-repair.ts). Its single private-field access is in xterm-private.ts; disposed with the terminal.
+  terminal.loadAddon(risRepair({ onRepair: diagnostics ? countRisRepair : undefined }));
   terminal.loadAddon(new Unicode11Addon());
   terminal.unicode.activeVersion = "11";
   return { terminal, vt: attachVtAdapters(terminal, vt) };

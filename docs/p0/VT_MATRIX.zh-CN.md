@@ -1,11 +1,11 @@
 # P0 VT 兼容矩阵（xterm.js 6.0.0 + 生产 VT 适配器）
 
-日期：2026-10-12（接入生产 VT 适配器；原样行为首测于 2026-10-11）。依赖：`@xterm/xterm 6.0.0`（`package-lock.json` 精确锁定）。状态：**63 项浏览器探针全部按"当前观察值"断言通过**。探针默认挂载与工作区工厂相同的[生产 VT 适配器](#生产-vt-适配器)；与适配器相关的 8 项（S03、K02、R06、D01–D04、O04）同时断言 `vt: false` 下的原样 xterm.js 证据。这只是浏览器中的行为证据，不是 VT 兼容验收：**未运行 vttest**，未与 WindTerm 2.7.0 实机或真实 xterm/DEC 硬件逐项对照，"期望"一列来自公开文档而非实测；适配器未在 Tauri 原生 WebView、真实 PTY/SSH 主机程序上验证。
+日期：2026-10-12（接入生产 VT 适配器；原样行为首测于 2026-10-11）；2026-11-07 接入 RIS 补全并按用户决定把 X02 生产列改回 supported。依赖：`@xterm/xterm 6.0.0`（`package-lock.json` 精确锁定）。状态：**63 项浏览器探针全部按"当前观察值"断言通过**。探针默认挂载与工作区工厂相同的[生产 VT 适配器](#生产-vt-适配器)与 [RIS 补全](#ris-补全x02)；与它们相关的 9 项（S03、K02、R06、D01–D04、O04、X02）同时断言 `vt: false` 下的原样 xterm.js 证据。这只是浏览器中的行为证据，不是 VT 兼容验收：**未运行 vttest**，未与 WindTerm 2.7.0 实机或真实 xterm/DEC 硬件逐项对照，"期望"一列来自公开文档而非实测；适配器未在 Tauri 原生 WebView、真实 PTY/SSH 主机程序上验证。
 
 ## 方法与边界
 
 - 探针：[`vt-matrix.spec.ts`](../../apps/desktop/tests/e2e/vt-matrix.spec.ts)，页面侧夹具：[`support/vt-harness.ts`](../../apps/desktop/tests/e2e/support/vt-harness.ts)。每项在页面中以 `/node_modules/@xterm/xterm/lib/xterm.mjs` 新建一个独立 `Terminal`，写入控制序列后，只通过以下途径观察：公开 buffer API（`cursorX/Y`、`translateToString`、`isWrapped`、`IBufferCell` 属性与颜色模式）、`onData`/`onBinary` 回复、`onTitleChange`、`modes`、DOM 渲染器输出的行元素 class/样式，以及派发到 `.xterm-screen` 的合成鼠标/滚轮事件。
-- 适配器开关：夹具默认对每个探针终端调用生产代码 `attachVtAdapters`（与 `terminal.ts` 工厂相同）；传 `vt: false` 得到原样 xterm.js（保留原样证据），传 `vt: { terminalType, clipboardWrite }` 选择终端类型或打开 OSC 52 写入。夹具把剪贴板写入接到桩函数，不碰真实剪贴板。H01–H03 是钩子可行性实验，始终在原样 xterm.js 上运行。
+- 适配器开关：夹具默认对每个探针终端按 `terminal.ts` 工厂的顺序先加载生产代码 `risRepair`、再调用 `attachVtAdapters`；传 `vt: false` 得到原样 xterm.js（两者都不挂，保留原样证据），传 `vt: { terminalType, clipboardWrite }` 选择终端类型或打开 OSC 52 写入。夹具把剪贴板写入接到桩函数，不碰真实剪贴板。H01–H03 是钩子可行性实验，始终在原样 xterm.js 上运行。
 - 状态定义：**supported** 对所测案例符合所引资料；**partial** 部分符合，缺口写在标题 `known gap:` 之后；**unsupported** 序列被忽略或回答错误。状态按"生产配置"（挂适配器）判定。缺口测试断言的是"今天的错误行为"，依赖升级改变行为时会失败，需要人工重新判定，不能当作已对齐。
 - 每项测试都把 `{id, sequence, expected, observed, features, xterm, adapters}` 作为 JSON 附件写入 Playwright 报告；`adapters` 说明本项是否挂了适配器。
 - 环境：系统 Chrome（Playwright `channel: 'chrome'`）+ xterm DOM 渲染器（应用未使用 WebGL addon）。未覆盖 Tauri WKWebView、真实输入设备、IME。探针使用 xterm 默认选项加适配器；生产工厂 `createWorkspaceSession`（`createWorkspaceTerminal` 是它的包装）另启用 Unicode 11 宽度与 `screenReaderMode`，这两项不影响本表的控制序列语义，但未在生产工厂上重复测量。
@@ -16,11 +16,11 @@
 
 | 状态 | 数量 | 探针 |
 | --- | --- | --- |
-| supported | 38（其中 3 项是钩子可行性 H01–H03；4 项依赖适配器：S03 K02 R06 D01） | C01 C02 C04 S01 S02 S03 W01 W03 E01–E06 B01 G01 G02 A01 A03 M01–M03 M06 K01 K02 R01 R02 R04 R05 R06 D01 D06 O01–O03 H01–H03 |
-| partial | 16（D02 D03 O04 由适配器从 unsupported 改为 partial；X02 于 2026-11-07 由 supported 改为 partial） | C03 W02 W04 G03 G05 L02 A02 M04 R03 D02 D03 D05 D08 X01 X02 O04 |
+| supported | 39（其中 3 项是钩子可行性 H01–H03；5 项依赖适配器或 RIS 补全：S03 K02 R06 D01 X02） | C01 C02 C04 S01 S02 S03 W01 W03 E01–E06 B01 G01 G02 A01 A03 M01–M03 M06 K01 K02 R01 R02 R04 R05 R06 D01 D06 X02 O01–O03 H01–H03 |
+| partial | 15（D02 D03 O04 由适配器从 unsupported 改为 partial） | C03 W02 W04 G03 G05 L02 A02 M04 R03 D02 D03 D05 D08 X01 O04 |
 | unsupported | 9 | S04 E07 B02 G04 L01 M05 D04 D07 P01 |
 
-原样 xterm.js 6.0.0（`vt: false`）为 supported 34、partial 17、unsupported 12（X02 不受适配器影响，随本次改判同样计入 partial）；上一版（2026-10-11）的统计为 supported 35、partial 16、unsupported 12。
+原样 xterm.js 6.0.0（`vt: false`）为 supported 34、partial 17、unsupported 12，未变（X02 原样列仍是 partial）。X02 的变化经过：2026-11-07 先因两项 RIS 缺陷由 supported 改为 partial（当时生产 38/16/9），同日接入 RIS 补全、两项都修复并通过测试后，按用户决定（第二组第 4 项）把生产列改回 supported。上一版（2026-10-11）的统计为 supported 35、partial 16、unsupported 12。
 
 ## 生产 VT 适配器
 
@@ -64,6 +64,15 @@
 - **限制**：base64 最多 1 MiB 字符（解码后最多 768 KiB）；必须是规范 base64、合法 UTF-8，并且不含 TAB/CR/LF 以外的 C0、DEL 或 C1 控制字符，防止植入粘贴后才生效的转义序列；选区参数只接受 xterm 定义的 `c p q s 0–7`，最多 16 个；空负载（清除选区）不支持。超出 xterm.js 自身 10 MB OSC 上限的序列不会交给处理器，同样被吞掉。
 - **不记录内容**：负载与解码文本不写日志、不进入提示；测试拦截 `console` 验证。
 - 写入使用 `navigator.clipboard.writeText`。Tauri WKWebView、WebView2、WebKitGTK 是否允许在没有用户手势时写入**未验证**；失败时提示"写入失败"。
+
+### RIS 补全（X02）
+
+2026-11-07 用户决定（第二组第 1–4 项，见 [RIS ADR 评估](../p1/RIS_ADR_EVALUATION.zh-CN.md)）采用路线 R1。代码是 [`ris-repair.ts`](../../apps/desktop/src/terminal-compat/ris-repair.ts) 与 [`xterm-private.ts`](../../apps/desktop/src/terminal-compat/xterm-private.ts)，不属于 VT 适配器：
+
+- **时机**：一个返回 `false` 的 `ESC c` 处理器，作为 xterm.js 插件在 `terminal.ts` 工厂新建终端后第一个加载，早于 VT 适配器与冷归档观察者。xterm.js 后注册的处理器先执行，所以它是内置 RIS（`fullReset`）之前最后一个运行的处理器，与 RIS 在同一个解析位置同步执行，且只在 RIS 真正执行时执行。跨块、字符串（OSC/DCS/APC/PM/SOS）后的 `ESC c`、ESC 与 `c` 之间的 C0 或 DEL、会话编码与各写入路径都由 xterm 自己的解析器决定。
+- **E1（LNM，公开 API）**：把公开选项 `convertEol` 恢复为加载时的值（会话初值；工厂不设置，即 false），与 `CSI 20 l` 走同一个设置器。
+- **E2（DECTCEM，唯一的私有字段）**：`_core.coreService.isCursorHidden` 存在且为布尔值时置回 false，RIS 自身的整屏刷新画出光标；字段缺失、类型不符、不可写或写入无效时什么都不做、不抛错，光标保持 xterm.js 原样（即退回已知缺陷），开发诊断 `?p0Diagnostics` 的 `risCursorUnavailable` 计数。这是 VT 适配器“只用公开 API”约定之外的唯一例外，每次升级 xterm 都要按 [G-UPGRADE](TERMINAL_CORE_ADR.zh-CN.md#p0-决策门禁与后续启用门禁) 复核，守护测试在 [`terminal-ris-repair.spec.ts`](../../apps/desktop/tests/e2e/terminal-ris-repair.spec.ts)。
+- **不改的部分**：不读取、不改写主机字节，不写终端，ACK 仍按原始块，冷归档每次 RIS 仍计 1 次清除，VT 适配器在 RIS 上的复位、DECRQM 回复与非 UTF-8 解码都不变；DECCKM 等其余模式仍由 xterm.js 的 RIS 复位（主机 RIS 后回到常规模式，不恢复会话初始模式）。未覆盖公开的 `terminal.reset()`（生产代码不调用）和需要开启 `windowOptions.setWinLines` 才可达的 DECCOLM 整机复位。
 
 ### 开销与其它边界
 
@@ -212,7 +221,7 @@
 | ID | 序列 | 期望（依据） | 观察值 | 状态 | 影响 |
 | --- | --- | --- | --- | --- | --- |
 | X01 | 设置边距/DECOM/IRM/SGR/G0/隐藏光标/关闭换行后 `CSI ! p` | VT510 DECSTR 表：不清屏，DECOM 绝对、IRM 替换、光标可见、边距全屏、"Autowrap: No autowrap" | 屏幕保留、?6→2、4→2、?25→1、边距 `1;6r`、SGR/字符集复位；**?7→1（自动换行重新开启）**，xterm 本身的取值未核对 | partial | T08 T11 T21 |
-| X02 | 文本 + 2004 + 1000 + 1049 + 边距后 `ESC c` | VT100 RIS | 主屏、全空、(0,0)、括号粘贴关、鼠标 none、边距 `1;6r`；已知缺口：DECTCEM 隐藏的光标与 LNM（`CSI 20 h`）在 RIS 后不恢复（经生产会话路径由 `terminal-regressions-reset.spec.ts` 以 `test.fail` 固定；处理方式进入终端内核 ADR 评估，2026-11-07 用户决定） | partial | T07 T21 |
+| X02 | 文本 + 2004 + 1000 + 1049 + 边距 + `CSI ? 25 l` + `CSI 20 h` 后 `ESC c`；DECRQSS r、DECRQM ?25 与 20、`A LF B` | VT100 RIS：回到上电状态，含光标可见（VT510 DECTCEM 默认）与 LNM 复位（LF 只下移） | 两列相同：主屏、全空、(0,0)、括号粘贴关、鼠标 none、边距 `1;6r`。原样：`?25;2$y`、`20;1$y`，`B` 回到第 1 列（DECTCEM 隐藏的光标与 LNM 都不恢复）；RIS 补全后：`?25;1$y`、`20;2$y`，`B` 在第 2 列。生产会话路径的光标绘制、跨块与边界情形见 `terminal-regressions-reset.spec.ts` 与 `terminal-ris-repair.spec.ts` | supported（RIS 补全；原样 partial） | T07 T21 |
 
 ### OSC
 
@@ -260,6 +269,7 @@ xterm/256 色/真彩/鼠标/括号粘贴/OSC 颜色与标题这一类（T12/T13/
 | O04 OSC 52 | `registerOscHandler(52)`（H03） | **已接入**：写入需会话授权、读取始终拒绝 | 原生 WebView 的剪贴板权限未验证，见 [OSC 52 剪贴板](#osc-52-剪贴板) |
 | K02 光标样式报告、R06 SGR 报告 | 钩子返回 `false` 透传给内置处理器，同时维护影子状态，再接管 DECRQSS | **已接入** | 影子状态覆盖 RIS/DECSTR/备用屏/DECSC；OSC 8 扩展位与带外 `terminal.reset()` 是已知漂移点 |
 | S03 DECOM 下的 CPR | 接管 `CSI 6 n`/`CSI ? 6 n`，用影子 DECSTBM 与公开 `modes.originMode` 换算相对行 | **已接入** | 依赖影子边距状态 |
+| X02 RIS 后 DECTCEM 与 LNM | `registerEscHandler({ final: "c" })` 返回 `false`；公开选项 `convertEol` 与私有字段 `_core.coreService.isCursorHidden` | **已接入**（2026-11-07，浏览器验证） | 唯一使用 xterm 私有字段的生产代码，升级按 G-UPGRADE 复核，失效时退回原样缺陷；见 [RIS 补全](#ris-补全x02) |
 | W02 待换行时的 CPR 列号 | 接管 `CSI 6 n`，用公开 `cursorX` 钳制列号 | 未做 | 本轮任务范围外；DECOM 下的回复与 xterm.js 一样报告 cols+1 |
 | G03 DECNRCM | 接管 `CSI ?42 h/l` 与 DECRQM，并在未开启时忽略 NRCS 指定 | 未做 | 只影响 7 位 NRCS |
 | D07 DECSCNM | 接管 `CSI ?5 h/l` 并交换主题前景/背景 | 未做 | 渲染层近似，需验证选区与光标颜色 |
@@ -299,5 +309,7 @@ npm run build
 - `npm run build`（`tsc --noEmit` + Vite 构建）通过；新 spec 与夹具另用 `tsc --strict --noUnusedLocals --noUnusedParameters` 单独检查通过（项目 tsconfig 只包含 `src`）。
 
 上一轮（2026-10-11，原样 xterm.js，端口 1431）：`vt-matrix.spec.ts` 63 passed、`--repeat-each=4` 252 passed、全量 161 passed。
+
+2026-11-07（RIS 补全，分支 `p1/ris-fix`，macOS，系统 Chrome，端口 1443）：`vt-matrix.spec.ts` + `vt-adapters.spec.ts` + `vt-adapters-contract.spec.ts` **80 passed**；X02 与 T32 硬复位用例 `--repeat-each 5` 共 10 passed；全量 Playwright **659 passed**（基线 639）；`npm run build` 通过。临时不加载 RIS 补全时 X02 失败，还原后通过。详见 [RIS ADR 评估第 9 节](../p1/RIS_ADR_EVALUATION.zh-CN.md#9-实施记录2026-11-07分支-p1ris-fix)。
 
 未运行：vttest、WindTerm 2.7.0 实机对照、真实 xterm 对照、Tauri/WKWebView/WebView2 中的适配器与剪贴板、真实 PTY/SSH/Telnet 主机程序、Windows/Linux。本表通过不代表 T07–T13、T16–T18、T20、T21、T26 中任何一项验收通过。
