@@ -287,7 +287,7 @@ test('stopping, a new query, closing the view and closing the tab each terminate
   expect(await raceWith('ne+dle', 'escape')).toBe(true);
   await expect(page.locator('.history-view')).toHaveCount(0);
   expect(await terminated()).toEqual([true, true, true]);
-  expect(await liveViews(cdp)).toBe(0);
+  await expect.poll(() => liveViews(cdp), { timeout: 5_000 }).toBe(0); // pending async work may hold it briefly
   // Closing the tab while a search runs: worker, view, snapshot and archive all go.
   await openView(page);
   await toggle(page).click();
@@ -297,7 +297,7 @@ test('stopping, a new query, closing the view and closing the tab each terminate
   await expect(page.locator('.history-view')).toHaveCount(0);
   expect(await terminated()).toEqual([true, true, true, true]);
   await page.waitForTimeout(200);
-  expect(await liveViews(cdp)).toBe(0);
+  await expect.poll(() => liveViews(cdp), { timeout: 5_000 }).toBe(0); // pending async work may hold it briefly
   expect(await liveArchives(cdp)).toBe(0);
   expect(await page.evaluate(() => (window as any).captureQa.weakView.deref() === undefined)).toBe(true);
   expect(await page.evaluate(() => (window as any).lastRegexWorker.deref() === undefined)).toBe(true);

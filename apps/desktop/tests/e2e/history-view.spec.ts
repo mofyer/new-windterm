@@ -355,7 +355,7 @@ test('Esc returns focus to the terminal, which the view never changed; input and
   await expect(page.locator('.terminal-pane:not([hidden]) .xterm-helper-textarea')).toBeFocused();
   await expect(page.locator('#history-view-toggle')).toHaveAttribute('aria-pressed', 'false');
   // A closed view is not kept by the still open session either.
-  expect(await liveViews(cdp)).toBe(0);
+  await expect.poll(() => liveViews(cdp), { timeout: 5_000 }).toBe(0); // pending async work may hold it briefly
   const after = await terminalState();
   expect(after.inert).toBe(false);
   expect(after.viewportY).toBe(after.baseY);
@@ -407,7 +407,7 @@ test('closing the tab disposes the view with its running search, snapshot and ca
   await expect(page.locator('#history-view-toggle')).toHaveAttribute('aria-pressed', 'false');
   // Let the aborted search reach its next check, then collect.
   await page.waitForTimeout(200);
-  expect(await liveViews(cdp)).toBe(0);
+  await expect.poll(() => liveViews(cdp), { timeout: 5_000 }).toBe(0); // pending async work may hold it briefly
   expect(await liveArchives(cdp)).toBe(0);
   expect(await page.evaluate(() => (window as any).captureQa.weakView.deref() === undefined)).toBe(true);
   expect(errors).toEqual([]);

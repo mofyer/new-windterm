@@ -397,8 +397,12 @@ export function randomCuts(length: number, count: number, seed = 7): number[][] 
   const next = (n: number) => { state = (state * 1103515245 + 12345) & 0x7fffffff; return state % n; };
   return Array.from({ length: count }, () => {
     const cuts = new Set<number>();
-    const wanted = 2 + next(7);
-    while (cuts.size < Math.min(wanted, length - 1)) cuts.add(1 + next(length - 1));
+    const wanted = Math.min(2 + next(7), length - 1);
+    // `state % n` keeps the generator's short-period low bits, so for some lengths (13, 25, …)
+    // it never reaches `wanted` distinct cuts. Bound the draws, then fill deterministically with
+    // the smallest unused positions; lengths that terminated before keep exactly the same cuts.
+    for (let draws = 0; cuts.size < wanted && draws < 100_000; draws++) cuts.add(1 + next(length - 1));
+    for (let cut = 1; cuts.size < wanted; cut++) cuts.add(cut);
     return [...cuts].sort((a, b) => a - b);
   });
 }
