@@ -316,3 +316,95 @@ test('a taller screen erased over archived rows reports a gap instead of archivi
   expect(result.archived.slice(16)).toEqual(Array.from({ length: 30 }, (_, i) => `M${i}`));
   expect(result.stats.gaps).toBe(1);
 });
+
+test('the reader (step 7): marks where gaps and resets lie, reads without waiting for compression, walks backward', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make, stripSgr } = (window as any).historyQa;
+    const lines = (name: string, n: number) => Array.from({ length: n }, (_, i) => `${name}${i}`).join('\r\n') + '\r\n';
+    const { archive, write } = make(20, 5, 200, 64);
+    await write(lines('A', 100));
+    await write('\x1bc'); // RIS: the screen rows A96..A99 are lost
+    await write(lines('B', 100));
+    await write('x\x1b[5000b\r\n'); // 250 rows > 205: the start of this line is lost
+    // Within the hot window per write; the last blocks sealed are still queued for compression.
+    const c = Array.from({ length: 300 }, (_, i) => `C${i}`);
+    for (let i = 0; i < 300; i += 100) await write(c.slice(i, i + 100).join('\r\n') + '\r\n');
+    const queued = archive.stats().blocks;
+    const early = (await archive.read(0, 10_000)).map(stripSgr);
+    const held = archive.held();
+    await archive.flush();
+    const completed = archive.stats().blocks;
+    const late = (await archive.lines(0, 10_000)).map(stripSgr);
+    // Backward walk: newest batch first.
+    const batches: { first: number; lines: string[] }[] = [];
+    await archive.scanBackward(held.end, (first: number, batch: string[]) => {
+      batches.push({ first, lines: batch.map(stripSgr) });
+      return true;
+    });
+    const controller = new AbortController();
+    let visited = 0;
+    const reached = await archive.scanBackward(held.end, () => {
+      visited++;
+      if (visited === 2) controller.abort();
+      return true;
+    }, controller.signal);
+    const unread = archive.unread();
+    // Dropping the blocks up to the gap forgets the marks before the first line still held.
+    while (archive.held().first <= held.marks[1].line && archive.dropOldest()) { /* drop */ }
+    const afterDrop = archive.held();
+    archive.clear();
+    const afterClear = archive.held();
+    return {
+      queued, completed, early, late, held,
+      firsts: batches.map((b) => b.first), walked: batches.flatMap((b) => [...b.lines].reverse()), reached, visited,
+      unread: { lines: unread.lines.map(stripSgr), certain: unread.certain }, afterDrop, afterClear,
+    };
+  });
+  // Read while blocks were still queued for compression equals the read after it.
+  expect(result.queued).toBeLessThan(result.completed);
+  expect(result.early).toEqual(result.late);
+  const at = (text: string) => result.late.indexOf(text);
+  expect(result.held.marks.map((mark: any) => mark.kind)).toEqual(['clear', 'gap']);
+  // Each mark sits just before the first line read after the reset or the hole.
+  expect(result.held.marks[0].line).toBe(at('B0'));
+  expect(result.late[result.held.marks[0].line - 1]).toBe('A95');
+  // The hole holds B96..B99 (on screen at the last read) and the start of the long line.
+  expect(result.late[result.held.marks[1].line]).toMatch(/^x+$/);
+  expect(result.late[result.held.marks[1].line - 1]).toBe('B95');
+  expect(result.held.marksOmitted).toBe(0);
+  // The walk covers every held line exactly once, newest first, batch by batch.
+  expect(result.walked).toEqual([...result.late].reverse());
+  expect(result.firsts).toEqual([...result.firsts].sort((a: number, b: number) => b - a));
+  expect(result.reached).toBe(false);
+  expect(result.visited).toBe(2);
+  // Not archived yet: the screen, from where the next capture resumes.
+  expect(result.unread).toEqual({ lines: ['C296', 'C297', 'C298', 'C299', ''], certain: true });
+  expect(result.late.at(-1)).toBe('C295');
+  expect(result.afterDrop.marks).toEqual([]);
+  expect(result.afterClear).toEqual({ first: result.held.end, end: result.held.end, marks: [], marksOmitted: 0 });
+});
+
+test('unread reads the normal screen without moving the archive, also on the alternate screen', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make, stripSgr } = (window as any).historyQa;
+    const lines = (name: string, n: number) => Array.from({ length: n }, (_, i) => `${name}${i}`).join('\r\n') + '\r\n';
+    const { archive, write } = make(20, 5, 200);
+    await write(lines('A', 30));
+    const first = archive.unread().lines.map(stripSgr);
+    const again = archive.unread().lines.map(stripSgr);
+    await write('\x1b[?1049h' + lines('ALT', 3));
+    const onAlternate = archive.unread().lines.map(stripSgr);
+    await write('\x1b[?1049l' + lines('B', 30) + '\r\n'.repeat(5));
+    await archive.flush(true);
+    const archived = (await archive.lines(0, 1000)).map(stripSgr).filter((line: string) => line !== '');
+    return { first, again, onAlternate, archived, gaps: archive.stats().gaps };
+  });
+  expect(result.first).toEqual(['A26', 'A27', 'A28', 'A29', '']);
+  expect(result.again).toEqual(result.first);
+  expect(result.onAlternate).toEqual(result.first);
+  // Reading the screen never moved the archive: every line once, no gap.
+  expect(result.archived).toEqual([...Array.from({ length: 30 }, (_, i) => `A${i}`), ...Array.from({ length: 30 }, (_, i) => `B${i}`)]);
+  expect(result.gaps).toBe(0);
+});

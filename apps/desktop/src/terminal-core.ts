@@ -10,6 +10,11 @@ import type { IBufferCell, IBufferLine, IBufferNamespace, IDisposable, IMarker, 
  * never writes to the terminal, never sees the byte stream, never parses VT and keeps no cursor,
  * mode, charset or screen state. Its only parser use is two observers that return `false`, so
  * xterm.js still runs its own handlers: they note that a reset or a scrollback erase happened.
+ *
+ * The read-only history view (P1 slice 5, step 7) reads through the same boundary: `unread` gives
+ * the lines not archived yet (the screen) without moving the archive's position, `xtermBufferLines`
+ * the whole normal buffer of a session without an archive, and `observeWrites` only listens for
+ * parsed output. None of them writes to the terminal.
  */
 
 /** What one read found since the previous read. */
@@ -22,6 +27,17 @@ export interface ScrolledOff {
   readonly cleared: boolean;
 }
 
+/** The lines `read` has not returned yet: the screen, and anything output since the last read. */
+export interface Unread {
+  /** Logical lines from where the next read resumes to the cursor or last written row, as text with SGR. */
+  readonly lines: readonly string[];
+  /**
+   * False if the resume position is unknown (rows were trimmed or erased since the last read and
+   * the next read will report a gap): the first line may then repeat or miss archived rows.
+   */
+  readonly certain: boolean;
+}
+
 /** Read-only source of the history that has scrolled off a live terminal's screen. */
 export interface HistorySource extends IDisposable {
   /**
@@ -31,6 +47,13 @@ export interface HistorySource extends IDisposable {
    * Both are reported as a gap, never filled in.
    */
   read(): ScrolledOff;
+  /**
+   * What `read` has not returned yet, for a read-only history view: the normal buffer from the
+   * resume position on, the screen included, without moving that position or consuming a pending
+   * reset or erase. Empty rows below the cursor are left out. Works on the alternate screen too
+   * (the normal buffer is kept there). Never writes to the terminal.
+   */
+  unread(): Unread;
 }
 
 const DEFAULT_SGR = "\x1b[0m";
@@ -97,6 +120,43 @@ function lastRowOf(normal: NormalBuffer, row: number): number {
   let end = row;
   while (end + 1 < normal.length && normal.getLine(end + 1)?.isWrapped) end++;
   return end;
+}
+
+/**
+ * Logical lines of the normal buffer from `row` to its end, without the empty lines that start
+ * below the cursor row (the unused part of the screen). The last line may still be growing.
+ */
+function linesFrom(normal: NormalBuffer, row: number): string[] {
+  const lines: string[] = [];
+  const cursor = normal.baseY + normal.cursorY;
+  const cell = normal.getNullCell();
+  let kept = 0;
+  for (let start = Math.max(0, row); start < normal.length;) {
+    const end = lastRowOf(normal, start);
+    let text = "";
+    for (let r = start; r <= end; r++) text += encodeRow(normal.getLine(r)!, r === end, cell);
+    lines.push(text);
+    if (start <= cursor || text !== "") kept = lines.length;
+    start = end + 1;
+  }
+  lines.length = kept;
+  return lines;
+}
+
+/**
+ * Every logical line of a terminal's normal buffer (hot scrollback and screen), for a read-only
+ * view of a session without a cold archive. Never writes to the terminal.
+ */
+export function xtermBufferLines(terminal: Terminal): string[] {
+  return linesFrom(terminal.buffer.normal, 0);
+}
+
+/**
+ * Calls `listener` after xterm.js has parsed written data (at most once per frame), so a
+ * read-only view can notice new output. Only observes: nothing is written or parsed here.
+ */
+export function observeWrites(terminal: Terminal, listener: () => void): IDisposable {
+  return terminal.onWriteParsed(listener);
 }
 
 /** The xterm.js implementation of {@link HistorySource}. */
@@ -198,8 +258,32 @@ export function xtermHistorySource(terminal: Terminal): HistorySource {
     return lines.length || gap || cleared ? { lines, gap, cleared } : NOTHING;
   }
 
+  /**
+   * Where the next `read` would start, like `resume` but without its side effects: the anchor
+   * stays, and pending reset and erase notes stay for the next read.
+   */
+  function unreadStart(normal: NormalBuffer): { row: number; certain: boolean } {
+    if (resetSeen || !started) return { row: 0, certain: true };
+    if (anchor && !anchor.marker.isDisposed) {
+      return { row: anchor.after ? lastRowOf(normal, anchor.marker.line) + 1 : anchor.marker.line, certain: true };
+    }
+    if (erasedSeen) return { row: 0, certain: true };
+    const full = normal.length >= terminal.rows + (terminal.options.scrollback ?? 0);
+    if (full) return { row: 0, certain: false };
+    if (!readSinceRestart) return { row: 0, certain: true };
+    return { row: normal.baseY, certain: false };
+  }
+
+  function unread(): Unread {
+    if (disposed) return { lines: [], certain: false };
+    const normal = terminal.buffer.normal;
+    const { row, certain } = unreadStart(normal);
+    return { lines: linesFrom(normal, row), certain };
+  }
+
   return {
     read,
+    unread,
     dispose() {
       if (disposed) return;
       disposed = true;

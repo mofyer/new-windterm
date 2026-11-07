@@ -45,26 +45,31 @@ export async function installModules(page: Page): Promise<void> {
 }
 
 // V8 also names the synthetic class-field initializer after the class; it has no prototype.
-const IS_ARCHIVE_CLASS = "f => f.name === 'HistoryArchive' && typeof f.prototype?.capture === 'function'";
+const CLASSES = {
+  archivePrototype: "f => f.name === 'HistoryArchive' && typeof f.prototype?.capture === 'function'",
+  // The read-only history view (step 7).
+  viewPrototype: "f => f.name === 'HistoryView' && typeof f.prototype?.refresh === 'function'",
+} as const;
 
-export type LivePrototype = 'terminalPrototype' | 'archivePrototype';
+export type LivePrototype = 'terminalPrototype' | keyof typeof CLASSES;
 
-/** The prototype `fn` applies to: the app's xterm Terminal, or the app's HistoryArchive class. */
+/** The prototype `fn` applies to: the app's xterm Terminal, HistoryArchive or HistoryView class. */
 async function prototypeId(cdp: CDPSession, prototype: LivePrototype): Promise<string> {
   if (prototype === 'terminalPrototype') {
     const { result } = await cdp.send('Runtime.evaluate', { expression: 'window.captureQa.terminalPrototype', objectGroup: GROUP });
     return result.objectId!;
   }
+  const test = CLASSES[prototype];
   const { result: functionPrototype } = await cdp.send('Runtime.evaluate', { expression: 'Function.prototype', objectGroup: GROUP });
   const { objects: functions } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: functionPrototype.objectId!, objectGroup: GROUP });
   const { result: classes } = await cdp.send('Runtime.callFunctionOn', {
     objectId: functions.objectId!, objectGroup: GROUP, returnByValue: true,
-    functionDeclaration: `function () { return this.filter(${IS_ARCHIVE_CLASS}).length; }`,
+    functionDeclaration: `function () { return this.filter(${test}).length; }`,
   });
-  if (classes.value !== 1) throw new Error(`expected one HistoryArchive class, found ${classes.value}`);
+  if (classes.value !== 1) throw new Error(`expected one ${prototype} class, found ${classes.value}`);
   const { result } = await cdp.send('Runtime.callFunctionOn', {
     objectId: functions.objectId!, objectGroup: GROUP,
-    functionDeclaration: `function () { return this.find(${IS_ARCHIVE_CLASS}).prototype; }`,
+    functionDeclaration: `function () { return this.find(${test}).prototype; }`,
   });
   return result.objectId!;
 }
@@ -83,6 +88,7 @@ export async function onLive<T>(cdp: CDPSession, prototype: LivePrototype, fn: s
 }
 export const liveArchives = (cdp: CDPSession) => onLive<number>(cdp, 'archivePrototype', 'function () { return this.length; }');
 export const liveTerminals = (cdp: CDPSession) => onLive<number>(cdp, 'terminalPrototype', 'function () { return this.length; }');
+export const liveViews = (cdp: CDPSession) => onLive<number>(cdp, 'viewPrototype', 'function () { return this.length; }');
 
 export const diagnostics = (page: Page) =>
   page.evaluate(() => (window as any).__WINDTERM_P0_DIAGNOSTICS__.snapshot() as Record<string, number>);

@@ -2,8 +2,10 @@
  * Compressed cold history (Q04/Q06). P0 proved the approach in isolation; since P1 slice 5,
  * step 5 every native workspace session captures into one (`history-capture.ts`), which since
  * step 6 also enforces the budget by dropping whole blocks, oldest first (`dropOldest`), and
- * since T32 empties it when the user clears the scrollback (`clear`). There is no history view
- * or search UI yet.
+ * since T32 empties it when the user clears the scrollback (`clear`). Since step 7 the read-only
+ * history view (`history-view.ts`) reads it through {@link HistoryReader}: `held` says which lines
+ * are still held and where a gap or a reset lies, `read` and `scanBackward` return lines without
+ * waiting for queued compression, and `unread` gives the screen that is not archived yet.
  *
  * xterm keeps a bounded "hot" scrollback. Every logical line (wrapped rows joined) that has
  * scrolled off the screen is read, with its SGR attributes, through the terminal-core boundary
@@ -12,7 +14,7 @@
  * holds no cursor or mode state and has no input path, so it is not a second terminal. A hole
  * the source reports (rows trimmed before they could be read) is counted, never filled in.
  */
-import type { HistorySource } from "../terminal-core";
+import type { HistorySource, Unread } from "../terminal-core";
 
 export interface HistoryStats {
   /** Logical lines ever archived, dropped ones included; line numbers count from the first. */
@@ -57,6 +59,41 @@ export interface DroppedBlock {
   readonly bytes: number;
 }
 
+/** Where the source reported a hole or a reset: just before line `line` (absolute). */
+export interface HistoryMark {
+  readonly line: number;
+  /** `gap`: rows were trimmed before they could be archived. `clear`: a reset (RIS) or scrollback erase (ED 3). */
+  readonly kind: "gap" | "clear";
+}
+
+/** The lines still held, `[first, end)`, and the marks within them, oldest first. */
+export interface HistoryHeld {
+  /** First line still held: `droppedLines + clearedLines`. */
+  readonly first: number;
+  /** One past the newest archived line (`archivedLines`). */
+  readonly end: number;
+  readonly marks: readonly HistoryMark[];
+  /** Older marks forgotten because more than {@link MAX_HISTORY_MARKS} were seen. */
+  readonly marksOmitted: number;
+}
+
+/**
+ * The read-only part of an archive, for the history view: nothing here captures, drops, clears or
+ * otherwise changes what is held.
+ */
+export interface HistoryReader {
+  stats(): HistoryStats;
+  held(): HistoryHeld;
+  read(from: number, count: number): Promise<string[]>;
+  scanBackward(
+    before: number, visit: (first: number, lines: readonly string[]) => boolean | Promise<boolean>, signal?: AbortSignal,
+  ): Promise<boolean>;
+  unread(): Unread | undefined;
+}
+
+/** Marks kept per archive; past this the oldest are forgotten and counted. */
+export const MAX_HISTORY_MARKS = 4096;
+
 export interface HistoryMatch {
   /** Absolute logical line number, counted from the first archived line. */
   line: number;
@@ -69,6 +106,13 @@ interface Block {
   rawBytes: number;
   compressed: boolean;
   data: Uint8Array;
+}
+
+/** A sealed block waiting for compression; readable from its raw bytes until it is added. */
+interface Sealing {
+  first: number;
+  count: number;
+  raw: Uint8Array;
 }
 
 const SGR = /\x1b\[[0-9;]*m/g;
@@ -85,11 +129,15 @@ export function stripSgr(line: string): string {
   return line.replace(SGR, "");
 }
 
-export class HistoryArchive {
+export class HistoryArchive implements HistoryReader {
   /** Undefined once disposed: nothing is captured or kept after that. */
   private source: HistorySource | undefined;
   private pending: string[] = [];
   private blocks: Block[] = [];
+  /** Sealed blocks queued for compression, oldest first; always newer than every completed block. */
+  private sealing: Sealing[] = [];
+  private markList: HistoryMark[] = [];
+  private marksOmitted = 0;
   private queue: Promise<void> = Promise.resolve();
   /** Decoded blocks, keyed by their first line number (stable when older blocks are dropped). */
   private cache = new Map<number, string[]>();
@@ -119,14 +167,40 @@ export class HistoryArchive {
   capture(): CaptureResult {
     if (!this.source) return NONE;
     const { lines, gap, cleared } = this.source.read();
-    if (gap) this.gaps++;
-    if (cleared) this.clears++;
+    // The lines of this read come after the hole or the reset.
+    if (gap) {
+      this.gaps++;
+      this.mark("gap");
+    }
+    if (cleared) {
+      this.clears++;
+      this.mark("clear");
+    }
     for (const line of lines) {
       this.pending.push(line);
       this.archived++;
       if (this.pending.length >= this.blockLines) this.seal();
     }
     return lines.length || gap || cleared ? { lines: lines.length, gap, cleared } : NONE;
+  }
+
+  private mark(kind: HistoryMark["kind"]): void {
+    const line = this.archived;
+    const last = this.markList[this.markList.length - 1];
+    if (last?.line === line && last.kind === kind) return;
+    if (this.markList.length >= MAX_HISTORY_MARKS) {
+      this.markList.shift();
+      this.marksOmitted++;
+    }
+    this.markList.push(Object.freeze({ line, kind }));
+  }
+
+  /** Forgets the marks before the first line still held. */
+  private pruneMarks(): void {
+    const first = this.droppedLines + this.clearedLines;
+    let drop = 0;
+    while (drop < this.markList.length && this.markList[drop].line < first) drop++;
+    if (drop) this.markList = this.markList.slice(drop);
   }
 
   private seal(): void {
@@ -137,11 +211,23 @@ export class HistoryArchive {
     this.pending = [];
     this.rawBytes += raw.length;
     const generation = this.generation;
-    this.queue = this.queue.then(() => this.compress(first, count, raw, generation));
+    const sealing: Sealing = { first, count, raw };
+    this.sealing.push(sealing);
+    this.queue = this.queue.then(() => this.compress(sealing, generation));
   }
 
-  private async compress(first: number, count: number, raw: Uint8Array, generation: number): Promise<void> {
-    if (!this.source || generation !== this.generation) return;
+  private async compress(sealing: Sealing, generation: number): Promise<void> {
+    const { first, count, raw } = sealing;
+    // In every outcome the block leaves `sealing` in the same synchronous step in which it is added
+    // to `blocks` (or discarded), so a reader finds it in exactly one of the two.
+    const done = () => {
+      const at = this.sealing.indexOf(sealing);
+      if (at >= 0) this.sealing.splice(at, 1);
+    };
+    if (!this.source || generation !== this.generation) {
+      done();
+      return;
+    }
     const started = performance.now();
     let data = raw;
     let compressed = false;
@@ -152,6 +238,7 @@ export class HistoryArchive {
       // Counted in stats below; the block is kept as is, so no history is lost.
     }
     this.compressMs += performance.now() - started;
+    done();
     // Disposed, or cleared while this block was being compressed: it is no longer held.
     if (!this.source || generation !== this.generation) return;
     if (!compressed) this.uncompressedBlocks++;
@@ -173,6 +260,7 @@ export class HistoryArchive {
     this.rawBytes -= block.rawBytes;
     this.droppedLines += block.count;
     this.droppedBlocks++;
+    this.pruneMarks();
     return { lines: block.count, bytes: block.data.length };
   }
 
@@ -189,6 +277,9 @@ export class HistoryArchive {
     this.generation++;
     this.pending = [];
     this.blocks = [];
+    this.sealing = [];
+    this.markList = [];
+    this.marksOmitted = 0;
     this.cache.clear();
     this.rawBytes = 0;
     this.compressedBytes = 0;
@@ -221,11 +312,15 @@ export class HistoryArchive {
     };
   }
 
+  private async decodeData(block: Block): Promise<string[]> {
+    const bytes = block.compressed ? await transform(block.data, new DecompressionStream("deflate-raw")) : block.data;
+    return decoder.decode(bytes).split("\n");
+  }
+
   private async decode(block: Block): Promise<string[]> {
     const cached = this.cache.get(block.first);
     if (cached) return cached;
-    const bytes = block.compressed ? await transform(block.data, new DecompressionStream("deflate-raw")) : block.data;
-    const lines = decoder.decode(bytes).split("\n");
+    const lines = await this.decodeData(block);
     // A block dropped while it was being decoded is not cached again.
     if (!this.blocks.includes(block)) return lines;
     if (this.cache.size >= 2) this.cache.delete(this.cache.keys().next().value!);
@@ -233,29 +328,89 @@ export class HistoryArchive {
     return lines;
   }
 
+  /** The lines still held and the marks within them. */
+  held(): HistoryHeld {
+    return Object.freeze({
+      first: this.droppedLines + this.clearedLines,
+      end: this.archived,
+      marks: Object.freeze(this.markList.slice()),
+      marksOmitted: this.marksOmitted,
+    });
+  }
+
+  /** What the source has not archived yet (the screen); undefined once disposed. */
+  unread(): Unread | undefined {
+    return this.source?.unread();
+  }
+
   /**
-   * Archived lines `[from, from + count)` with SGR, for rehydration or export. Dropped and cleared
-   * lines are not returned: the result starts at `max(from, droppedLines + clearedLines)`.
+   * Archived lines `[from, from + count)` with SGR, for rehydration or export, once queued
+   * compression is done. Dropped and cleared lines are not returned: the result starts at
+   * `max(from, droppedLines + clearedLines)`.
    */
   async lines(from: number, count: number): Promise<string[]> {
     await this.queue;
-    const result: string[] = [];
+    return this.read(from, count);
+  }
+
+  /**
+   * Like `lines`, without waiting for queued compression: a queued block is read from its raw
+   * bytes. Only the completed blocks needed are decompressed (the last two are cached). Dropped
+   * and cleared lines are not returned: the result starts at `max(from, droppedLines + clearedLines)`.
+   */
+  async read(from: number, count: number): Promise<string[]> {
     const end = Math.min(from + count, this.archived);
     // Both removals take the oldest lines still held, so the lines held stay one contiguous range.
     from = Math.max(from, this.droppedLines + this.clearedLines);
-    // A snapshot: blocks dropped while one is being decoded are still read consistently.
+    if (from >= end) return [];
+    // A snapshot: blocks dropped, sealed or added while one is being decoded are read consistently.
     const blocks = this.blocks.slice();
+    const sealing = this.sealing.slice();
+    const pending = this.pending.slice();
+    const pendingFirst = this.archived - pending.length;
+    const result: string[] = [];
+    const take = (first: number, lines: readonly string[]) => {
+      for (let line = Math.max(from, first); line < Math.min(end, first + lines.length); line++) result.push(lines[line - first]);
+    };
     for (const block of blocks) {
-      if (result.length >= end - from) break;
-      if (block.first + block.count <= from || block.first >= end) continue;
-      const lines = await this.decode(block);
-      for (let line = Math.max(from, block.first); line < Math.min(end, block.first + block.count); line++) {
-        result.push(lines[line - block.first]);
-      }
+      if (block.first + block.count > from && block.first < end) take(block.first, await this.decode(block));
     }
-    const pendingFirst = this.archived - this.pending.length;
-    for (let line = Math.max(from, pendingFirst); line < end; line++) result.push(this.pending[line - pendingFirst]);
+    for (const block of sealing) {
+      if (block.first + block.count > from && block.first < end) take(block.first, decoder.decode(block.raw).split("\n"));
+    }
+    take(pendingFirst, pending);
     return result;
+  }
+
+  /**
+   * Visits the lines held before line `before`, newest first: the pending lines, then queued
+   * blocks, then completed blocks, one block per call (decompressed without filling the cache, so
+   * a search does not evict what a view is showing). `visit` gets the absolute number of the first
+   * line of the batch; returning false stops the walk, as does an aborted `signal`, checked before
+   * and after every decompression. Resolves true if it reached the oldest line held at the start.
+   */
+  async scanBackward(
+    before: number, visit: (first: number, lines: readonly string[]) => boolean | Promise<boolean>, signal?: AbortSignal,
+  ): Promise<boolean> {
+    const pending = this.pending.slice();
+    const batches: { first: number; lines: () => Promise<readonly string[]> }[] = [
+      ...this.blocks.map((block) => ({
+        first: block.first,
+        lines: async () => this.cache.get(block.first) ?? this.decodeData(block),
+      })),
+      ...this.sealing.map((block) => ({ first: block.first, lines: async () => decoder.decode(block.raw).split("\n") })),
+      { first: this.archived - pending.length, lines: async () => pending },
+    ];
+    for (let index = batches.length - 1; index >= 0; index--) {
+      if (signal?.aborted) return false;
+      const batch = batches[index];
+      if (batch.first >= before) continue;
+      const lines = await batch.lines();
+      if (signal?.aborted) return false;
+      const kept = before - batch.first < lines.length ? lines.slice(0, before - batch.first) : lines;
+      if (kept.length && !(await visit(batch.first, kept))) return false;
+    }
+    return true;
   }
 
   /** Plain-text search over the lines still held, decompressing one block at a time. */
@@ -281,6 +436,8 @@ export class HistoryArchive {
     this.source = undefined;
     this.pending = [];
     this.blocks = [];
+    this.sealing = [];
+    this.markList = [];
     this.cache.clear();
   }
 }

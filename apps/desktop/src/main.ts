@@ -15,6 +15,7 @@ import { sample, stress } from "./demo-session";
 import { createTerminalBell, paintBellMark } from "./terminal-bell";
 import { createBellSettingsSheet } from "./bell-settings";
 import { createTerminalActions } from "./terminal-actions-ui";
+import { createHistoryViews } from "./history-view-ui";
 import { isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
@@ -213,6 +214,7 @@ function updateStatus() {
   else statusElements.reopen.removeAttribute("title");
   statusElements.editCwd.hidden = statusElements.reopen.hidden;
   statusElements.editCwd.disabled = statusElements.reopen.disabled;
+  historyViews.paint(s);
   const forwardHidden = s?.mode !== "ssh";
   if (statusElements.forward.hidden !== forwardHidden) statusElements.forward.hidden = forwardHidden;
   const forwardDisabled = !s || !forwardable(s);
@@ -273,7 +275,7 @@ function paintSessions() {
 function selectSession(key: number) {
   activeKey = key;
   paintSessions();
-  sessions.get(key)?.terminal.focus();
+  focusActive();
 }
 function startSshTerminal(request: SshTerminalRequest): boolean {
   if (!native) return false;
@@ -328,8 +330,15 @@ function openForwards() {
 $("#forward-open").onclick = openForwards;
 // T32: clear and reset the active terminal locally (tool bar menu and palette entries).
 const terminalActions = createTerminalActions($(".terminal-tools > div"), {
-  active, notify: toast, focusTerminal: () => active()?.terminal.focus(),
+  active, notify: toast, focusTerminal: () => focusActive(),
 });
+// P1 slice 5, step 7: read-only history view and search (tool bar button and palette entry).
+const historyViews = createHistoryViews($(".terminal-tools > div"), { active, notify: toast });
+/** Focus for the active tab: its open history view, else its terminal. */
+function focusActive() {
+  const s = active();
+  if (s && !historyViews.focus(s)) s.terminal.focus();
+}
 $("#sftp-connect").onclick = () => sshVerification.open("files");
 $(".file-inspector").addEventListener("sftp-reconnect", () => sshVerification.open("files"));
 for (const button of document.querySelectorAll<HTMLButtonElement>(
@@ -338,7 +347,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
   button.onclick = () => button.closest("dialog")!.close();
 for (const dialog of document.querySelectorAll("dialog"))
   dialog.addEventListener("close", () => {
-    if (!document.querySelector("dialog[open]")) active()?.terminal.focus();
+    if (!document.querySelector("dialog[open]")) focusActive();
   });
 $("#ssh-terminal-open").onclick = () => {
   ($("#connect-dialog") as HTMLDialogElement).close();
@@ -564,6 +573,7 @@ const commands = [
   },
   { name: "查看 P0 验证边界", action: () => showDialog("#about-dialog") },
   ...terminalActions.commands,
+  historyViews.command,
   { name: "打开真实 SSH 终端 · 仅桌面", action: () => sshVerification.open("terminal") },
   { name: "SSH 验证 · 真实指纹与固定命令 · 仅桌面", action: () => sshVerification.open() },
   { name: "只读浏览远端文件 · SFTP · 仅桌面", action: () => sshVerification.open("files") },

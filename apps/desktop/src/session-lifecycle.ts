@@ -71,6 +71,8 @@ export type Session = {
   channel?: Channel<PtyEvent>;
   /** Cold history archive of a native session; kept after exit, released on close. */
   history?: SessionHistory;
+  /** Open read-only history view (`history-view-ui.ts`); disposed on close before the archive. */
+  historyView?: { dispose(): void };
   input: InputQueue;
 };
 
@@ -563,6 +565,9 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     // registered callback no longer reaches this session, its xterm or its history.
     if (s.channel) s.channel.onmessage = () => {};
     s.channel = undefined;
+    // The view reads the archive: it goes first, with its search and caches (R2).
+    s.historyView?.dispose();
+    s.historyView = undefined;
     s.history?.dispose();
     s.history = undefined;
     s.early = [];
@@ -581,6 +586,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     for (const s of sessions.values()) {
       s.disposed = true;
       s.outputRun++;
+      s.historyView?.dispose();
+      s.historyView = undefined;
       s.history?.dispose();
       s.history = undefined;
       s.observer.disconnect();

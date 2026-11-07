@@ -66,3 +66,25 @@ export const MAX_SESSION_ARCHIVE_BYTES = 64 * 1024 * 1024;
  * oldest block first.
  */
 export const MAX_TOTAL_ARCHIVE_BYTES = 256 * 1024 * 1024;
+
+// Read-only history view and search (step 7, history-view.ts). These bound
+// what the view itself holds; the history it shows is the archive above.
+
+/**
+ * Matches one search keeps. Search walks from the newest line to the oldest,
+ * so past this it stops and the newest matches are the ones kept.
+ */
+export const HISTORY_SEARCH_MAX_MATCHES = 10_000;
+
+/** Lines one copy may take; a larger selection is refused, never cut short. */
+export const HISTORY_COPY_MAX_LINES = 50_000;
+
+/**
+ * UTF-16 code units of one line the view draws. A longer line is drawn in
+ * part (around the current match, if any) and says how long it is; search and
+ * copy always use the whole line.
+ */
+export const HISTORY_VIEW_MAX_CHARS = 2_000;
+
+/** Parsed lines the view keeps for redrawing while scrolling. */
+export const HISTORY_VIEW_CACHE_LINES = 2_048;

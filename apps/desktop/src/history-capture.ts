@@ -1,5 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
-import { HistoryArchive, type CaptureResult, type DroppedBlock } from "./terminal-compat/history-archive";
+import {
+  HistoryArchive, type CaptureResult, type DroppedBlock, type HistoryReader,
+} from "./terminal-compat/history-archive";
 import { xtermHistorySource } from "./terminal-core";
 import {
   ARCHIVE_BLOCK_LINES, HISTORY_TARGET_LINES, MAX_SESSION_ARCHIVE_BYTES, MAX_TOTAL_ARCHIVE_BYTES,
@@ -9,8 +11,8 @@ import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
 /**
  * Cold-history capture of one native workspace session (P1 slice 5, steps 5 and 6). The archive
  * is derived from the session's xterm through the terminal-core boundary and lives until the tab
- * is closed (an exited tab keeps it); `dispose` releases it with the tab. There is no history
- * view yet.
+ * is closed (an exited tab keeps it); `dispose` releases it with the tab. The read-only history
+ * view (step 7, `history-view.ts`) reads it through `reader()`.
  *
  * Budgets (`history-budget.ts`, user decisions 2A, 3A and 5A) are applied whenever a compressed
  * block is added, never in the write callback or the ACK path:
@@ -39,6 +41,11 @@ export interface SessionHistory {
   clear(): number;
   /** Oldest lines dropped to stay within budget since the archive started or was last cleared. */
   readonly droppedLines: number;
+  /**
+   * Read-only access for the history view (step 7); undefined once the archive is released (the
+   * tab closed, or capture failed and stopped). The reader cannot capture, drop or clear.
+   */
+  reader(): HistoryReader | undefined;
   /** Releases the archive and its terminal hooks; idempotent. */
   dispose(): void;
 }
@@ -256,6 +263,7 @@ export function createSessionHistory(terminal: Terminal, hooks: SessionHistoryHo
     get droppedLines() {
       return entry.droppedLines;
     },
+    reader: () => entry.archive,
     dispose: release,
   };
 }

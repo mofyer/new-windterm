@@ -472,3 +472,52 @@ dialog select, dialog textarea { width: 100%; min-width: 0; color: var(--text); 
   .local-variable-row textarea { grid-column: 1; grid-row: 2; }
   .local-variable-row button { grid-column: 2; grid-row: 1 / 3; }
 }
+
+/*
+ * Read-only history view (P1 slice 5, step 7): an overlay on its own session's pane, so the
+ * terminal keeps its size. Neutral chrome like the terminal tools; the accent marks only the
+ * current match, the active row and focus. Rows are a fixed 20px (4px grid) for virtualisation.
+ * The pane isolates its stacking so the overlay covers xterm's own layers (up to z-index 11)
+ * while menus outside the pane, such as the clear and reset menu, still stack above it.
+ */
+:root { --history-match: #f2dfae; }
+[data-theme="dark"] { --history-match: #5c4a22; }
+.terminal-pane { position: relative; isolation: isolate; }
+.terminal-tools button[aria-pressed="true"] { background: var(--pressed); box-shadow: var(--inset-shadow); }
+.history-view { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; min-width: 0; background: var(--terminal); color: var(--text); }
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 4px 12px 4px 20px; border-bottom: 1px solid var(--terminal-line); font-size: 12px; }
+.history-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.history-title strong { font-size: 13px; font-weight: 600; }
+.history-name, .history-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--terminal-muted); }
+.history-summary { flex: none; font-variant-numeric: tabular-nums; }
+.history-head-actions, .history-find { display: flex; align-items: center; gap: 4px; }
+.history-head-actions button, .history-find button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-size: 12px; }
+.history-head-actions button:hover:not(:disabled), .history-find button:hover:not(:disabled) { background: var(--hover); }
+.history-head-actions .history-close { width: 28px; min-width: 28px; padding: 0; color: var(--terminal-muted); }
+.history-find button[hidden], .history-notice[hidden] { display: none; }
+.history-case[aria-pressed="true"] { background: var(--pressed); box-shadow: var(--inset-shadow); }
+.history-notice { margin: 0; padding: 8px 20px; border-bottom: 1px solid var(--terminal-line); color: var(--terminal-muted); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
+.history-find { flex-wrap: wrap; min-height: 44px; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--terminal-line); }
+.history-search { width: min(320px, 100%); height: 32px; padding: 0 12px; margin-right: 4px; border: 0; border-radius: 8px; background: var(--sidebar); box-shadow: var(--inset-shadow); font-size: 13px; }
+.history-status { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--terminal-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.history-list { position: relative; flex: 1; min-height: 0; overflow: auto; outline: none; background: var(--history-bg, var(--terminal)); color: var(--history-fg, var(--text)); font: 13px/20px var(--mono); scrollbar-width: thin; }
+.history-list:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.history-spacer { width: 1px; }
+.history-window { position: absolute; top: 0; left: 0; min-width: 100%; }
+.history-row { display: flex; height: 20px; padding-right: 20px; white-space: pre; }
+.history-gutter { position: sticky; left: 0; flex: none; width: var(--history-gutter, 8ch); padding-right: 12px; background: var(--history-bg, var(--terminal)); color: var(--terminal-muted); text-align: right; font-variant-numeric: tabular-nums; user-select: none; }
+.history-text { flex: none; padding-left: 4px; unicode-bidi: isolate; }
+.history-row.selected, .history-row.selected .history-gutter { background: var(--selected); }
+.history-row.selected .history-gutter { color: var(--accent); }
+.history-list:focus .history-row.active .history-gutter { box-shadow: inset 2px 0 0 var(--accent); }
+.history-mark, .history-mark .history-gutter { background: var(--sidebar); }
+.history-mark .history-text, .history-gone .history-text, .history-elided { color: var(--terminal-muted); font-family: var(--font); font-size: 12px; }
+.history-match, .history-match-current { border-radius: 2px; background-color: var(--history-match) !important; }
+.history-match-current { outline: 2px solid var(--accent); outline-offset: -1px; }
+.sgr-bold { font-weight: 600; }
+.sgr-dim { opacity: .55; }
+.sgr-italic { font-style: italic; }
+@media (max-width: 760px) {
+  .history-head, .history-find, .history-notice { padding-left: 12px; }
+  .history-summary { display: none; }
+}
