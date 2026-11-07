@@ -1132,3 +1132,19 @@ P1、第四批与第 4、5 片均未完成；第四批 Windows 首次查询停�
 - 以前 writer 在关闭时还会额外发送 VEOF，现在从端直接经历挂断。产品回收不依赖这个 EOF 让 Shell 退出（由挂断与 `cleanup_child` 的 SIGHUP/SIGKILL 完成），本机关闭耗时实测不变。
 - 第三项统计测试默认每个 Shell 20 次。修复前单次发生率约 3%（两个 zsh 约 4%，Bash 3.2 在该场景 0/200），单轮未必能检出回归；回归主要靠前两项确定性测试把关。
 - 本结果不表示 P1 已通过、终端已完整可用或可以合并 main；合并须另行批准。
+
+## 2026-11-07 第二批并行功能集成：T27 响铃、T28/T29/T33 字符编码、T32 清屏与复位（本地，未推送）
+
+三个分支均基于 `c24f732`，在本地 `p1/integration` 依次拣选；`main.ts` 导入区与 `docs/p1/PLAN.zh-CN.md` 的冲突由协调者合并（两边内容都保留）。均只改前端，未改 Rust、Tauri 命令、ACL、IPC 参数或依赖；未推送、未运行 CI。所有证据为 macOS 本机 Chrome 与 IPC stub。
+
+| 功能 | 提交 | 主要行为 | 代理侧验证 | 未验证 |
+| --- | --- | --- | --- | --- |
+| T27 终端 Bell 与节流 | `9ebc592`、`a8b04c0` | 关闭 / 视觉（默认，reduced-motion 下不闪烁）/ Web Audio 合成短音；按会话节流，默认 2 秒、下限 0.4 秒；非当前标签在状态点外加描边并提供读屏文字；命令面板「终端响铃设置」，全局内存设置 | 新增 14 项，`--repeat-each 5` 70/70；反向验证 2 处；独立审查无 CRITICAL/HIGH | 原生 WebView 发声与自动播放策略、上游实机对照（7 项）、持久化、窗口级提示 |
+| T28/T29/T33 会话字符编码（第一部分） | `030b654`、`3376ad5` | UTF-8（默认，走原 `Utf8Boundary` 路径不变）、Big5、EUC-JP、Shift_JIS、GBK、GB18030、EUC-KR；输出用流式 `TextDecoder`；输入编码表由同一解码器反推，无法编码时整段不发送且不回显内容；入口为本地启动选项、SSH 与 Telnet/Raw TCP 对话框、命令面板运行中切换；不传给 Rust | 新增 24 项，`--repeat-each 5` 120/120；反向验证（非流式解码）6 项失败；独立审查 1 项 MEDIUM 已修 | 原生 WebView 解码器与编码表一致性、真实远端 locale 与程序、原生 IME、ISO-2022-JP / 单字节 / 十六进制 / 自动检测 |
+| T32 终端清屏与复位 | `1e733ee`、`ea743f2` | 清除回滚、清屏、全部清除、硬复位、软复位、重置字符集；入口为终端工具栏「清除与复位」菜单与命令面板；每个动作是一次本地 xterm 写入，带 CAN 前缀取消跨块未完成序列，不经 `*_write`、不改主机字节；用户硬复位补写 `CSI ?25h`、`CSI 20l`；清除回滚与全部清除同时清空冷归档；备用屏中三个清除动作置灰 | 新增 23 项，`--repeat-each 5` 115/115；反向验证 6 处；独立审查判定补写不触及 ADR，2 项 MEDIUM 已修 | 上游各动作实际效果、原生 WebView、快捷键与右键菜单（未实现） |
+
+协调者在合并后的 `ea743f2` 上顺序重跑全套门禁（macOS 本机）：`npm run build` 通过；浏览器 E2E **598/598**（575 + T32 23；合并 T27 与编码后的中间结果为 575/575）；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 193 passed / 7 ignored；`--test ssh_terminal` 14 passed；`--test release_bins` 3 passed；`tools/wincheck/wincheck.sh` 通过。
+
+观察：生产 JS 由 `734d98b` 时的 470.6 KB 增至 503.7 KB（gzip 143.5 KB），超过 Vite 默认 500 KB 提示阈值；仅为构建警告，未拆包，可作后续优化项。
+
+`FEATURE_PARITY` 中 T27、T28、T29、T32、T33 的状态均未修改：缺少上游实机与原生证据，不写成已对齐。P1 未完成，main 不合并。
