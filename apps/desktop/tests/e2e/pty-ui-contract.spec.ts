@@ -454,3 +454,68 @@ test('closed discovery completion does not alter form or open a session', async 
   await expect(page.locator('#local-shell-select option')).toHaveCount(1);
   expect(await requestedShells(page)).toEqual([]);
 });
+
+// Regression test for the ConPTY/xterm row-count mismatch seen in Windows CI
+// (scenario 7 "defaults", cmd5 LC_CTYPE check timing out after 30 s).
+//
+// Root cause: when pty_open returns in under one rAF interval (~16 ms) the
+// FitAddon requestAnimationFrame callback has not fired yet, leaving
+// s.terminal.rows at xterm's initial default (80 × 24).  startPty then calls
+// pty_resize with 24 rows while xterm is laid out to fewer rows (e.g. 19 on
+// Windows CI).  ConPTY uses absolute VT cursor positions; rows beyond xterm's
+// viewport are clamped to the last row, overwriting output without scrolling.
+//
+// Fix: session-lifecycle.ts calls s.fit.fit() before pty_resize, forcing a
+// synchronous layout read so both values agree.  This test verifies that
+// behaviour by stubbing pty_open to resolve as a microtask (before rAF).
+test('startPty calls pty_resize with the fitted rows when pty_open resolves before the first rAF (ConPTY size-sync regression)', async ({ page }) => {
+  await page.addInitScript(() => {
+    const resizeCalls: Array<{ cols: number; rows: number }> = [];
+    Object.assign(window, {
+      isTauri: true,
+      __conptyRaceResizeCalls: resizeCalls,
+      __TAURI_INTERNALS__: {
+        transformCallback: () => 1,
+        unregisterCallback: () => {},
+        invoke: (command: string, args: Record<string, unknown> = {}) => {
+          if (command === 'pty_shells') return Promise.resolve([]);
+          if (command === 'pty_open') {
+            resizeCalls.length = 0;
+            // Resolving via Promise.resolve queues the continuation as a
+            // microtask, which runs before any requestAnimationFrame callback.
+            return Promise.resolve({ id: 'test-pty' });
+          }
+          if (command === 'pty_resize') {
+            resizeCalls.push({ cols: args['cols'] as number, rows: args['rows'] as number });
+          }
+          return Promise.resolve(null);
+        },
+      },
+    });
+  });
+
+  await page.goto('/');
+  await page.locator('#local-open').click();
+  await expect(page.locator('#terminal-state')).toContainText('本机 shell 已启动');
+
+  // Allow any pending rAF callbacks to complete.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+
+  // Actual xterm row count after FitAddon has run.
+  const treeRows = await page.locator('.terminal-pane:visible .xterm-accessibility-tree > *').count();
+
+  // Sanity: the browser layout must not accidentally produce the xterm default
+  // of 24 rows, or the regression cannot be detected.
+  expect(treeRows, 'test layout must not equal xterm default rows so the race is detectable').not.toBe(24);
+
+  const calls = await page.evaluate<Array<{ cols: number; rows: number }>>(
+    () => (window as any).__conptyRaceResizeCalls,
+  );
+  expect(calls.length, 'pty_resize should have been called at least once').toBeGreaterThan(0);
+
+  // Every pty_resize call must carry the fitted row count.  Without the fix
+  // the first call would carry 24 (the xterm default before rAF fires).
+  for (const call of calls) {
+    expect(call.rows, `pty_resize must use fitted rows (${treeRows}), not xterm default`).toBe(treeRows);
+  }
+});

@@ -431,6 +431,34 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       queueStartupCommand(s);
       s.status = "本机 shell 已启动";
       host.status();
+      // Sync xterm's size to the CSS-computed layout before telling the backend,
+      // but only when the terminal is still at xterm's uninitialised defaults
+      // (80 × 24).  That is the only state where the race matters:
+      //
+      //   pty_open takes tens of milliseconds on Windows (ConPTY + cmd.exe spawn).
+      //   If it returns in under one rAF interval (~16 ms) the FitAddon callback
+      //   scheduled via requestAnimationFrame has not yet fired, so s.terminal.rows
+      //   is still xterm's default (80 × 24).  ConPTY would then be left at 24 rows
+      //   while xterm is at whatever the CSS layout actually produces (e.g. 19).
+      //   Absolute VT cursor positions beyond xterm's row count are clamped to the
+      //   last row, overwriting content without scrolling — exactly what was observed
+      //   in Windows CI: cmd5 output written to ConPTY row 20 overwrites xterm row 19.
+      //   fit.fit() forces a synchronous layout read (getComputedStyle) so both the
+      //   pty_resize call below and any terminal.onResize triggered by the fit use
+      //   the real post-layout dimensions.
+      //
+      // When the terminal has already been resized (rAF has already fired, or the
+      // caller explicitly resized before resolving the open) the guard prevents an
+      // unconditional override of that size.
+      //
+      // Note: when fit.fit() changes the terminal size it fires terminal.onResize,
+      // which calls resize(s, ...) → invoke("pty_resize", ...) via the handler at
+      // the bottom of createSession.  The explicit pty_resize below then sends a
+      // second identical command.  Both are fire-and-forget and the backend handles
+      // idempotent resizes, so the duplicate is benign.
+      const XTERM_DEFAULT_COLS = 80;
+      const XTERM_DEFAULT_ROWS = 24;
+      if (s.terminal.rows === XTERM_DEFAULT_ROWS && s.terminal.cols === XTERM_DEFAULT_COLS) s.fit.fit();
       // A resize failure is recoverable; it must not turn a live or exited shell
       // into a failed launch, including when exit arrives while resize is pending.
       void invoke("pty_resize", {
