@@ -75,8 +75,12 @@ fn every_src_bin_target_requires_dev_tools() {
         .map(|entry| {
             let entry = entry.expect("src/bin entry");
             let is_dir = entry.file_type().expect("src/bin entry type").is_dir();
-            (entry.file_name().to_string_lossy().into_owned(), is_dir)
+            (entry, is_dir)
         })
+        // Cargo only auto-discovers a directory as a target when it holds `main.rs`;
+        // other directories (such as shared `support/` modules) are not targets.
+        .filter(|(entry, is_dir)| !is_dir || entry.path().join("main.rs").is_file())
+        .map(|(entry, is_dir)| (entry.file_name().to_string_lossy().into_owned(), is_dir))
         .collect();
     entries.sort();
     assert!(
