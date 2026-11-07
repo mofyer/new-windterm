@@ -353,6 +353,10 @@
    - a.（推荐）在 `p1/integration` 上先做前端、浏览器契约和 Unix 真实 PTY；Windows 原生验收与 main 合并请求，等第四批 Windows 结论；
    - b. 等第四批验收完成后再开始。
 
+**用户决定（2026-11-07）**：Q1–Q6 全部采用推荐项，即 Q1a 重开再次发送并在重开前明确提示；Q2a 按“发送状态 + Shell 自身输出与退出码”验收；Q3a 只支持单行，禁止 Tab 等全部控制字符；Q4a 本切片不提供延迟发送；Q5a 上游实测与实施并行、不阻塞；Q6a 先在 `p1/integration` 上实现前端、浏览器契约与 Unix 真实 PTY，Windows 原生验收与 main 合并请求等第四批 Windows 结论。
+
+集成时补充的事实（2026-11-07，第 4 片回归测试实测）：本文第 2 节与第四批计划所写“early FIFO 只接收本地 shell 的 CPR 回复”与当前代码不完全一致。`pty_open` 返回前，凡经 VT 适配器发出的回复都会进入 early FIFO（CPR、DA、XTVERSION、DECRQSS `m` / `"p` / ` q`），xterm 内置回复（DSR 5、DECRQM、OSC 颜色查询、DECRQSS `r`）则被丢弃；用户输入仍不能进入。该边界已由 `tests/e2e/terminal-regressions-*.spec.ts` 固定。实施启动命令时须按实际集合设计排序，不能只按 CPR 推理；是否收紧或放宽该集合另行决定，不在本切片静默修改。
+
 ## 10. 实施切片建议
 
 - 用户决定 Q1–Q4 后再编码。按方案 A 分两路并行：
