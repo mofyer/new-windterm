@@ -191,6 +191,25 @@ pub(crate) fn command(id: &str) -> Result<CommandBuilder, String> {
     command_at(id, Path::new(&path))
 }
 
+/// Windows PowerShell 5.1 only (`powershell`; `pwsh` keeps `-NoLogo -NoProfile`):
+/// import the bundled Management module by name before the first prompt, then stay
+/// interactive. Option A of docs/p1/WINDOWS_PRODUCT_OPTION_PLAN.zh-CN.md; it changes
+/// session state before the first cmdlet and is not a root-cause fix. A fixed constant
+/// with no user input, path or environment value. `-Command` must stay last: the
+/// elements after it are the command text. No element contains whitespace or a double
+/// quote, so portable-pty adds each one to the Windows command line unquoted.
+const WINDOWS_POWERSHELL_ARGS: [&str; 9] = [
+    "-NoLogo",
+    "-NoProfile",
+    "-NoExit",
+    "-Command",
+    "Import-Module",
+    "-Name",
+    "Microsoft.PowerShell.Management",
+    "-ErrorAction",
+    "Stop",
+];
+
 fn command_at(id: &str, path: &Path) -> Result<CommandBuilder, String> {
     // Recheck the selected executable on every open/reopen, not just UI discovery.
     executable(path)
@@ -200,7 +219,8 @@ fn command_at(id: &str, path: &Path) -> Result<CommandBuilder, String> {
         "bash" => command.args(["--noprofile", "--norc", "-i"]),
         // zsh always reads its system zshenv; -f disables subsequent RCS files.
         "zsh" => command.args(["-f", "-i"]),
-        "pwsh" | "powershell" => command.args(["-NoLogo", "-NoProfile"]),
+        "pwsh" => command.args(["-NoLogo", "-NoProfile"]),
+        "powershell" => command.args(WINDOWS_POWERSHELL_ARGS),
         "cmd" => command.args(["/D", "/Q", "/K"]),
         _ => return Err("Unsupported local shell ID".into()),
     }
@@ -357,7 +377,20 @@ mod tests {
             ("bash", vec!["--noprofile", "--norc", "-i"]),
             ("zsh", vec!["-f", "-i"]),
             ("pwsh", vec!["-NoLogo", "-NoProfile"]),
-            ("powershell", vec!["-NoLogo", "-NoProfile"]),
+            (
+                "powershell",
+                vec![
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NoExit",
+                    "-Command",
+                    "Import-Module",
+                    "-Name",
+                    "Microsoft.PowerShell.Management",
+                    "-ErrorAction",
+                    "Stop",
+                ],
+            ),
             ("cmd", vec!["/D", "/Q", "/K"]),
         ] {
             let command = command_at(id, &file).unwrap();
@@ -379,6 +412,62 @@ mod tests {
                 assert!(command.get_env(name).is_none(), "inherited {name}");
             }
         }
+    }
+
+    #[test]
+    fn windows_powershell_only_appends_unquoted_management_import() {
+        let fixture = Fixture::new();
+        let file = fixture.file("shell");
+        let args = |id: &str| -> Vec<String> {
+            command_at(id, &file).unwrap().get_argv()[1..]
+                .iter()
+                .map(|arg| arg.to_str().unwrap().to_owned())
+                .collect()
+        };
+        let pwsh = args("pwsh");
+        let powershell = args("powershell");
+        assert_eq!(pwsh, ["-NoLogo", "-NoProfile"]);
+        assert_eq!(powershell[..pwsh.len()], pwsh[..]);
+        // `-Command` is the last switch; everything after it is the startup command.
+        let command = powershell.iter().position(|arg| arg == "-Command").unwrap();
+        assert_eq!(powershell[command - 1], "-NoExit");
+        assert_eq!(
+            powershell[command + 1..].join(" "),
+            "Import-Module -Name Microsoft.PowerShell.Management -ErrorAction Stop"
+        );
+        // portable-pty 0.9.0 appends an argument verbatim unless it is empty or contains
+        // a space, tab, LF, VT or double quote, joining arguments with one space; so the
+        // Windows command line is `<quoted exe> ` followed by exactly this text.
+        for arg in &powershell {
+            assert!(
+                !arg.is_empty() && !arg.contains([' ', '\t', '\n', '\x0b', '"']),
+                "{arg:?} would be quoted"
+            );
+        }
+        assert_eq!(
+            powershell.join(" "),
+            "-NoLogo -NoProfile -NoExit -Command Import-Module -Name \
+             Microsoft.PowerShell.Management -ErrorAction Stop"
+        );
+        for id in ["bash", "zsh", "pwsh", "cmd"] {
+            for marker in ["-NoExit", "-Command", "Import-Module"] {
+                assert!(
+                    !args(id).iter().any(|arg| arg == marker),
+                    "{id} has {marker}"
+                );
+            }
+        }
+        // Only the argv differs: environment and cwd match PowerShell 7 exactly.
+        let environment = |id: &str| {
+            let command = command_at(id, &file).unwrap();
+            let mut env: Vec<(String, String)> = command
+                .iter_full_env_as_str()
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect();
+            env.sort();
+            (env, command.get_cwd().cloned())
+        };
+        assert_eq!(environment("powershell"), environment("pwsh"));
     }
 
     #[cfg(windows)]
