@@ -1532,3 +1532,18 @@ Windows 原生场景 7 默认 cmd 会话失败（`35aee13`、`3f95db5` 两次失
 修复 `92681e8`：终端仍处于 80×24 默认值时，打开成功后先同步 fit，再补发 `pty_resize`，保证只向后端发送 fit 后的尺寸。新增浏览器 stub 回归测试（修复前失败、修复后通过）；`pty-ui-contract.spec.ts` ×3 102/102；跨块、生命周期、启动命令、本地环境 47/47；本地树全量浏览器 E2E **667/667**。它能否消除 Windows 场景 7 失败只能由 Windows CI 验证。
 
 P1 与第四批未验收，main 不合并。
+
+## 2026-11-07 集成树完整 CI（工作流 `42352720999`，被测 `81731f5`）与 Linux 原生回归修复
+
+按用户决定推送 `p1/integration`（`cb97e8a` → `81731f5`，推送前核对未命中触发路径、无进行中运行，推送后无新运行）并只 dispatch 一次完整 CI（`native_only=false`、`windows_shell_repeats=0`、`windows_webview_timing=true`，2026-11-07T07:47:15Z）。不重跑。
+
+| 作业 | 结论 | 摘要 |
+| --- | --- | --- |
+| macOS / Linux / Windows 2022 / Windows Server 2025 构建与测试 | success ×4 | `--lib` macOS 193、Linux 与 Windows 各 192 passed，0 failed |
+| Linux GSSAPI | success | — |
+| Windows 原生 WebView2 | failure | 场景 7 `local-terminal-environment` **passed**（加入尺寸同步修复 `92681e8` 后首次通过，单次）；场景 6 `local-terminal-shell` 首次 cwd 查询超时 30 秒（方案 A 已撤回，符合预期）；其余 5 个 passed |
+| Linux 原生 WebKitGTK | failure | `workbench`、`local-terminal` passed；`ssh-terminal` 起 5 个场景报 `element not interactable`（**新回归**） |
+
+Linux 回归分析（协调者，依据工件截图与失败 JSON）：失败时 SSH 弹窗已打开，截图（1400×900）显示 T31 新增“键盘与初始模式”后弹窗内容高于视口，主按钮 `#ssh-probe` 只露出上缘；WebKitGTK 的 WebDriver 不把它滚进视野，弹窗未关闭，又挡住后续场景的点击（后 3 个场景点击同一元素节点）。Windows WebView2 的驱动会自动滚动，因此未受影响。截图中的方框是 Linux runner 缺少 CJK 字体，属已知情况。
+
+修复 `3d6375a`：弹窗表单操作区 sticky 贴底，未滚动时布局不变；新增 6 项浏览器可达性回归（去掉 sticky 时全部失败）；全量浏览器 E2E 673/673。Linux WebKitGTK 原生是否恢复、Windows 场景 7 能否稳定通过，须由下一次 CI 验证。P1 与第四批未验收，main 不合并。
