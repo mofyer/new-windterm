@@ -286,3 +286,7 @@ npm run build
 - 原型代码经过独立代码审查，没有 CRITICAL/HIGH 问题。两项 MEDIUM 已处理：断言插件内部日志文本时改为子串匹配并加注释；负向断言使用固定等待，也加注释说明了原因。
 
 2026-10-11 本轮未覆盖：Tauri/WKWebView、WebView2、WebKitGTK、真实 SIXEL 程序（如 `img2sixel`）、vttest、WindTerm 实机。后续有限原生与上游观察分别见[原生记录](NATIVE_ACCEPTANCE_2026-10-15.zh-CN.md)与[上游记录](UPSTREAM_HANDS_ON_2026-10-15.zh-CN.md)，不能追溯扩大本轮测试范围。本文原有工作量均为历史粗估，不是最新排期；费用取舍见[路线决定表](TERMINAL_ROUTE_DECISION_2026-10-15.zh-CN.md)。
+
+## 后续评估
+
+2026-11-07：主机 RIS 不恢复 DECTCEM 与 LNM 两项 xterm.js 6.0.0 缺陷的门禁评估见 [RIS ADR 评估](../p1/RIS_ADR_EVALUATION.zh-CN.md)；本文的门禁与结论未改。
