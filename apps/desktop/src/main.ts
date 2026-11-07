@@ -14,7 +14,8 @@ import {
 import { sample, stress } from "./demo-session";
 import { createTerminalBell, paintBellMark } from "./terminal-bell";
 import { createBellSettingsSheet } from "./bell-settings";
-import { createTerminalActions } from "./terminal-actions-ui";
+import { clearShortcut, createTerminalActions } from "./terminal-actions-ui";
+import { isMac } from "./terminal-keyboard-ui";
 import { createHistoryViews } from "./history-view-ui";
 import { isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
@@ -635,6 +636,12 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     if (!document.querySelector("dialog[open]")) openPalette();
   }
+});
+document.addEventListener("keydown", (event) => {
+  const action = clearShortcut(event, isMac());
+  if (!action || document.querySelector("dialog[open]")) return;
+  event.preventDefault();
+  terminalActions.run(action);
 });
 window.addEventListener("beforeunload", () => {
   window.clearTimeout(statusTimer);

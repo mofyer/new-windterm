@@ -124,3 +124,5 @@ xterm.js 6.0.0 的 RIS 不恢复 DECTCEM 隐藏的光标、不清除 LNM（第 4
 6. 主机 RIS 两个缺陷的 ADR 决定（既有待决项，本次未处理）。
 
 **用户决定（2026-11-07）**：用户硬复位补写与 CAN 前缀认定不触及 ADR，暂不补写颜色恢复；清除回滚 / 全部清除一并清空冷归档，硬复位保留冷归档，暂不另加“复位并清除”；快捷键仅 macOS 提供 Cmd+L / Cmd+Shift+L，Windows/Linux 待上游实测。详见 [2026-11-07 用户决定](RESULTS.zh-CN.md#2026-11-07-用户决定15-项全部采用推荐项)。
+
+**快捷键实现（2026-11-07，按用户决定第 13 项）**：仅 macOS 生效，Cmd+L 执行「清屏」，Cmd+Shift+L 执行「全部清除」；带 Ctrl 或 Option、焦点在普通输入框、或有对话框打开时不响应；其他平台不绑定，Ctrl+L 仍由终端发送 0x0c。实现为 `terminal-actions-ui.ts` 的 `clearShortcut` 与 `main.ts` 的全局 keydown，复用工具栏动作的同一次本地写入，不向主机发送字节。浏览器 stub 测试 `tests/e2e/terminal-clear-shortcuts.spec.ts` 3 项（`--repeat-each 5` 15/15），关闭快捷键或去掉平台判断时分别有 1 项失败。Windows/Linux 绑定待上游实测；原生 WebView 中 Cmd+L 是否被系统或 WebView 先行占用未验证。

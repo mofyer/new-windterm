@@ -67,6 +67,19 @@ export function actionMessage(action: TerminalAction, name: string, result: Acti
   }
 }
 
+/**
+ * macOS-only clear shortcuts (user decision 13, 2026-11-07): Cmd+L clears the screen and
+ * Cmd+Shift+L clears screen and scrollback. Ctrl, Option and every other platform are left to the
+ * terminal, so Ctrl+L still sends 0x0c; Windows/Linux bindings wait for upstream hands-on checks.
+ * Keys typed into an ordinary text field (not xterm's own helper textarea) are never taken.
+ */
+export function clearShortcut(event: KeyboardEvent, mac: boolean): TerminalAction | undefined {
+  if (!mac || !event.metaKey || event.ctrlKey || event.altKey || event.key.toLowerCase() !== "l") return undefined;
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest("input, select, textarea:not(.xterm-helper-textarea)")) return undefined;
+  return event.shiftKey ? "clear-all" : "clear-screen";
+}
+
 export function createTerminalActions(toolbar: HTMLElement, host: TerminalActionsHost): TerminalActions {
   function run(action: TerminalAction) {
     const s = host.active();

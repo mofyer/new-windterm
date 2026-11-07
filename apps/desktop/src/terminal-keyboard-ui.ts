@@ -23,7 +23,7 @@ const OPTION_META: readonly Choice[] = [["false", "输入键盘布局字符（�
 const CURSOR_KEYS: readonly Choice[] = [["normal", "常规（默认）"], ["application", "应用"]];
 
 /** Same check as xterm.js 6.0.0, which decides from it whether Option can be Meta. */
-const isMac = () => ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(navigator.platform);
+export const isMac = (): boolean => ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(navigator.platform);
 
 function select(id: string, label: string, choices: readonly Choice[]): { label: HTMLLabelElement; select: HTMLSelectElement } {
   const element = document.createElement("label");
