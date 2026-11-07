@@ -87,7 +87,7 @@
 4. GB18030 平面 1–16 用规范算法计算四字节，再用解码器解回比对，一致才发送。
 5. 任何一个字符无法编码时，**整段输入不发送**：一次按键、一次 IME 提交、一次粘贴（含括号粘贴标记）是一个整体，不会只发前半段。提示框只给数量和编码名，不回显输入（输入可能是密码）。UTF-8 不受此规则影响，行为不变。
 6. xterm 自动回复（DA、CPR、DECRQSS 等）全为 ASCII，各编码下不变；`onBinary` 的原始字节不经编码。
-7. 启动后执行命令：在启动选项表单中先按原规则校验，再检查能否用所选编码表示，且编码后不超过 1000 字节；不满足时表单报错，不打开会话。会话打开后以会话编码发送“命令 + CR”。
+7. 启动后执行命令：在启动选项表单中先按原规则校验（换行、控制字符、孤立代理项、双向控制、纯空白），再检查能否用所选编码表示；1000 字节上限按**会话编码后的字节数**计算（它对应 Shell 收到的行长度；UTF-8 会话与以前完全相同）。不满足时表单报错，不打开会话。会话打开后以会话编码发送“命令 + CR”。
 
 ### 7.3 粘贴与 IME
 
@@ -158,14 +158,15 @@
 - `src/session-encoding.ts`：`SessionCodec`，每会话一个，提供 `decode`/`end`/`encode`/`switchTo`；UTF-8 时内部就是原 `Utf8Boundary` 与 `TextEncoder`。
 - `src/session-encoding-ui.ts`：编码下拉框与说明、命令面板的切换对话框；全部用 DOM API 与固定清单构建，不把会话名、主机名或终端文本拼进 HTML。
 - `session-lifecycle.ts`：`Session.codec`；`terminalChannel` 的解码点与 `endOutput`、`onData` 的编码点、启动命令的编码点；新增 `setEncoding`。其余逻辑未动。
-- `local-launch.ts`（`LaunchOptions.encoding`、表单字段与启动命令可编码校验）、`ssh-verification.ts`、`net-terminal.ts`（表单字段与请求字段）、`startup-command.ts`（`startupCommandLine`、`validateStartupCommandEncoding`）、`main.ts`（状态栏后缀、命令面板一项、切换对话框实例、关于对话框一句说明）。
+- `local-launch.ts`（`LaunchOptions.encoding`、表单字段与启动命令可编码校验）、`ssh-verification.ts`、`net-terminal.ts`（表单字段与请求字段）、`startup-command.ts`（`startupCommandLine`；`validateStartupCommand` 增加可选编码参数，默认 UTF-8）、`main.ts`（状态栏后缀、命令面板一项、切换对话框实例、关于对话框一句说明）。
 - 未改 Rust、Tauri 命令、ACL、`pty_open`/`ssh_open`/`net_open` 参数；未新增依赖。
 
 ### 14.3 验证（Chrome + Vite 开发服务器 + IPC stub）
 
 - `npm run build`（`tsc --noEmit` + Vite）通过；生产包 JS 482.99 → 491.07 KB（gzip 135.86 → 139.12 KB）。
-- 新增 3 个 spec 共 23 项：`session-encoding-codec.spec.ts` 5 项、`session-encoding-output.spec.ts` 8 项、`session-encoding-input.spec.ts` 10 项，辅助 `support/encoding-harness.ts`。`--repeat-each 5` 共 115/115 通过。
-- 本机全量浏览器 E2E：`c24f732` 实测基线 537/537；改动后 **560/560**（537 + 23），既有测试未修改。
+- 新增 3 个 spec 共 24 项：`session-encoding-codec.spec.ts` 5 项、`session-encoding-output.spec.ts` 8 项、`session-encoding-input.spec.ts` 11 项，辅助 `support/encoding-harness.ts`。`--repeat-each 5` 共 120/120 通过。
+- 本机全量浏览器 E2E：`c24f732` 实测基线 537/537；改动后 **561/561**（537 + 24），既有测试未修改。
+- 独立审查（只读 code-reviewer）：0 个 CRITICAL/HIGH；1 个 MEDIUM 已修正：非 UTF-8 会话的启动命令曾先按 UTF-8 字节数检查 1000 字节上限（例如 334 个汉字在 Big5 下只有 668 字节却被拒绝），现改为只按会话编码后的字节数检查，并新增 1 项测试（501 个汉字按 Big5 为 1,002 字节被拒，334 个汉字以 Big5 发出）。UTF-8 的校验顺序与提示文字不变，既有 43 项启动命令测试通过。
 - 覆盖内容：
   - 编码表：12 组已知字节样本（Big5 含 0x5C 尾字节的“許功”，EUC-JP 含半角片假名，Shift_JIS 含 0x5C 尾字节的“ソ表”，GBK 的 0x80 €，GB18030 的 U+0080 与 😀 四字节，EUC-KR，控制字符）编码结果与预期一致且解回原文；平面 0–2 每个可编码字符都解回自身，6 个编码 0 处不一致；Chrome 中各表生成 1.8–12 ms，Big5 14,653、EUC-JP 7,389、Shift_JIS 7,390、GBK 23,939、EUC-KR 17,048、GB18030 BMP 63,340 个非 ASCII 字符，平面 1–2 共 131,072 个四字节字符全部往返；编码结果从不以 Big5 HKSCS 首字节或 EUC-JP 0x8F 开头；¥、‾、U+2212、JIS X 0212、😀（Big5/GBK）、半角片假名（Big5/EUC-KR）、孤立代理项、U+FFFD、U+E5E5 均被拒绝；UTF-8 与 `TextEncoder` 完全相同。
   - 输出：本地 Big5、本地 EUC-JP、SSH Big5、Telnet EUC-JP 四组样本（SGR、OSC 标题、宽字符、0x5C 尾字节、半角片假名、JIS X 0212）按整块、每个单切点、逐字节和 8 组固定种子随机切分送入，屏幕、单元属性、光标、模式、标题与回复都与整块一致，ACK 逐块、按序、各一次；只含首字节的块也 ACK；非法与不完整序列显示 �，后续 ESC 序列、CR、LF、数字照常生效；本地退出、SSH 与 Telnet 断开时未完字符显示 �。

@@ -110,6 +110,24 @@ test('the startup command is typed in the session encoding, and one it cannot re
   expect((await writtenBytes(page)).hex).toBe(hex('6563686F20 A4A4A4E5 0D'));
 });
 
+test('the startup command byte limit is counted in the session encoding', async ({ page }) => {
+  await Session.open(page, 'pty', {}, false);
+  await page.locator('#local-options-open').click();
+  await page.locator('#local-encoding').selectOption('big5');
+  // 501 CJK characters: 1,002 Big5 bytes, over the limit in the session encoding.
+  await page.locator('#local-command-input').fill('中'.repeat(501));
+  await page.locator('#local-start').click();
+  await expect(page.locator('#local-options-error')).toHaveText('启动后执行命令按 Big5 编码后最多 1000 字节，当前为 1,002 字节。');
+  // 334 CJK characters: 1,002 UTF-8 bytes, but 668 Big5 bytes, which is what the shell receives.
+  await page.locator('#local-command-input').fill('中'.repeat(334));
+  await page.locator('#local-start').click();
+  await expect(page.locator('#local-dialog')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => !!(window as any).qaIpc.pendingOpen)).toBe(true);
+  await page.evaluate(() => (window as any).qaIpc.pendingOpen());
+  await expect(page.locator('#terminal-state')).toContainText('启动命令已提交');
+  expect((await writtenBytes(page)).hex).toBe(`${'A4A4'.repeat(334)}0D`);
+});
+
 /** Runs the palette command and applies `encoding` in its sheet. */
 async function switchEncoding(page: Page, encoding: string) {
   await page.locator('#palette-open').click();

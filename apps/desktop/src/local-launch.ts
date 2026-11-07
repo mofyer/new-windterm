@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { validateStartupCommand, validateStartupCommandEncoding } from "./startup-command";
+import { validateStartupCommand } from "./startup-command";
 import { DEFAULT_ENCODING, isEncodingId, type EncodingId } from "./text-encoding";
 import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
 
@@ -237,7 +237,7 @@ export function createLocalLaunchOptions(
     event.preventDefault();
     if (!native || start.disabled) return;
     const chosenEncoding = readEncoding(encoding);
-    const commandError = validateStartupCommand(command.value) ?? validateStartupCommandEncoding(command.value, chosenEncoding);
+    const commandError = validateStartupCommand(command.value, chosenEncoding);
     if (commandError) {
       command.setAttribute("aria-invalid", "true");
       error.textContent = commandError;

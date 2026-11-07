@@ -8,9 +8,12 @@
  * status text, notice, error message, log, storage or URL; validation messages never echo it.
  */
 
-import { encodeText, encodingLabel, type EncodingId } from "./text-encoding";
+import { DEFAULT_ENCODING, encodeText, encodingLabel, type EncodingId } from "./text-encoding";
 
-/** UTF-8 bytes, without the CR that submits the line. Below macOS's 1024-byte canonical line limit. */
+/**
+ * Bytes in the session encoding (UTF-8 by default), without the CR that submits the line. Below
+ * macOS's 1024-byte canonical line limit.
+ */
 export const STARTUP_COMMAND_MAX_BYTES = 1000;
 
 /**
@@ -59,17 +62,18 @@ export function startupCommandBytes(command: string): Uint8Array {
 }
 
 /**
- * For a session encoding other than UTF-8: the command must be representable in it, and its
- * encoded form must also stay within {@link STARTUP_COMMAND_MAX_BYTES}. Never echoes the value.
+ * The byte limit in the session encoding, where the shell's line limit applies. For an encoding
+ * other than UTF-8 the command must also be representable in it. Never echoes the value.
  */
-export function validateStartupCommandEncoding(value: string, encoding: EncodingId): string | null {
-  if (value === "" || encoding === "utf-8") return null;
+function validateEncodedLength(value: string, encoding: EncodingId): string | null {
   const encoded = encodeText(encoding, value);
   if (!encoded.ok)
     return `启动后执行命令中有 ${encoded.unencodable} 个字符无法用 ${encodingLabel(encoding)} 表示；请修改命令或选择其他字符编码。`;
-  if (encoded.bytes.length > STARTUP_COMMAND_MAX_BYTES)
-    return `启动后执行命令按 ${encodingLabel(encoding)} 编码后最多 ${STARTUP_COMMAND_MAX_BYTES} 字节，当前为 ${encoded.bytes.length.toLocaleString()} 字节。`;
-  return null;
+  const bytes = encoded.bytes.length;
+  if (bytes <= STARTUP_COMMAND_MAX_BYTES) return null;
+  return encoding === DEFAULT_ENCODING
+    ? `启动后执行命令最多 ${STARTUP_COMMAND_MAX_BYTES} UTF-8 字节，当前为 ${bytes.toLocaleString()} 字节。`
+    : `启动后执行命令按 ${encodingLabel(encoding)} 编码后最多 ${STARTUP_COMMAND_MAX_BYTES} 字节，当前为 ${bytes.toLocaleString()} 字节。`;
 }
 
 const LINE_BREAK = /[\r\n]/;
@@ -92,10 +96,11 @@ function hasLoneSurrogate(value: string): boolean {
 }
 
 /**
- * Checks the form value. Empty means "no command". Returns a message that never contains the value,
- * or null when it may be used exactly as written (no trimming, quoting or expansion).
+ * Checks the form value for a session in `encoding` (UTF-8 unless given). Empty means "no
+ * command". Returns a message that never contains the value, or null when it may be used exactly
+ * as written (no trimming, quoting or expansion).
  */
-export function validateStartupCommand(value: string): string | null {
+export function validateStartupCommand(value: string, encoding: EncodingId = DEFAULT_ENCODING): string | null {
   if (value === "") return null;
   if (LINE_BREAK.test(value))
     return "启动后执行命令只能是一行，不能包含换行（粘贴的多行文本也会被拒绝）；多条命令请用所选 Shell 的连接语法写在一行。";
@@ -104,8 +109,5 @@ export function validateStartupCommand(value: string): string | null {
   if (hasLoneSurrogate(value)) return "启动后执行命令包含无法编码的字符（孤立的代理项）。";
   if (BIDI.test(value)) return "启动后执行命令不能包含双向文本控制字符（U+202A–U+202E、U+2066–U+2069）。";
   if (/^\s+$/u.test(value)) return "启动后执行命令不能只包含空白；留空表示不发送命令。";
-  const bytes = new TextEncoder().encode(value).length;
-  if (bytes > STARTUP_COMMAND_MAX_BYTES)
-    return `启动后执行命令最多 ${STARTUP_COMMAND_MAX_BYTES} UTF-8 字节，当前为 ${bytes.toLocaleString()} 字节。`;
-  return null;
+  return validateEncodedLength(value, encoding);
 }
