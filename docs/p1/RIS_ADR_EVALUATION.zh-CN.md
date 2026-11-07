@@ -237,6 +237,8 @@ Node 探针（每例先写入 `XYZ CSI ? 25 l CSI 20 h`）：
 
 基于 `p1/integration` 的 `9ba1ad3`，按用户决定第二组第 1–4 项实施 R1。只改前端、测试与文档；未改 Rust、Tauri 命令、ACL、IPC 参数或依赖；未推送、未运行 CI。所有证据为 macOS 本机系统 Chrome + IPC stub。
 
+实现提交 `07d97ff`（代码、测试与文档）。独立代码审查（只读）结论 APPROVE：逐项核对了钩子时机（xterm.js 6.0.0 的处理器派发顺序与 `fullReset` 链不碰这两个值）、私有字段守护、无字节改写与 ACK、冷归档与 T31/T32、矩阵数字与文档措辞，无 CRITICAL、HIGH、MEDIUM；两项 LOW 均未改代码：一项是共享夹具 `randomCuts` 的死循环（见 9.3，留待另行修复），另一项是对提交署名的疑问（署名按本会话的规定填写，不改）。
+
 ### 9.1 实现与时机
 
 - **文件**：[`ris-repair.ts`](../../apps/desktop/src/terminal-compat/ris-repair.ts)（xterm.js 插件 `risRepair`）；[`xterm-private.ts`](../../apps/desktop/src/terminal-compat/xterm-private.ts)（`showHiddenCursor`，生产代码中唯一访问 xterm 私有字段的地方）；[`terminal.ts`](../../apps/desktop/src/terminal.ts) 工厂加载插件；`responsiveness.ts` 增加三个开发诊断计数。
