@@ -1036,3 +1036,27 @@ Windows trace 中槽 1 的时间线如下。时间相对 trace 安装时刻，�
 - 本结果不表示第四批已验收、P1 已通过或可以合并 main。本入口跳过五个非 native 作业，不是七作业全套门禁。本结果也不涉及 Windows Server 2025、macOS WKWebView、PowerShell 7、IME、读屏、高输出性能、签名公证或真实用户桌面验收。loopback russh 夹具不等同于 OpenSSH；本次 runner 不提供独立 stderr 证据。显式导入等候选产品方案未因此获得支持。
 
 需要用户决定的后续事项：是否另行预注册新的运行或实验，任何新运行都单独记录，不与本次拼接；是否评估并实施单个产品方案，显式导入仍只是候选，不会静默加入产品；第四批合并 main 须在完成验收后另行批准。P1 与第四批均未验收，P2 仅准备，main 不合并。
+
+## 2026-11-07 并行切片集成（本地 `p1/integration`，未推送）
+
+本节记录原生刷新运行 `42268048590`（被测 `e7faa0f`）之后在本地集成的工作。下列提交都在 `e7faa0f` 之后，**不在该原生运行的被测树内**，也未推送或运行任何 CI；各项结果均为 macOS 本机与浏览器 IPC stub 证据。
+
+| 内容 | 主要提交 | 验证 | 未验证 |
+| --- | --- | --- | --- |
+| 第 4 片第一步：会话生命周期拆到 `session-lifecycle.ts`、演示命令拆到 `demo-session.ts`，`main.ts` 1073 → 589 行，行为不变 | `4017f29` | 代理分支浏览器 437/437；独立审查 APPROVE | 原生、真实 PTY/SSH |
+| 第 5 片第 1–2 步：命名历史与会话预算（`history-budget.ts`，热历史仍 5,000 行）；Chrome 内存观测；关闭会话时断开输出 Channel 回调，不再等后端 `end` 才回收（R1） | `57a9f35`、`06c20b8`、`2bb36e5`、`55a62d5`、`eed93f0` | 关闭运行中标签即释放约 7.66 MiB（Chrome 观测）；移除修复时测试失败（实例数 2）；独立审查 APPROVE | Rust 何时丢弃通道、原生 WebView 回收 |
+| 第 4 片回归：经生产会话路径的复位 15、跨块 10、键盘 14 项（其中 2 项 `test.fail` 固定 xterm.js 6.0.0 的 RIS 缺陷：不恢复 DECTCEM 隐藏的光标、不清除 LNM） | `75a64be`、`f4d647c`、`a2e6923` | `--repeat-each 5` 195/195；独立审查 APPROVE | vttest、真实主机程序、IME |
+| 启动后执行命令语义预案与用户决定（Q1–Q6 全部推荐项） | `8dcc29e`、`05e602a`、`a98c280` | 文档审查 APPROVE | — |
+| 第 5 片第 5 步：在 H4 边界（`terminal-core.ts`）接入冷归档，只捕获、不加界面；修复原型在 Ctrl-L 后重复归档与 RIS 后停止归档 | `c3f9eb9`、`26774ca`、`58ef38a` | 12,000 行混合内容逐行一致、预算内 0 缺口、关闭释放；有界流开销约 +13%（Chrome 观测）；独立审查无 CRITICAL/HIGH | 原生 `CompressionStream`、耗时与内存；**第 6 步前冷归档无上限，不单独合并 main 或发布** |
+| 启动后执行命令第一部分：单行字段、白名单传参、`pty_open` 后同一同步段入队恰好一次、一次性状态、重开再发并提示 | `1c60af2` | 浏览器新增 43 项、`--repeat-each 5` 215/215；macOS 真实 PTY（默认 zsh、显式 Bash/zsh）首次 1 次、重开共 2 次、无 CR 0 次；变异检查失败后还原；独立审查 APPROVE | Linux 真实 PTY、Windows cmd/PowerShell 两种 CPR 顺序、原生场景、PowerShell 7 |
+| `release_bins` 门禁误把 `src/bin/support/`（无 `main.rs`）当作 bin 目标，远端 `c3b3a68` 起即失败 | `b62ea82` | 修复后 3/3；临时加入未登记的 `src/bin/<dir>/main.rs` 时仍报错 | CI |
+
+集成树 `b62ea82` 的协调者门禁（macOS 本机，顺序执行）：前端 `npm run build` 通过；浏览器 E2E **533/533**（IPC stub）；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 190 passed / 7 ignored；`--test ssh_terminal` 14 passed；`--test release_bins` 3 passed；`tools/wincheck/wincheck.sh` 通过。未运行真实 OpenSSH 夹具、原生 WebView 与任何 CI。
+
+集成过程中发现、尚未处理的事项：
+
+- **关闭本地 Unix 会话可能执行未按回车的文本**（既有问题）：启动命令探针在 macOS 本机每种 Shell 关闭 10 次，Bash 1 次完整执行、zsh 1–2 次开始执行，属竞态。推测与 portable-pty 0.9.0 Unix writer 丢弃时写入换行和 EOF 有关，尚未确认根因；已在独立分支调查与修复，未合并。
+- 早期输入 FIFO 的实际接收集合与文档“只接收 CPR”不一致：`pty_open` 前经 VT 适配器发出的回复（CPR、DA、XTVERSION、部分 DECRQSS）都会进入，xterm 内置回复被丢弃；已由回归测试固定，是否调整待用户决定。
+- `docs/p0/VT_MATRIX.zh-CN.md` 的 X02（RIS）标为 supported，与上述两个 xterm.js RIS 缺陷部分矛盾；两缺陷是否进入终端内核 ADR 门禁待用户决定。
+
+P1、第四批与第 4、5 片均未完成；第四批 Windows 首次查询停滞未归因；main 不合并。
