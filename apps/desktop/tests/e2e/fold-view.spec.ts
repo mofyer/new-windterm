@@ -8,6 +8,7 @@ async function harness(page: Page) {
     const { Terminal } = await import(/* @vite-ignore */ '/node_modules/@xterm/xterm/lib/xterm.mjs');
     const { FoldView } = await import(/* @vite-ignore */ '/src/terminal-compat/fold-view.ts');
     const { HistoryArchive } = await import(/* @vite-ignore */ '/src/terminal-compat/history-archive.ts');
+    const { xtermHistorySource } = await import(/* @vite-ignore */ '/src/terminal-core.ts');
     const terminal = (cols: number, rows: number, scrollback: number) => {
       const t = new Terminal({ cols, rows, scrollback, allowProposedApi: true, disableStdin: true });
       const holder = document.createElement('div');
@@ -15,7 +16,7 @@ async function harness(page: Page) {
       t.open(holder);
       return t;
     };
-    (window as any).foldQa = { Terminal, FoldView, HistoryArchive, terminal };
+    (window as any).foldQa = { Terminal, FoldView, HistoryArchive, xtermHistorySource, terminal };
   });
 }
 
@@ -99,9 +100,9 @@ test('row mapping survives reflow of wrapped lines', async ({ page }) => {
 test('folding works on lines read back from the compressed archive', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async lines => {
-    const { FoldView, HistoryArchive, terminal } = (window as any).foldQa;
+    const { FoldView, HistoryArchive, xtermHistorySource, terminal } = (window as any).foldQa;
     const live = terminal(80, 10, 1000);
-    const archive = new HistoryArchive(live, 64);
+    const archive = new HistoryArchive(xtermHistorySource(live), 64);
     const stream = lines.join('\r\n') + '\r\n' + '\r\n'.repeat(12);
     for (let offset = 0; offset < stream.length; offset += 4096) {
       await new Promise<void>(resolve => live.write(stream.slice(offset, offset + 4096), () => { archive.capture(); resolve(); }));

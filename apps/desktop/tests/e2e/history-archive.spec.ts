@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Isolated Q04/Q06 experiment: a real xterm with a bounded hot scrollback and
-// the compressed cold archive. Not wired into production terminals.
+// Q04/Q06 archive in isolation: a real xterm with a bounded hot scrollback, read
+// through the terminal-core boundary into the compressed cold archive. The
+// production capture path is covered by history-capture.spec.ts.
 test.setTimeout(60_000);
 
 async function harness(page: Page) {
@@ -9,13 +10,14 @@ async function harness(page: Page) {
   await page.evaluate(async () => {
     const { Terminal } = await import(/* @vite-ignore */ '/node_modules/@xterm/xterm/lib/xterm.mjs');
     const { HistoryArchive, stripSgr } = await import(/* @vite-ignore */ '/src/terminal-compat/history-archive.ts');
+    const { xtermHistorySource } = await import(/* @vite-ignore */ '/src/terminal-core.ts');
     (window as any).historyQa = {
       make(cols: number, rows: number, scrollback: number, blockLines = 512) {
         const terminal = new Terminal({ cols, rows, scrollback, allowProposedApi: true });
         const holder = document.createElement('div');
         document.body.append(holder);
         terminal.open(holder);
-        const archive = new HistoryArchive(terminal, blockLines);
+        const archive = new HistoryArchive(xtermHistorySource(terminal), blockLines);
         const write = (data: string) => new Promise<void>(resolve => terminal.write(data, () => { archive.capture(); resolve(); }));
         return { terminal, archive, write };
       },
@@ -145,4 +147,67 @@ test('an undersized hot scrollback is reported as a gap instead of silently losi
     return archive.stats();
   });
   expect(result.gaps).toBe(1);
+});
+
+test('written trailing spaces are kept, never-written cells and wide-character wrap padding are not', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make } = (window as any).historyQa;
+    const { archive, write } = make(9, 3, 100);
+    // 9 columns: "ab" + four wide characters fill 2 + 8 = 10 > 9 cells, so the fourth wraps and
+    // leaves one padding cell; "x\x1b[5C" moves the cursor without writing.
+    await write('tail   \r\nab中文字符\r\nx\x1b[5C\r\n\x1b[41mred\x1b[K\x1b[0m\r\n' + '\r\n'.repeat(4));
+    await archive.flush(true);
+    return archive.lines(0, 4);
+  });
+  expect(result).toEqual([
+    'tail   ',
+    'ab中文字符',
+    'x',
+    // A coloured erase to the end of the line is kept with its background.
+    '\x1b[0;41mred      \x1b[0m',
+  ]);
+});
+
+test('erasing or deleting rows on screen neither duplicates nor drops archived lines', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make, stripSgr } = (window as any).historyQa;
+    const lines = (name: string, n: number) => Array.from({ length: n }, (_, i) => `${name}${i}`).join('\r\n') + '\r\n';
+    const { archive, write } = make(40, 5, 100);
+    await write(lines('L', 20)); // L0..L15 leave the screen
+    await write('\x1b[H\x1b[M'); // DL at the screen top deletes L16 there
+    await write('\x1b[5;1H' + lines('N', 10));
+    await write('\x1b[H\x1b[2J'); // Ctrl-L: erase the screen only
+    await write(lines('P', 10) + '\r\n'.repeat(5));
+    await archive.flush(true);
+    const archived = (await archive.lines(0, 1000)).map(stripSgr).filter((line: string) => line !== '');
+    return { archived, stats: archive.stats() };
+  });
+  const range = (name: string, from: number, to: number) => Array.from({ length: to - from }, (_, i) => `${name}${from + i}`);
+  // L16 was deleted and N6..N9 erased while on screen, as in the terminal itself.
+  expect(result.archived).toEqual([...range('L', 0, 16), ...range('L', 17, 20), ...range('N', 0, 6), ...range('P', 0, 10)]);
+  expect(result.stats.gaps).toBe(0);
+});
+
+test('a taller screen erased over archived rows reports a gap instead of archiving them twice', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make, stripSgr } = (window as any).historyQa;
+    const lines = (name: string, n: number) => Array.from({ length: n }, (_, i) => `${name}${i}`).join('\r\n') + '\r\n';
+    const { terminal, archive, write } = make(40, 5, 100);
+    await write(lines('L', 20));
+    terminal.resize(40, 15); // pulls archived rows back on screen
+    await write('\x1b[H\x1b[2J'); // and erases them together with the archive's marker
+    await write(lines('M', 30) + '\r\n'.repeat(15));
+    await archive.flush(true);
+    const archived = (await archive.lines(0, 1000)).map(stripSgr).filter((line: string) => line !== '');
+    return { archived, stats: archive.stats() };
+  });
+  // The resume position is unknown once the marker is erased: no line is archived twice and the
+  // possible hole is reported. Here nothing was actually lost (L16..L19 were erased on screen).
+  expect(new Set(result.archived).size).toBe(result.archived.length);
+  expect(result.archived.slice(0, 16)).toEqual(Array.from({ length: 16 }, (_, i) => `L${i}`));
+  expect(result.archived.slice(16)).toEqual(Array.from({ length: 30 }, (_, i) => `M${i}`));
+  expect(result.stats.gaps).toBe(1);
 });

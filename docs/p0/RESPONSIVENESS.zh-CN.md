@@ -46,6 +46,8 @@ window.__WINDTERM_P0_DIAGNOSTICS__.snapshot()
 
 返回固定 13 个聚合数字：接收块/字节、解析块、ACK 提交/完成、输入事件/IPC 次数、当前/峰值输入积压、最大输入排队/解析等待/ACK 排队时长、状态刷新次数。**没有采样数组、时间序列、日志或后台采样计时器；不保留输入、输出、路径或会话 ID。** 快照是冻结的数字对象，统计累计至刷新，不是分位数。
 
+2026-11-07 起（P1 第 5 片第 5 步）同一快照另有 12 个 `history*` 冷历史捕获计数，共 25 个数字：存活归档数、累计归档行数、缺口次数、清除（RIS/ED 3）次数、存活归档压缩字节合计、单会话最大压缩字节、超单会话/全局预算的次数、未压缩块数、捕获异常次数、累计/单次最大捕获耗时。同样只有数字，不含历史文本，含义见[历史预算预案第 11 节](../p1/HISTORY_BUDGET_PLAN.zh-CN.md#11-第-5-步实施记录2026-11-07)。
+
 - `maxInputWaitMs`：输入进入串行队列至开始发送，不含后续 IPC/PTY 时间。
 - `maxParseWaitMs`：Channel 数据抵达至 xterm.write callback，含 xterm 内排队。
 - `maxAckQueueWaitMs`：解析 callback 至 ACK 开始 invoke，不含该 ACK 后端完成。

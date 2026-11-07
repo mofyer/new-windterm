@@ -78,7 +78,7 @@ P0_AGENT_HOME_SOCKET=1 node --test tests/fixtures/ssh-terminal/agent-client.test
 
 VT 兼容矩阵：`tests/e2e/vt-matrix.spec.ts` 记录 xterm.js 6.0.0 的 63 项 VT 行为（结论见 `docs/p0/VT_MATRIX.zh-CN.md`）。
 
-P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
+P0 概念验证（隔离，未接生产界面）：`src/terminal-compat/` 下的 `history-archive.ts`（压缩历史；P1 第 5 片第 5 步起已用于原生会话的冷归档捕获，但仍无界面）、`fold-view.ts`（折叠/大纲）、`free-type.ts`（草稿编辑）、`vt52-stream.ts`，各有同名 Playwright spec；Rust 的 `tmux_control.rs` 有单元测试和 `tests/tmux_control.rs`（需要本机 tmux，否则跳过）。
 
 桌面手工测 SSH 终端：在 `apps/desktop/src-tauri` 运行 `cargo run --locked --features dev-tools --bin ssh_terminal_fixture`（保持 stdin 打开），按打印的端口、临时 key 路径和指纹填入桌面「打开真实 SSH 终端」，用户名 `fixture`，支持输入 `unicode`/`size`/`large`/`burst`。夹具清理规则见 [docs/p0/SSH_SFTP_FIXTURE.zh-CN.md](docs/p0/SSH_SFTP_FIXTURE.zh-CN.md)：不要执行全局 `pkill sshd`，不要只凭旧 pid 文件杀进程。
 
@@ -134,7 +134,7 @@ PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` �
 
 ### 前端
 
-- `main.ts` 用一个大的 `innerHTML` 模板构建整个工作台，负责选中、标签/列表绘制、状态栏和对话框；`isTauri()` 决定是走真实 IPC 还是浏览器演示。会话生命周期与终端传输在 `session-lifecycle.ts`：`Session` 注册表（`mode`: `demo` | `pty` | `ssh` | `net`，最多 8 个）、打开/输入/尺寸/ACK/关闭/重开/卸载入口、早期输入 FIFO 与 Channel 字节流；它只经 `SessionHost` 回调与工作台交互，不直接读写工作台 DOM。浏览器演示命令在 `demo-session.ts`。两者都不保存屏幕副本，xterm 仍是唯一屏幕状态。历史行数与会话上限的命名预算在 `history-budget.ts`（热历史仍为 5,000 行，见 [历史预算预案](docs/p1/HISTORY_BUDGET_PLAN.zh-CN.md)）；关闭会话时会断开输出 Channel 回调对会话的引用，不依赖后端 `end` 才回收。图标集中在 `icons.ts`。「新建连接」表单和传输队列是模拟数据；文件面板默认显示 `#file-demo` 模拟内容，只读 SFTP 连接后切换到 `sftp-panel.ts` 渲染的 `#sftp-view`。
+- `main.ts` 用一个大的 `innerHTML` 模板构建整个工作台，负责选中、标签/列表绘制、状态栏和对话框；`isTauri()` 决定是走真实 IPC 还是浏览器演示。会话生命周期与终端传输在 `session-lifecycle.ts`：`Session` 注册表（`mode`: `demo` | `pty` | `ssh` | `net`，最多 8 个）、打开/输入/尺寸/ACK/关闭/重开/卸载入口、早期输入 FIFO 与 Channel 字节流；它只经 `SessionHost` 回调与工作台交互，不直接读写工作台 DOM。浏览器演示命令在 `demo-session.ts`。两者都不保存屏幕副本，xterm 仍是唯一屏幕状态。历史行数与会话上限的命名预算在 `history-budget.ts`（热历史仍为 5,000 行，见 [历史预算预案](docs/p1/HISTORY_BUDGET_PLAN.zh-CN.md)）。原生会话在输出写入回调中、ACK 入队之后经终端内核边界 `terminal-core.ts`（H4，只读、xterm 公开 API）把离开屏幕的逻辑行追加进 `history-capture.ts` 管理的压缩冷归档，关闭时释放；冷归档不是终端状态，目前没有界面，冷预算只在开发诊断中统计、尚未执行；关闭会话时会断开输出 Channel 回调对会话的引用，不依赖后端 `end` 才回收。图标集中在 `icons.ts`。「新建连接」表单和传输队列是模拟数据；文件面板默认显示 `#file-demo` 模拟内容，只读 SFTP 连接后切换到 `sftp-panel.ts` 渲染的 `#sftp-view`。
 - `ssh-verification.ts`：SSH 指纹确认与连接对话框流程；`terminal.ts`：xterm 工厂（启用 Unicode 11 宽度，并挂上 `terminal-compat/vt-adapters.ts` 的 VT 回复适配：设备身份、DECSCL、DECRQSS、DECOM 下的 CPR、默认关闭的 OSC 52 写入）；`terminal-compat/vt52-stream.ts`：隔离的 VT52 实验，未接入生产终端。
 - 终端输出、文件名、窗口标题都是不可信数据，不能拼进 `innerHTML`。
 - E2E 通过 `page.addInitScript` 注入 `window.__TAURI_INTERNALS__`（以及 `isTauri`）来 stub IPC；新增前端 IPC 调用时，相关 spec 中的 stub 也要同步更新。

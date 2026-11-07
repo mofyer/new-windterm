@@ -14,6 +14,19 @@ function createDiagnostics() {
     maxParseWaitMs: 0,
     maxAckQueueWaitMs: 0,
     statusFlushes: 0,
+    // Cold history capture (history-capture.ts): counts, sizes and time only, never history text.
+    historyArchives: 0,
+    historyArchivedLines: 0,
+    historyGaps: 0,
+    historyClears: 0,
+    historyCompressedBytes: 0,
+    historyMaxSessionCompressedBytes: 0,
+    historySessionBudgetExceeded: 0,
+    historyTotalBudgetExceeded: 0,
+    historyUncompressedBlocks: 0,
+    historyCaptureErrors: 0,
+    historyCaptureMs: 0,
+    historyMaxCaptureMs: 0,
   };
   Object.defineProperty(window, "__WINDTERM_P0_DIAGNOSTICS__", {
     value: Object.freeze({ snapshot: () => Object.freeze({ ...counters }) }),

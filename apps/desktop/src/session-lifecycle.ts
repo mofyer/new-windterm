@@ -12,6 +12,7 @@ import { Utf8Boundary } from "./utf8-boundary";
 import { attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, sendUnmappedControl } from "./terminal-input";
 import { demoInput, demoWelcome, type DemoView } from "./demo-session";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
+import { createSessionHistory, type SessionHistory } from "./history-capture";
 
 /**
  * Session lifecycle and terminal transport. Each session has one entry per action: open
@@ -19,7 +20,8 @@ import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
  * output ACK (`acknowledge`), close (`close`), reopen (`reopenLocal`) and unload (`shutdown`).
  * The workbench is reached only through {@link SessionHost}; this module never reads or writes
  * workbench DOM. xterm.js remains the only screen state: output bytes go straight into it and
- * nothing here keeps a copy of the screen or the scrollback.
+ * nothing here keeps a copy of the screen. A native session's cold history archive is derived
+ * from its xterm after each output write (read-only, no input path) and released on close.
  */
 
 type PtyEvent =
@@ -58,6 +60,8 @@ export type Session = {
   ack: Promise<unknown>;
   /** Output channel of a native session; detached on close so it cannot keep the session alive. */
   channel?: Channel<PtyEvent>;
+  /** Cold history archive of a native session; kept after exit, released on close. */
+  history?: SessionHistory;
   input: InputQueue;
 };
 
@@ -281,6 +285,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   function terminalChannel(s: Session) {
     const onEvent = new Channel<PtyEvent>();
     s.channel = onEvent;
+    s.history ??= createSessionHistory(s.terminal);
     const utf8 = new Utf8Boundary();
     onEvent.onmessage = (event) => {
       if (s.disposed) return;
@@ -299,6 +304,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
             diagnostics.maxParseWaitMs = Math.max(diagnostics.maxParseWaitMs, parsedAt - receivedAt);
           }
           acknowledge(s, event.id, event.sequence, parsedAt);
+          // Before the next chunk is parsed: rows this chunk pushed off screen are still in xterm.
+          s.history?.capture();
           host.progress(s.key);
         });
       } else if (event.kind === "exit") {
@@ -465,6 +472,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     // registered callback no longer reaches this session, its xterm or its history.
     if (s.channel) s.channel.onmessage = () => {};
     s.channel = undefined;
+    s.history?.dispose();
+    s.history = undefined;
     s.early = [];
     s.earlyBytes = 0;
     s.input.clear();
@@ -480,6 +489,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     for (const s of sessions.values()) {
       s.disposed = true;
       s.outputRun++;
+      s.history?.dispose();
       s.observer.disconnect();
       s.vt.dispose();
       s.terminal.dispose();

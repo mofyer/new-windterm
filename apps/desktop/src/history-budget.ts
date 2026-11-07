@@ -1,17 +1,21 @@
-// Terminal history and session budget for the workspace (P1 slice 5, step 1).
+// Terminal history and session budget for the workspace (P1 slice 5).
 //
-// xterm.js is the only live terminal state. These numbers bound what each
-// workspace xterm keeps; they do not describe a second copy kept anywhere
-// else. The plan, the Chrome-only measurements and the decisions still open
-// are in docs/p1/HISTORY_BUDGET_PLAN.zh-CN.md. Changing a value here changes
-// product behaviour and needs that plan's verification steps.
+// xterm.js is the only live terminal state. The hot numbers bound what each
+// workspace xterm keeps; the cold numbers are the budget of the compressed,
+// read-only archive derived from it (history-capture.ts), which is not
+// terminal state. Until step 6 the cold budget is only counted, not enforced.
+// The plan, the Chrome-only measurements and the user's decisions are in
+// docs/p1/HISTORY_BUDGET_PLAN.zh-CN.md. Changing a value here changes product
+// behaviour and needs that plan's verification steps.
 
 /**
  * Lines each workspace terminal keeps above its visible rows (xterm
- * `scrollback`). Once exceeded, xterm drops the oldest lines silently; there
- * is no cold archive in production yet. 5,000 is the P0 value and stays the
- * production default until the user decides otherwise (WindTerm 2.7.0
- * defaults to 999,999, see Q06).
+ * `scrollback`): the hot window, and also the capture window of the cold
+ * archive. One output chunk (at most 4,096 B, so at most about 4,096 rows
+ * from line feeds) must fit in it, or rows are trimmed before they can be
+ * archived and a gap is counted. The user kept 5,000 (decision 1B,
+ * 2026-11-07); WindTerm 2.7.0 defaults to 999,999 in total, see
+ * HISTORY_TARGET_LINES.
  */
 export const DEFAULT_SCROLLBACK_LINES = 5000;
 
@@ -28,3 +32,31 @@ export const MAX_WORKSPACE_SESSIONS = 8;
  * scrollback. Visible rows and the alternate screen come on top of this.
  */
 export const MAX_WINDOW_SCROLLBACK_LINES = DEFAULT_SCROLLBACK_LINES * MAX_WORKSPACE_SESSIONS;
+
+/**
+ * Logical lines of history (hot scrollback plus cold archive) one session is
+ * designed to keep: WindTerm 2.7.0's default `scrollbackLimit` (Q06; user
+ * decision 1B). Step 5 only counts archives that pass it, in development
+ * diagnostics; enforcement and its notice belong to step 6.
+ */
+export const HISTORY_TARGET_LINES = 999_999;
+
+/**
+ * Logical lines per compressed cold-archive block. Step 6 will drop whole
+ * blocks, oldest first, when a budget is exceeded (user decision 3A).
+ */
+export const ARCHIVE_BLOCK_LINES = 512;
+
+/**
+ * Compressed cold-archive bytes one session may hold. Tentative (user
+ * decision 2A, 2026-11-07): to be revised after native measurement. Step 5
+ * only counts sessions that pass it; nothing is trimmed yet.
+ */
+export const MAX_SESSION_ARCHIVE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Compressed cold-archive bytes of all sessions together (one window today;
+ * summed per application once more windows exist). Tentative (decision 2A);
+ * counted only in step 5. Step 6 trims exited tabs first (decision 5A).
+ */
+export const MAX_TOTAL_ARCHIVE_BYTES = 256 * 1024 * 1024;
