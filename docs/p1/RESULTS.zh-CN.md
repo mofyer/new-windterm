@@ -1504,3 +1504,5 @@ runner 级的 `failure-local-terminal-environment.json` 是在场景 `finally` �
 另一个独立只读 `code-reviewer` 子代理审查了本节首次提交 `84f1bb2`。它没有采信本节数字，而是从同一批工件、作业日志和只读 GitHub API 重新计算：7 个 zip 的 SHA-256 与 digest、12 个文件哈希、4 个 `rust-tests.log` 的计数与 argv 测试行号、两平台 summary 与 trace 字段、场景 5、6 的 16 个计时原值、场景 7 失败 JSON 及其与 `42340067995` 的对照、作业 id、时长与镜像版本。审查还逐项对照了方案 5.4–5.7 的分类、停止规则、允许与禁止解读和记录内容。结论为 APPROVE，0 critical / 0 high / 0 medium / 0 low。审查者同样只做只读核对，没有 rerun、dispatch 或修改代码。
 
 P1 与第四批均未验收，P2 仅在准备，main 不合并。
+
+**C1 已执行（2026-11-07）**：按用户批准的 C1，协调者在远端 `p1/integration` 的 `3f95db5` 之上用一个提交 `cb97e8a` 撤回方案 A（`local_shell.rs` 恢复为 `3fbd25e` 内容，并改回 `c775c0c` 在 `CLAUDE.md` 与启动命令预案中的 argv 表述），以快进方式推送，未改写历史，推送后未触发运行；方案文档与本结果记录保留。撤回后的代码未再在 CI 上运行（停止规则：不再 dispatch）。Windows 场景 7 默认 cmd 会话失败另行调查（见后续记录），方案 A 的任何变体都须另行预注册并由用户决定。
