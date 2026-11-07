@@ -99,8 +99,10 @@ export class RegexWorker {
    * (undefined: cancelled). The next request starts a new worker.
    */
   halt(failure?: SearchFailure): void {
-    this.worker?.terminate();
+    // Forgotten first, so its handlers ignore any event, whatever the order the engine delivers it in.
+    const worker = this.worker;
     this.worker = undefined;
+    worker?.terminate();
     const waiting = this.waiting;
     this.waiting = undefined;
     if (!waiting) return;
@@ -127,7 +129,9 @@ function hitsOf(
   if (!Array.isArray(hits) || hits.length % 3 || hits.length > 3 * room) throw new Halt("failed");
   const matches: SearchMatch[] = [];
   for (let k = 0; k < hits.length; k += 3) {
-    const [index, start, end] = [hits[k], hits[k + 1], hits[k + 2]];
+    const index = hits[k];
+    const start = hits[k + 1];
+    const end = hits[k + 2];
     const valid = Number.isInteger(index) && index >= 0 && index < lines.length
       && Number.isInteger(start) && Number.isInteger(end) && start >= 0 && start < end && end <= lines[index].length;
     if (!valid) throw new Halt("failed");

@@ -239,7 +239,7 @@
 Chrome 中的证据（不是原生）：
 
 1. 新增 E2E：探针页以生产 CSP 作为响应头，经应用模块完成一次三行正则搜索，结果与预期逐项相同；对照组在同一策略后追加 `worker-src 'none'`，结果为“不可用”，说明策略确实约束 Worker 且失败路径可用。
-2. 临时检查（未进测试集）：`vite preview` 提供生产构建，首页响应加上生产 CSP 头，演示会话中正则搜索得到 2 处、无效模式提示正确，Worker 地址为 `/assets/history-regex-worker-hRwqpflR.js`；唯一的 CSP 违规是检查脚本故意发起、用来证明策略生效的 `fetch`（被 `connect-src` 拦截）。
+2. 临时检查（未进测试集，用提交 `fbd61e6` 的构建）：`vite preview` 提供生产构建，首页响应加上生产 CSP 头，演示会话中正则搜索得到 2 处、无效模式提示正确，Worker 地址为 `/assets/history-regex-worker-hRwqpflR.js`（审查修正后文件名哈希随内容变化）；唯一的 CSP 违规是检查脚本故意发起、用来证明策略生效的 `fetch`（被 `connect-src` 拦截）。
 
 **未验证**：WKWebView（`tauri://localhost` 自定义协议）、WebView2（`http://tauri.localhost`）与 WebKitGTK 中能否加载 module Worker，以及 Tauri 在运行时改写 CSP（注入 hash / nonce）后是否仍放行。
 
@@ -267,6 +267,7 @@ Chrome 中的证据（不是原生）：
 - 全量浏览器 E2E：**646/646**（基线 639 + 新增 7；`history-view.spec.ts` 的辅助函数移到 `support/history-view-harness.ts` 供两个文件共用，用例未改）。
 - 界面：1440×900 浅色、深色与 700×650 深色截图中「正则」按下态与「区分大小写」一致，无横向溢出（Chrome 作者检查，不代替原生 WebView）。
 - Chrome 观测（Playwright 计时，含往返，不是上限）：从按 Enter 到显示超时 1.33–1.42 秒。
+- **独立审查**（只读 `code-reviewer`，审查提交 `fbd61e6`）：APPROVE，无 CRITICAL/HIGH。审查者自行运行 `npm run build` 与新增 7 项，并逐项核对：主线程没有任何路径编译或执行用户正则（含错误处理与 Worker 不可用时）；每批超时一定终止 Worker，停止、新查询、切换、刷新、关闭视图、关闭标签与卸载都终止正在运行的 Worker；迟到应答、被取代的搜索、计时器与挂起 Promise 均有处理；CSP 分析与已验证/未验证的区分如实；终端文本与状态只经 `textContent`，Worker 应答先校验后使用；批次切分不漏行、不重复。1 项 MEDIUM（`halt()` 先 `terminate()` 再清除引用，依赖“终止后不再派发事件”）已改为先清除引用再终止；2 项 LOW（`room` 为 0 时提前返回、热循环中去掉临时数组）已改；1 项 LOW（`history-view.ts` 773 行接近 800 行上限）本次不拆，下次加逻辑时先拆出搜索部分。修正后 `npm run build` 通过，`history-regex.spec.ts` 与 `history-view.spec.ts` 18 项 `--repeat-each 3` **54/54**。
 
 **未验证与剩余风险**
 

@@ -37,6 +37,7 @@ function nextIndex(text: string, index: number): number {
 /** `[start, end, …]` of the last `room` non-empty matches in `text`, left to right. */
 function lineMatches(pattern: RegExp, text: string, room: number): number[] {
   const found: number[] = [];
+  if (room <= 0) return found;
   pattern.lastIndex = 0;
   for (let m = pattern.exec(text); m; m = pattern.exec(text)) {
     const end = m.index + m[0].length;
