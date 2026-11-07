@@ -200,7 +200,7 @@
 
 ### 开发诊断
 
-`?p0Diagnostics`（仅开发构建）的快照新增 12 个数字：`historyArchives`、`historyArchivedLines`、`historyGaps`、`historyClears`、`historyCompressedBytes`（存活归档合计）、`historyMaxSessionCompressedBytes`、`historySessionBudgetExceeded`、`historyTotalBudgetExceeded`、`historyUncompressedBlocks`、`historyCaptureErrors`、`historyCaptureMs`、`historyMaxCaptureMs`。只记录数字，不记录历史文本、路径或会话 ID；预算计数基于异步压缩完成后的字节数，会滞后一个捕获周期。按 [WEB_QA](../p0/WEB_QA.zh-CN.md) 的做法，`npm run build` 后在 `dist` 的 JS 中搜索诊断对象名、查询参数和全部 25 个字段名（原有 13 个加新增 12 个），27 个标记都没有出现；冷归档本身（`deflate-raw`、`registerMarker`）在生产构建中。
+`?p0Diagnostics`（仅开发构建）的快照新增 12 个数字：`historyArchives`、`historyArchivedLines`、`historyGaps`、`historyClears`、`historyCompressedBytes`（存活归档合计）、`historyMaxSessionCompressedBytes`（本页面生命周期内单会话峰值，关闭会话后不回落）、`historySessionBudgetExceeded`、`historyTotalBudgetExceeded`、`historyUncompressedBlocks`、`historyCaptureErrors`、`historyCaptureMs`、`historyMaxCaptureMs`。只记录数字，不记录历史文本、路径或会话 ID；预算计数基于异步压缩完成后的字节数，会滞后一个捕获周期。捕获异常时该会话停止归档并释放，其后的统计不再计入。按 [WEB_QA](../p0/WEB_QA.zh-CN.md) 的做法，`npm run build` 后在 `dist` 的 JS 中搜索诊断对象名、查询参数和全部 25 个字段名（原有 13 个加新增 12 个），27 个标记都没有出现；冷归档本身（`deflate-raw`、`registerMarker`）在生产构建中。
 
 ### 验证
 

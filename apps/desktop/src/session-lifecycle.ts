@@ -490,6 +490,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       s.disposed = true;
       s.outputRun++;
       s.history?.dispose();
+      s.history = undefined;
       s.observer.disconnect();
       s.vt.dispose();
       s.terminal.dispose();
