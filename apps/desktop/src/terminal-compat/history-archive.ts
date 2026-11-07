@@ -35,8 +35,12 @@ export interface HistoryStats {
   gaps: number;
   /** Times the terminal was reset or its scrollback erased, by the program or by a user action (T32). */
   clears: number;
-  /** Blocks kept uncompressed because the WebView could not compress them. */
+  /**
+   * Blocks the WebView could not compress, so they were added as is. Cumulative, like `gaps` and
+   * `clears`: not reduced when such a block is later dropped or cleared.
+   */
   uncompressedBlocks: number;
+  /** Time spent compressing, cumulative (blocks later dropped or cleared included). */
   compressMs: number;
 }
 

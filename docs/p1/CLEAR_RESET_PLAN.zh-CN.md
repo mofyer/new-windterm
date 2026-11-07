@@ -109,6 +109,8 @@ xterm.js 6.0.0 的 RIS 不恢复 DECTCEM 隐藏的光标、不清除 LNM（第 4
 - 改动后全量浏览器 E2E **560/560**（537 + 新增 23）。其后只把 CAN 测试中一条断言改得更严格（未改产品代码），该 spec 重跑通过。
 - 新增 23 项 `--repeat-each 5`：`terminal-clear-reset.spec.ts` 110/110，`history-archive.spec.ts` 的 `clear` 单元测试 5/5。
 - 未运行 Rust 门禁、wincheck、真实 OpenSSH 夹具、原生 WebView 与任何 CI（未改 Rust）。
+- 独立审查（只读 `code-reviewer`，审查提交 `c376d27`）：APPROVE，无 CRITICAL/HIGH；审查者自行构建并重跑本 spec（含 `--repeat-each 5`）、`history-archive`、`terminal-regressions-reset`，独立判定补写与 CAN 前缀**不触及** ADR（理由同第 5 节：主机输出路径未改，补写只在用户动作里，不改状态归属；若去掉 CAN，未完成的 DECRQSS 会被应答，违反“不向远端发送数据”）。2 项 MEDIUM 已修：`uncompressedBlocks`、`compressMs` 注明为累计值（不随 `clear`/`dropOldest` 减少）；`runTerminalAction` 改为绝不拒绝（xterm 拒绝写入时按“未执行”返回），会话先关闭时 toast 说明未执行。2 项 LOW 未改：菜单打开期间不随主机输出刷新可用性（执行时会再检查，属保守行为）；累计字段注释（随 MEDIUM 一并补充）。修正后相关 6 个 spec 94/94、本 spec `--repeat-each 5` 110/110，全量浏览器 E2E 见下一条。
+- 审查修正后再跑全量浏览器 E2E：**560/560**（同一端口与配置）。
 
 待用户决定：
 

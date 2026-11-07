@@ -76,8 +76,9 @@ export function createTerminalActions(toolbar: HTMLElement, host: TerminalAction
       return;
     }
     const name = s.name;
+    // Never rejects (terminal-actions.ts); a session closed first gets its own notice.
     void runTerminalAction(s, action).then((result) => {
-      if (result.applied) host.notify(actionMessage(action, name, result));
+      host.notify(result.applied ? actionMessage(action, name, result) : `「${name}」已关闭，${actionLabel(action)}未执行。`);
     });
     host.focusTerminal();
   }

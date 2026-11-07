@@ -96,23 +96,30 @@ export function unavailableReason(target: ActionTarget | undefined, action: Term
  * before the next host chunk is parsed. Callers check {@link unavailableReason} first; output
  * already received but not yet parsed may still switch to the alternate screen, which the result
  * reports (a clear of the scrollback then leaves the archive untouched, since ED 3 did nothing).
+ * Never rejects: a write the terminal refuses resolves as not applied.
  */
 export function runTerminalAction(target: ActionTarget, action: TerminalAction): Promise<ActionResult> {
   const spec = ACTIONS[action];
   const { terminal } = target;
+  const notApplied: ActionResult = Object.freeze({ applied: false, alternate: false, clearedLines: 0 });
   return new Promise((resolve) => {
-    terminal.write(spec.sequence, () => {
-      if (target.disposed) {
-        resolve({ applied: false, alternate: false, clearedLines: 0 });
-        return;
-      }
-      const alternate = onAlternate(terminal);
-      // Archives whatever earlier output left behind and lets the source note the reset or erase,
-      // so a following clear starts behind it: no gap, and no line is archived twice.
-      target.history?.capture();
-      const clearedLines = spec.clearsArchive && !alternate ? target.history?.clear() ?? 0 : 0;
-      terminal.scrollToBottom();
-      resolve({ applied: true, alternate, clearedLines });
-    });
+    try {
+      terminal.write(spec.sequence, () => {
+        if (target.disposed) {
+          resolve(notApplied);
+          return;
+        }
+        const alternate = onAlternate(terminal);
+        // Archives whatever earlier output left behind and lets the source note the reset or erase,
+        // so a following clear starts behind it: no gap, and no line is archived twice.
+        target.history?.capture();
+        const clearedLines = spec.clearsArchive && !alternate ? target.history?.clear() ?? 0 : 0;
+        terminal.scrollToBottom();
+        resolve({ applied: true, alternate, clearedLines });
+      });
+    } catch {
+      // xterm.js refused the write (for example a disposed terminal): nothing was applied.
+      resolve(notApplied);
+    }
   });
 }

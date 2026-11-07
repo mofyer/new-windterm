@@ -109,6 +109,7 @@ function demoToken(s: DemoState, data: string, view: DemoView) {
     s.line = "";
     if (command === "clear") {
       // Like a shell's `clear`: the same local write as 全部清除 (T32), then a prompt at the top.
+      // The xterm write queue keeps the order; the result (it never rejects) is not needed here.
       void runTerminalAction(s, "clear-all");
       prompt(s, false);
       return;
