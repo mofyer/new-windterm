@@ -16,6 +16,7 @@
   --surface: #ffffff;
   --chrome: #fafafa;
   --sidebar: #f5f5f7;
+  --dialog-bg: #f5f5f7;
   --line: #e1e5e9;
   --muted: #607080;
   --text: #2d3748;
@@ -205,7 +206,7 @@ kbd {
 .notice button svg { width: 14px; height: 14px; color: var(--muted); }
 
 /* Sheets */
-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 24px; border: 0; border-radius: 24px; background: var(--sidebar); color: var(--text); box-shadow: 0 24px 64px rgba(45, 55, 72, .18), 0 2px 6px rgba(45, 55, 72, .08); }
+dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 24px; border: 0; border-radius: 24px; background: var(--dialog-bg); color: var(--text); box-shadow: 0 24px 64px rgba(45, 55, 72, .18), 0 2px 6px rgba(45, 55, 72, .08); }
 dialog[open] { animation: sheet-in 200ms var(--ease); }
 dialog::backdrop { background: #2d374838; backdrop-filter: blur(4px); }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -233,6 +234,9 @@ dialog select, dialog textarea { width: 100%; min-width: 0; color: var(--text); 
 .alt-connect-row svg { color: var(--muted); }
 .alt-connect-row small { margin-left: auto; font-size: 11px; color: var(--muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+/* A form's actions stay visible at the bottom of a tall sheet; the margins cancel the padding so an
+   unscrolled sheet keeps the same layout (16px above, nothing extra below). */
+dialog form > .dialog-actions { position: sticky; bottom: -24px; z-index: 1; margin: 4px -24px -24px; padding: 12px 24px 24px; background: var(--dialog-bg); }
 .dialog-actions button { min-width: 80px; min-height: 36px; padding: 0 16px; font-size: 13px; border-radius: 10px; border: 0; box-shadow: var(--control-shadow); }
 .host-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; overflow-wrap: anywhere; }
 .host-card span, .host-card code { font-size: 12px; color: var(--muted); line-height: 20px; }
@@ -253,6 +257,7 @@ dialog select, dialog textarea { width: 100%; min-width: 0; color: var(--text); 
   --surface: #2b2e33;
   --chrome: #191b1e;
   --sidebar: #22252a;
+  --dialog-bg: #25282d;
   --line: #3b4048;
   --muted: #abb2bd;
   --text: #e3e6eb;
@@ -277,7 +282,7 @@ dialog select, dialog textarea { width: 100%; min-width: 0; color: var(--text); 
 [data-theme="dark"] .file-inspector { box-shadow: var(--control-shadow); }
 [data-theme="dark"] .tab.active { background: #33373e; box-shadow: 0 3px 8px #0004, inset 0 1px 0 #ffffff10; }
 [data-theme="dark"] .tab:not(.active):hover { background: #2b2e33; }
-[data-theme="dark"] dialog { background: #25282d; box-shadow: 0 24px 72px #0009, 0 0 0 1px #ffffff0e, inset 0 1px 0 #ffffff0c; }
+[data-theme="dark"] dialog { background: var(--dialog-bg); box-shadow: 0 24px 72px #0009, 0 0 0 1px #ffffff0e, inset 0 1px 0 #ffffff0c; }
 [data-theme="dark"] dialog::backdrop { background: #07090c85; }
 [data-theme="dark"] .badge { background: #ffffff0a; }
 [data-theme="dark"] .session-search { background: #1d2024; }
