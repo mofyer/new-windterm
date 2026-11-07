@@ -1,4 +1,7 @@
 //! Real local PTY smoke/stress probe; never connects to a remote host.
+#[path = "support/startup_command.rs"]
+mod startup_command;
+
 use new_windterm_desktop::pty::{
     local_shells, EnvironmentVariable, LocalLaunchOptions, LocaleMode, LocaleOptions, PtyEvent,
     Session, Sessions, OUTPUT_BUDGET,
@@ -545,7 +548,8 @@ fn main() {
                 Ok(())
             }
         })
-        .and_then(|()| probe_environment());
+        .and_then(|()| probe_environment())
+        .and_then(|()| startup_command::probe_startup_command());
     if let Err(error) = result {
         eprintln!("FAIL PTY probe: {error}");
         std::process::exit(1);

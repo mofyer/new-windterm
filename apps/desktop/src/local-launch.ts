@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { validateStartupCommand } from "./startup-command";
 
 export type EnvironmentVariable = Readonly<{ name: string; value: string }>;
 export type LocaleOptions = Readonly<{ mode: "default" | "custom"; variables: readonly EnvironmentVariable[] }>;
@@ -7,17 +8,30 @@ export type LaunchOptions = Readonly<{
   shell: string | null;
   env: readonly EnvironmentVariable[];
   locale: LocaleOptions | null;
+  /**
+   * Startup command typed into the shell once after it opens (see `startup-command.ts`). Frontend
+   * only: it is never part of the `pty_open` arguments ({@link nativeLaunchArguments}).
+   */
+  command: string | null;
 }>;
+/** Exactly the launch fields `pty_open` takes. */
+export type NativeLaunchArguments = Readonly<Pick<LaunchOptions, "cwd" | "shell" | "env" | "locale">>;
 
 /** Own every row as well as the arrays, including when reopening an old session. */
-export function snapshotLaunchOptions(options?: LaunchOptions): LaunchOptions {
+export function snapshotLaunchOptions(options?: Partial<LaunchOptions>): LaunchOptions {
   const copy = (rows: readonly EnvironmentVariable[]) => Object.freeze(rows.map(row => Object.freeze({ ...row })));
   return Object.freeze({
     cwd: options?.cwd ?? null,
     shell: options?.shell ?? null,
     env: copy(options?.env ?? []),
     locale: options?.locale ? Object.freeze({ mode: options.locale.mode, variables: copy(options.locale.variables) }) : null,
+    command: options?.command || null,
   });
+}
+
+/** An explicit allow-list, so the startup command (or any later frontend field) never reaches Rust. */
+export function nativeLaunchArguments(options: LaunchOptions): NativeLaunchArguments {
+  return { cwd: options.cwd, shell: options.shell, env: options.env, locale: options.locale };
 }
 
 const localeNames = ["LANG", "LC_ALL", "LC_CTYPE", "LC_COLLATE", "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME", "LC_ADDRESS", "LC_IDENTIFICATION", "LC_MEASUREMENT", "LC_NAME", "LC_PAPER"];
@@ -36,6 +50,8 @@ export function createLocalLaunchOptions(
   launch: (options: LaunchOptions) => boolean,
 ) {
   const cwd = dialog.querySelector<HTMLInputElement>("#local-cwd-input")!;
+  // A textarea keeps a pasted line break, so it is reported instead of silently removed.
+  const command = dialog.querySelector<HTMLTextAreaElement>("#local-command-input")!;
   const shell = dialog.querySelector<HTMLSelectElement>("#local-shell-select")!;
   const status = dialog.querySelector<HTMLElement>("#local-shell-status")!;
   const missing = dialog.querySelector<HTMLElement>("#local-shell-missing")!;
@@ -129,7 +145,16 @@ export function createLocalLaunchOptions(
   envAdd.onclick = () => addRow("env");
   localeAdd.onclick = () => addRow("locale");
   localeMode.onchange = updateRows;
-  dialog.querySelector("#local-form")!.addEventListener("input", () => { error.textContent = ""; });
+  dialog.querySelector("#local-form")!.addEventListener("input", () => {
+    error.textContent = "";
+    command.removeAttribute("aria-invalid");
+  });
+  // Single line: Return submits the form like a text input, except while an IME composes.
+  command.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    command.form?.requestSubmit();
+  });
 
   function addOption(id: string, label: string, unavailable = false) {
     const option = document.createElement("option");
@@ -197,6 +222,13 @@ export function createLocalLaunchOptions(
   dialog.querySelector<HTMLFormElement>("#local-form")!.onsubmit = event => {
     event.preventDefault();
     if (!native || start.disabled) return;
+    const commandError = validateStartupCommand(command.value);
+    if (commandError) {
+      command.setAttribute("aria-invalid", "true");
+      error.textContent = commandError;
+      error.focus();
+      return;
+    }
     const env = readRows("env");
     const variables = localeMode.value === "custom" ? readRows("locale") : [];
     const invalid = validate(env, variables);
@@ -211,6 +243,8 @@ export function createLocalLaunchOptions(
       shell: shell.value || null,
       env,
       locale: { mode: localeMode.value === "custom" ? "custom" : "default", variables },
+      // Exactly as typed: no trimming, quoting or expansion; empty means no command.
+      command: command.value === "" ? null : command.value,
     }))) dialog.close();
   };
   if (!native) {
@@ -222,6 +256,8 @@ export function createLocalLaunchOptions(
     open(options?: LaunchOptions) {
       if (options) {
         cwd.value = options.cwd ?? "";
+        command.value = options.command ?? "";
+        command.removeAttribute("aria-invalid");
         render(options.shell ?? "");
         envRows.replaceChildren();
         localeRows.replaceChildren();

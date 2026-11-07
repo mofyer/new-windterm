@@ -5,9 +5,10 @@ import { createWorkspaceSession, describeVtNotice } from "./terminal";
 import type { VtAdapters } from "./terminal-compat/vt-adapters";
 import { authPromptsFor, type SshTerminalRequest } from "./ssh-verification";
 import { netLabel, type NetTerminalRequest } from "./net-terminal";
-import { snapshotLaunchOptions, type LaunchOptions } from "./local-launch";
+import { nativeLaunchArguments, snapshotLaunchOptions, type LaunchOptions } from "./local-launch";
+import { advanceStartup, startupCommandBytes, type StartupState } from "./startup-command";
 import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
-import { INPUT_BACKLOG_BYTES, InputQueue } from "./input-queue";
+import { INPUT_BACKLOG_BYTES, InputQueue, type InputOutcome } from "./input-queue";
 import { Utf8Boundary } from "./utf8-boundary";
 import { attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, sendUnmappedControl } from "./terminal-input";
 import { demoInput, demoWelcome, type DemoView } from "./demo-session";
@@ -36,6 +37,8 @@ export type Session = {
   mode: Mode;
   /** Deep immutable local launch configuration, held in memory only. */
   launch: LaunchOptions;
+  /** One-shot delivery of `launch.command`; only moves forward (see `startup-command.ts`). */
+  startup: StartupState;
   /** Telnet or Raw TCP, for "net" sessions. */
   netKind?: string;
   terminal: Terminal;
@@ -169,6 +172,41 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
         if (!s.ended) backendError(s, error);
       });
   }
+  /** Records a startup command result; a step backwards or out of a final state is ignored. */
+  function setStartup(s: Session, to: StartupState) {
+    const next = advanceStartup(s.startup, to);
+    if (next === s.startup) return;
+    s.startup = next;
+    host.status();
+  }
+  const STARTUP_RESULT: Readonly<Record<InputOutcome, StartupState>> = {
+    written: "submitted", "not-sent": "not-sent", unconfirmed: "unconfirmed",
+  };
+  /**
+   * Hands the startup command to the input queue once. Called in the same synchronous step that
+   * stores the native ID and flushes the early replies, so the queue order is: replies produced
+   * before the ID, then the command, then any later reply or user input. Never waits for a prompt.
+   */
+  function queueStartupCommand(s: Session) {
+    const command = s.launch.command;
+    if (s.startup !== "pending" || !command) return;
+    if (!s.ptyId || s.disposed || s.ended || s.closing) {
+      setStartup(s, "not-sent");
+      return;
+    }
+    setStartup(s, "queued");
+    if (!s.input.push(startupCommandBytes(command), (outcome) => setStartup(s, STARTUP_RESULT[outcome])))
+      setStartup(s, "not-sent");
+  }
+  /**
+   * The session ended, failed or closed. Settles a command still waiting without relying on the
+   * queue's callback: one never handed over was not sent; one queued is unconfirmed only if a write
+   * request was outstanding.
+   */
+  function endStartup(s: Session) {
+    if (s.startup === "pending") setStartup(s, "not-sent");
+    else if (s.startup === "queued") setStartup(s, s.input.requesting ? "unconfirmed" : "not-sent");
+  }
   function backendError(s: Session, error: unknown) {
     if (s.disposed) return;
     s.status = `错误：${String(error)}`;
@@ -196,11 +234,13 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(element);
+    const launch = snapshotLaunchOptions(options);
     const s: Session = {
       key: nextKey++,
       name,
       mode,
-      launch: snapshotLaunchOptions(options),
+      launch,
+      startup: mode === "pty" && launch.command ? "pending" : "none",
       terminal,
       vt,
       fit,
@@ -314,6 +354,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
         s.early = [];
         s.earlyBytes = 0;
         s.input.clear();
+        endStartup(s);
         s.status = `已退出 · code ${event.code ?? "unknown"}`;
         s.ptyId = undefined;
         host.status();
@@ -334,19 +375,25 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   async function startPty(s: Session) {
     const onEvent = terminalChannel(s);
     try {
+      // The startup command stays in the frontend; only the allow-listed launch fields are sent.
       const { id } = await invoke<{ id: string }>("pty_open", {
-        ...s.launch,
+        ...nativeLaunchArguments(s.launch),
         onEvent,
         cols: s.terminal.cols,
         rows: s.terminal.rows,
       });
       if (s.disposed) {
+        endStartup(s);
         await invoke("pty_close", { id });
         return;
       }
-      if (s.ended) return;
+      if (s.ended) {
+        endStartup(s);
+        return;
+      }
       s.ptyId = id;
       flushEarlyInput(s);
+      queueStartupCommand(s);
       s.status = "本机 shell 已启动";
       host.status();
       // A resize failure is recoverable; it must not turn a live or exited shell
@@ -359,6 +406,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
         if (!s.ended && !s.disposed && !s.closing) backendError(s, error);
       });
     } catch (error) {
+      endStartup(s);
       if (s.disposed || s.ended) return;
       s.ended = true;
       s.early = [];
@@ -477,6 +525,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     s.early = [];
     s.earlyBytes = 0;
     s.input.clear();
+    endStartup(s);
     s.outputRun++;
     s.observer.disconnect();
     s.vt.dispose();

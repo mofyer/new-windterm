@@ -29,9 +29,21 @@ export interface InputQueueOptions {
   retryLimitMs?: number;
 }
 
+/**
+ * What happened to one chunk that asked for its result (see {@link InputQueue.push}):
+ * - `written`: the backend accepted it (`*_write` resolved);
+ * - `not-sent`: it was dropped before any request for it was outstanding, or the backend's last
+ *   answer was an explicit "queue is full" refusal;
+ * - `unconfirmed`: the backend rejected it with another error, or the queue was cleared while its
+ *   request was still outstanding, so whether the backend took it is unknown.
+ */
+export type InputOutcome = "written" | "not-sent" | "unconfirmed";
+
 interface Chunk {
   bytes: Uint8Array;
   queuedAt: number;
+  /** Called at most once, then removed. */
+  settle?: (outcome: InputOutcome) => void;
 }
 
 /** The backend refused a chunk only because its bounded queue is full; the chunk was not taken. */
@@ -53,6 +65,10 @@ export class InputQueue {
   #queuedBytes = 0;
   #writingBytes = 0;
   #pumping = false;
+  /** The chunk taken from the FIFO and being sent, including while it waits out a full queue. */
+  #current: Chunk | undefined;
+  /** True only while a `write` request for {@link #current} is outstanding. */
+  #requesting = false;
   /** Bumped by {@link clear}; a write that fails after a clear belongs to a finished session. */
   #generation = 0;
 
@@ -63,13 +79,26 @@ export class InputQueue {
     return this.#queuedBytes + this.#writingBytes;
   }
 
-  /** Queues `bytes` as a whole, or returns false (and queues nothing) when over the backlog bound. */
-  push(bytes: Uint8Array): boolean {
+  /** True while a backend write request is outstanding. */
+  get requesting(): boolean {
+    return this.#requesting;
+  }
+
+  /**
+   * Queues `bytes` as a whole, or returns false (and queues nothing, calling nothing) when over the
+   * backlog bound. `settle` asks for the one chunk's {@link InputOutcome}, reported exactly once
+   * (already during this call if the session is no longer writable); only input of
+   * 1..{@link INPUT_CHUNK_BYTES} bytes may ask. Ordinary input passes no callback and keeps the
+   * retry and discard rules unchanged.
+   */
+  push(bytes: Uint8Array, settle?: (outcome: InputOutcome) => void): boolean {
+    if (settle && (!bytes.length || bytes.length > INPUT_CHUNK_BYTES))
+      throw new RangeError("A settled input must fit in one chunk");
     if (!bytes.length) return true;
     if (this.pendingBytes + bytes.length > INPUT_BACKLOG_BYTES) return false;
     const queuedAt = diagnostics ? performance.now() : 0;
     for (let offset = 0; offset < bytes.length; offset += INPUT_CHUNK_BYTES)
-      this.#chunks.push({ bytes: bytes.subarray(offset, offset + INPUT_CHUNK_BYTES), queuedAt });
+      this.#chunks.push({ bytes: bytes.subarray(offset, offset + INPUT_CHUNK_BYTES), queuedAt, settle });
     this.#queuedBytes += bytes.length;
     if (diagnostics) {
       diagnostics.inputEvents++;
@@ -84,11 +113,24 @@ export class InputQueue {
   clear(): number {
     const dropped = this.#queuedBytes;
     if (diagnostics) diagnostics.pendingInputBytes -= dropped;
+    const queued = this.#chunks.slice(this.#head);
+    const current = this.#current;
+    const requesting = this.#requesting;
     this.#chunks = [];
     this.#head = 0;
     this.#queuedBytes = 0;
     this.#generation++;
+    // Results are reported after the queue is consistent, so a callback may push or clear again.
+    if (current) InputQueue.#settle(current, requesting ? "unconfirmed" : "not-sent");
+    for (const chunk of queued) InputQueue.#settle(chunk, "not-sent");
     return dropped;
+  }
+
+  static #settle(chunk: Chunk, outcome: InputOutcome) {
+    const settle = chunk.settle;
+    if (!settle) return;
+    chunk.settle = undefined;
+    settle(outcome);
   }
 
   async #pump(): Promise<void> {
@@ -99,7 +141,9 @@ export class InputQueue {
           this.clear();
           break;
         }
-        const { bytes, queuedAt } = this.#chunks[this.#head++];
+        const chunk = this.#chunks[this.#head++];
+        const { bytes, queuedAt } = chunk;
+        this.#current = chunk;
         this.#queuedBytes -= bytes.length;
         this.#writingBytes = bytes.length;
         this.#compact();
@@ -109,11 +153,14 @@ export class InputQueue {
           diagnostics.inputCalls++;
         }
         try {
-          await this.#send(bytes, generation);
+          const written = await this.#send(bytes, generation);
+          InputQueue.#settle(chunk, written ? "written" : "not-sent");
         } catch (error) {
+          InputQueue.#settle(chunk, isQueueFull(error) ? "not-sent" : "unconfirmed");
           // After a clear the session already ended or closed; that change reports itself.
           if (generation === this.#generation) this.options.failed(error, bytes.length + this.clear());
         } finally {
+          this.#current = undefined;
           this.#writingBytes = 0;
           if (diagnostics) diagnostics.pendingInputBytes -= bytes.length;
         }
@@ -124,20 +171,24 @@ export class InputQueue {
   }
 
   /**
-   * Writes one chunk, waiting out a full backend queue. Stops quietly when the session ends or the
-   * queue is cleared meanwhile; the chunk is then dropped with everything behind it.
+   * Writes one chunk, waiting out a full backend queue; true once the backend accepted it. Stops
+   * quietly (false) when the session ends or the queue is cleared while waiting; the chunk is then
+   * dropped with everything behind it, and the backend's last answer was "queue is full".
    */
-  async #send(bytes: Uint8Array, generation: number): Promise<void> {
+  async #send(bytes: Uint8Array, generation: number): Promise<boolean> {
     const deadline = performance.now() + (this.options.retryLimitMs ?? INPUT_RETRY_LIMIT_MS);
     for (let delay = RETRY_FIRST_MS; ; delay = Math.min(delay * 2, RETRY_MAX_MS)) {
+      this.#requesting = true;
       try {
         await this.options.write(bytes);
-        return;
+        return true;
       } catch (error) {
         if (!isQueueFull(error) || performance.now() + delay > deadline) throw error;
+      } finally {
+        this.#requesting = false;
       }
       await wait(delay);
-      if (generation !== this.#generation || !this.options.writable()) return;
+      if (generation !== this.#generation || !this.options.writable()) return false;
     }
   }
 

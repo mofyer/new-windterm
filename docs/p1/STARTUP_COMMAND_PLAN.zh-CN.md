@@ -2,7 +2,7 @@
 
 日期：2026-11-07。只读核对基线：`p1/integration` 的 `c3b3a68`。第四批会话环境变量与 locale 已实现，但尚未验收，也未获 main 合并批准。
 
-本文只定义用户可见语义、输入门控与验证方法，**没有实现任何代码，也没有运行任何新验证**。本文不改变功能矩阵或台账状态，不新增、删除或改写功能 ID。下文的“启动命令”指 WindTerm 2.7.0 字符串 “Execute command after start”（中文语言包为“启动后执行命令”）。
+第 1–10 节是实施前预案，原文保留；Q6a 范围（前端、浏览器契约与 Unix 真实 PTY）的实施状态与证据见第 11 节，其余部分仍未实现或未验证。本文不改变功能矩阵或台账状态，不新增、删除或改写功能 ID。下文的“启动命令”指 WindTerm 2.7.0 字符串 “Execute command after start”（中文语言包为“启动后执行命令”）。
 
 ## 1. 范围与功能 ID
 
@@ -369,3 +369,60 @@
   - native helper、真实 PTY 新阶段、跨平台 CI；
   - 分项独立审查。
 - 结果写入 [执行记录](RESULTS.zh-CN.md)，区分已验证和未验证。合并 main 前须单独取得用户批准。
+
+## 11. 实施状态（Q6a：前端、浏览器契约与 Unix 真实 PTY）
+
+日期：2026-11-07。分支 `p1/startup-command`，基于 `p1/integration` 的 `a98c280`，仅本地提交：未推送、未触发 CI、未合并。按方案 A 实施，**未改 Rust 产品代码、Tauri 命令、ACL 与环境白名单**，early FIFO 的接收集合也未改。Windows 与原生 WebView 部分未实施（见 11.4）。
+
+### 11.1 已实现
+
+- **表单**：「本地终端启动选项」在启动目录之后、环境变量之前增加「启动后执行命令」（`#local-command-input`）。用单行高度的 `<textarea>`：粘贴的换行保留在值里并报错，不会被静默删除；回车提交表单，输入法组合中的回车（`isComposing` 或 `keyCode 229`）不提交。不设 `maxlength`，避免静默截断。说明文案写明只发一次、不等提示符、不判断执行结果、重开会再次发送、只存内存、勿填密码或令牌。
+- **校验**（`src/startup-command.ts`，只在前端）：空值表示不发送；拒绝 CR/LF、Tab、其他 C0、DEL、C1、孤立代理项、U+202A–U+202E 与 U+2066–U+2069、只含空白（含全角空格）、超过 1000 UTF-8 字节。首尾空格原样保留。错误信息不回显值，错误时字段标 `aria-invalid`，编辑后清除。
+- **快照与参数隔离**：值存于深冻结的 `LaunchOptions.command`，随会话快照复制。`pty_open` 改用 `nativeLaunchArguments` 显式白名单，只传 cwd/shell/env/locale，不再展开 `...s.launch`。
+- **发送点**：`startPty` 在 `pty_open` 返回且会话未结束/关闭/销毁时，依次赋值 `ptyId`、`flushEarlyInput`、`queueStartupCommand`，三者在同一同步段。按实际 early FIFO 集合，输入队列顺序为：ID 前经 VT 适配器产生的回复（CPR、DA、XTVERSION、DECRQSS `m`/`"p`/` q`）→ 命令 + CR → 此后的全部回复（包括 xterm 内置回复）与用户输入。ID 前的 xterm 内置回复（DSR 5、DECRQM、OSC 颜色查询、DECRQSS `r`）与用户输入仍被丢弃，不会排到命令前后。不等待提示符、首次输出或延时，不用 `disableStdin`。
+- **一次性状态**：`Session.startup` 取 `none / pending / queued / submitted / not-sent / unconfirmed`，`advanceStartup` 只允许 `pending → queued | not-sent`、`queued → submitted | not-sent | unconfirmed`。
+- **队列结果回调**：`InputQueue.push(bytes, settle)` 只供启动命令使用（必须是 1–4096 字节的单块），普通输入不传回调，重试与丢弃规则不变。结果恰好报告一次：
+
+  | 情形 | 结果 |
+  | --- | --- |
+  | 后端接受写入 | `written` → 已提交 |
+  | 尚未发出请求即被 `clear()` 丢弃；或在队列满重试间隔中被清空、会话不可写（`#send` 静默返回）；或队列满重试超期 | `not-sent` → 未发送 |
+  | 写入被拒（非队列满）；或请求在途时被清空（之后即使写入成功也不改） | `unconfirmed` → 未确认 |
+
+- **兜底**：退出、启动失败、关闭时调用 `endStartup`，`pending` 记为未发送，仍为 `queued` 的按 `InputQueue.requesting` 记为未确认或未发送，不依赖回调一定到达。
+- **显示**：状态栏在生命周期状态后拼接“启动命令已提交 / 未发送 / 发送未确认”，退出码、错误、resize 失败都不覆盖它；`pending`/`queued` 不显示。文案、toast、标题、存储、URL 与 console 都不含命令。不向 xterm 写入应用提示。
+- **重开（Q1a）**：重开继承快照并在新会话中再发一次。原会话带命令时，已结束会话的说明为“本机 shell 已结束 / 不再发送输入 / 重新打开将再次发送启动命令”，重开按钮的可访问描述为“将再次发送启动命令”；「修改启动选项」可清空字段后启动。
+
+### 11.2 验证结果
+
+- `npm run build`（`tsc --noEmit` + vite build）通过。
+- **浏览器 IPC stub**（Chrome，Playwright，只证明前端交给 `pty_write` 的内容与时机）：新增 `startup-command.spec.ts` 18 项、`startup-command-form.spec.ts` 25 项，共 43 项；`--repeat-each 5` 共 215 次全部通过。覆盖第 8.1 节 10 类：默认入口与留空表单的 `pty_open` 参数键不变且无写入；配置命令时参数不含命令；按实际 early 集合，ID 前的 CPR/DA/DECRQSS `m` 在命令前、DSR 5 被丢弃，ID 后的回复与按键在命令后；CPR 晚到时命令在 CPR 应答前；被持有的回复写入期间命令不被切分或插队；open 被拒、ID 前退出、启动中关闭、命令排队时退出均无命令写入且显示“未发送”；写入在途时退出为“未确认”，之后写入成功也不改；非队列满拒绝为“未确认”且不重试；两次队列满后成功，后端只接受一次；队列满等待中退出为“未发送”；重开前提示、新 ID 恰好一次、旧会话无新写入、连点只开一个、启动后改表单不影响快照、清空后不发送；resize、切换标签、分屏、聚焦、对话框、输出与页面重载后均不重发；16 类非法输入停在表单且不回显；以浏览器编辑插入（粘贴所走的插入路径，不写剪贴板）输入多行时字段保留换行并报错，同样的插入在单行 `<input>` 中会被静默去掉换行；1000 字节含多字节边界与首尾空格原样发送；恶意文本不进 DOM、标题、存储、URL、console，不执行注入；状态机与 `InputQueue` 回调的单元级用例。
+- 变异检查（检查后已还原）：把发送点移到 `flushEarlyInput` 之前并恢复 `...s.launch`，5 项失败；把在途清空误记为“未发送”，2 项失败。
+- 全量浏览器 E2E：基线 `a98c280` 共 481 项（`--list`），本分支改动后原有 481 项全部通过；加入新增 43 项后全量 524/524 通过。中途一次全量运行中 `terminal-regressions-keys` 的 Shift+Insert 用例失败，原因是新测试最初用 `navigator.clipboard.writeText` 写入了 worker 浏览器共享的剪贴板；已改为浏览器编辑插入，不再写剪贴板，改后全量与重复运行均通过。
+- **Unix 真实 PTY**（仅 macOS 本机，Darwin arm64）：`pty_probe`（`dev-tools`）新增阶段 `src/bin/support/startup_command.rs`，默认构建与 `pty-readiness` 构建各跑一次，均通过。每个 Shell 用新临时目录（路径含空格与中文），命令为 `printf '%s %s\n' '<nonce>' "$$" >> '<计数文件>'`，在 `open_with_options` 返回后立即 `write(命令 + "\r")`，以 `exit 7` + 退出事件 + 回收完成为屏障再读文件：
+
+  | Shell | 首次 | 同配置重开 | 1000 字节（+CR，结尾为多字节字符） | 对照（无 CR） |
+  | --- | --- | --- | --- | --- |
+  | 默认 `/bin/zsh -f -i`（5.9） | 1 行 | 共 2 行，PID 不同 | 1 行，内容完整 | 0 行，文件未创建 |
+  | 显式 Bash（3.2.57） | 1 行 | 共 2 行，PID 不同 | 1 行，内容完整 | 0 行，文件未创建 |
+  | 显式 zsh（5.9） | 1 行 | 共 2 行，PID 不同 | 1 行，内容完整 | 0 行，文件未创建 |
+
+  从写入到副作用出现 4–23 ms，只作观察。PowerShell 7 本机不可用，未覆盖。
+- **对照方法与第 8.2 节不同**：预案写“只写命令、不加 CR，随后直接关闭会话”。实测直接关闭不是惰性屏障（见 11.3），因此对照改为：写入无 CR 的命令，等提示符后让 Shell 继续运行 1.5 秒并确认文件未创建，再发 Ctrl-U 清行，最后以 `exit 7` 屏障确认 0 行。
+- Rust 门禁（`--locked --all-features`，`RUST_TEST_THREADS=2`）：fmt、check、clippy `-D warnings`、`tools/wincheck/wincheck.sh` 通过；`--lib` 190 通过、7 忽略；`--test ssh_terminal` 14 通过。`--test release_bins` 的 `every_src_bin_target_requires_dev_tools` 失败：它把基线已有的 `src/bin/support/` 目录当作缺少 `[[bin]]` 的目标（`a98c280` 已含该目录与 `query_frame.rs`、`ready_frame.rs`），与本切片无关，本切片未修改该测试。
+
+### 11.3 新发现：关闭 Unix 会话会提交行编辑器中未提交的输入（待决定）
+
+- **机制（读源码）**：Unix 上 `Sessions::close` 先释放输入线程，writer 线程退出时丢弃 portable-pty 0.9.0 的 `UnixMasterWriter`；它的 `Drop` 会向 PTY 写入 `"\n"` 加 VEOF。之后 `cleanup_child` 才发送 SIGHUP。中间这段时间，Shell 可能把行编辑器里尚未按回车的文本当作已提交的一行开始执行。
+- **观察**（`P1_STARTUP_CLOSE_TRIALS=10`，只观察，不作门禁）：写入无 CR 的命令，等提示符 1.5 秒并确认未执行，再走产品关闭路径。每个 Shell 10 次中，默认 zsh 1 次创建了重定向文件，显式 Bash 1 次完整追加了一行，显式 zsh 2 次创建了文件。结果是竞态，次数会变化。
+- **影响**：这是既有关闭路径的行为，不是本切片引入的；它影响用户键入但未按回车的任何文本，不只是启动命令。启动命令本身总带 CR，不受这个差异影响。
+- 本切片按授权不改 Rust 产品代码。是否修复（例如在丢弃 writer 前先终止 Shell，或避免 writer 关闭时写入换行和 EOF），以及 Windows 是否存在同类行为，须另行决定和验证。
+
+### 11.4 未验证或未完成
+
+- Windows cmd / Windows PowerShell 的 R/C 两组 CPR 顺序、Job 回收与原生验收（Q6a 约定等第四批 Windows 结论）。
+- 原生 WebView 场景 `local-terminal-startup-command` 未加入 `tests/native/scenarios.mjs`：该场景会在 Linux 与 Windows 两个原生作业中运行，Windows 部分不在本次范围，且未能在本机运行。
+- Linux 真实 PTY：新阶段会随 CI 的 `pty_probe`（macOS/Linux，默认与 `pty-readiness`）运行，但本次未触发 CI，Linux Bash（`C.UTF-8`、N_TTY）结果未知。
+- macOS WKWebView、Linux WebKitGTK、Windows WebView2 原生界面；真实输入法与读屏；PowerShell 7；PSReadLine 历史；用户 rc/profile；读取标准输入的命令与后续预输入的配合。
+- 上游 2.7.0 行为实测（Q5a，与实施并行，未做）。
+- [执行记录](RESULTS.zh-CN.md) 未更新，由协调者统一登记。T34 与 P1 整阶段均未完成。
