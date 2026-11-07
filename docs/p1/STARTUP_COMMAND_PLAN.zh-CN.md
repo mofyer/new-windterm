@@ -427,3 +427,5 @@
 - macOS WKWebView、Linux WebKitGTK、Windows WebView2 原生界面；真实输入法与读屏；PowerShell 7；PSReadLine 历史；用户 rc/profile；读取标准输入的命令与后续预输入的配合。
 - 上游 2.7.0 行为实测（Q5a，与实施并行，未做）。
 - [执行记录](RESULTS.zh-CN.md) 未更新，由协调者统一登记。T34 与 P1 整阶段均未完成。
+
+**用户决定（2026-11-07）**：原生场景 `local-terminal-startup-command` 在开始 Windows 验收时一并加入。详见 [2026-11-07 用户决定](RESULTS.zh-CN.md#2026-11-07-用户决定15-项全部采用推荐项)。

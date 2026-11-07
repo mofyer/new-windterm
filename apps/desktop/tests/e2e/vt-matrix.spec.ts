@@ -876,7 +876,7 @@ test.describe('soft and hard reset', () => {
   });
 
   probe({
-    id: 'X02', status: 'supported', title: 'RIS (ESC c) clears the screen, homes the cursor and resets modes and buffers',
+    id: 'X02', status: 'partial', title: 'RIS (ESC c) leaves a DECTCEM-hidden cursor hidden and LNM set (pinned in terminal-regressions-reset); screen, cursor, other modes and buffers reset',
     sequence: '"text", CSI ? 2004 h, CSI ? 1000 h, CSI ? 1049 h, CSI 2;3 r, ESC c', expected: 'VT100 RIS',
     features: ['T07', 'T21'],
   }, page => run(page, async h => {

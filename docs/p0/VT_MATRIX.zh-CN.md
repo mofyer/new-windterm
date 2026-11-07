@@ -16,11 +16,11 @@
 
 | 状态 | 数量 | 探针 |
 | --- | --- | --- |
-| supported | 39（其中 3 项是钩子可行性 H01–H03；4 项依赖适配器：S03 K02 R06 D01） | C01 C02 C04 S01 S02 S03 W01 W03 E01–E06 B01 G01 G02 A01 A03 M01–M03 M06 K01 K02 R01 R02 R04 R05 R06 D01 D06 X02 O01–O03 H01–H03 |
-| partial | 15（D02 D03 O04 由适配器从 unsupported 改为 partial） | C03 W02 W04 G03 G05 L02 A02 M04 R03 D02 D03 D05 D08 X01 O04 |
+| supported | 38（其中 3 项是钩子可行性 H01–H03；4 项依赖适配器：S03 K02 R06 D01） | C01 C02 C04 S01 S02 S03 W01 W03 E01–E06 B01 G01 G02 A01 A03 M01–M03 M06 K01 K02 R01 R02 R04 R05 R06 D01 D06 O01–O03 H01–H03 |
+| partial | 16（D02 D03 O04 由适配器从 unsupported 改为 partial；X02 于 2026-11-07 由 supported 改为 partial） | C03 W02 W04 G03 G05 L02 A02 M04 R03 D02 D03 D05 D08 X01 X02 O04 |
 | unsupported | 9 | S04 E07 B02 G04 L01 M05 D04 D07 P01 |
 
-原样 xterm.js 6.0.0（`vt: false`）仍为 supported 35、partial 16、unsupported 12；上一版（2026-10-11）的统计就是这一组。
+原样 xterm.js 6.0.0（`vt: false`）为 supported 34、partial 17、unsupported 12（X02 不受适配器影响，随本次改判同样计入 partial）；上一版（2026-10-11）的统计为 supported 35、partial 16、unsupported 12。
 
 ## 生产 VT 适配器
 
@@ -212,7 +212,7 @@
 | ID | 序列 | 期望（依据） | 观察值 | 状态 | 影响 |
 | --- | --- | --- | --- | --- | --- |
 | X01 | 设置边距/DECOM/IRM/SGR/G0/隐藏光标/关闭换行后 `CSI ! p` | VT510 DECSTR 表：不清屏，DECOM 绝对、IRM 替换、光标可见、边距全屏、"Autowrap: No autowrap" | 屏幕保留、?6→2、4→2、?25→1、边距 `1;6r`、SGR/字符集复位；**?7→1（自动换行重新开启）**，xterm 本身的取值未核对 | partial | T08 T11 T21 |
-| X02 | 文本 + 2004 + 1000 + 1049 + 边距后 `ESC c` | VT100 RIS | 主屏、全空、(0,0)、括号粘贴关、鼠标 none、边距 `1;6r` | supported | T07 T21 |
+| X02 | 文本 + 2004 + 1000 + 1049 + 边距后 `ESC c` | VT100 RIS | 主屏、全空、(0,0)、括号粘贴关、鼠标 none、边距 `1;6r`；已知缺口：DECTCEM 隐藏的光标与 LNM（`CSI 20 h`）在 RIS 后不恢复（经生产会话路径由 `terminal-regressions-reset.spec.ts` 以 `test.fail` 固定；处理方式进入终端内核 ADR 评估，2026-11-07 用户决定） | partial | T07 T21 |
 
 ### OSC
 
