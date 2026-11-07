@@ -1717,6 +1717,7 @@ mod tests {
             ran.len()
         );
     }
+
     #[cfg(all(
         feature = "pty-readiness",
         any(target_os = "macos", target_os = "linux")
