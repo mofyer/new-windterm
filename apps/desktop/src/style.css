@@ -146,6 +146,7 @@ kbd {
 .terminal-status .status-dot { width: 6px; height: 6px; }
 #terminal-state { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #terminal-size { flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+#terminal-history { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* File inspector (demo list and read-only SFTP view share these rules) */
 .file-inspector { width: 244px; flex: none; margin: 12px; border: 0; border-radius: 16px; background: var(--sidebar); padding: 16px; overflow: auto; box-shadow: 5px 6px 15px #a4abbd35, -4px -4px 12px #fff; }

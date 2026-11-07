@@ -27,6 +27,14 @@ function createDiagnostics() {
     historyCaptureErrors: 0,
     historyCaptureMs: 0,
     historyMaxCaptureMs: 0,
+    // Budget enforcement (P1 slice 5, step 6): what was dropped, in blocks, lines and bytes.
+    historyLineTargetExceeded: 0,
+    historyMaxTotalCompressedBytes: 0,
+    historyTrimmedBlocks: 0,
+    historyTrimmedLines: 0,
+    historyTrimmedBytes: 0,
+    historyTrimmedEndedBlocks: 0,
+    historyTrimmedRunningBlocks: 0,
   };
   Object.defineProperty(window, "__WINDTERM_P0_DIAGNOSTICS__", {
     value: Object.freeze({ snapshot: () => Object.freeze({ ...counters }) }),

@@ -12,12 +12,12 @@ async function harness(page: Page) {
     const { HistoryArchive, stripSgr } = await import(/* @vite-ignore */ '/src/terminal-compat/history-archive.ts');
     const { xtermHistorySource } = await import(/* @vite-ignore */ '/src/terminal-core.ts');
     (window as any).historyQa = {
-      make(cols: number, rows: number, scrollback: number, blockLines = 512) {
+      make(cols: number, rows: number, scrollback: number, blockLines = 512, onBlock?: () => void) {
         const terminal = new Terminal({ cols, rows, scrollback, allowProposedApi: true });
         const holder = document.createElement('div');
         document.body.append(holder);
         terminal.open(holder);
-        const archive = new HistoryArchive(xtermHistorySource(terminal), blockLines);
+        const archive = new HistoryArchive(xtermHistorySource(terminal), blockLines, onBlock);
         const write = (data: string) => new Promise<void>(resolve => terminal.write(data, () => { archive.capture(); resolve(); }));
         return { terminal, archive, write };
       },
@@ -133,6 +133,55 @@ test('search spans compressed cold blocks and the pending block with absolute li
   expect(result.recent).toEqual([{ line: 19_950, column: 3 }]);
   expect(result.missing).toEqual([]);
   expect(result.stats.blocks).toBeGreaterThan(70);
+});
+
+test('dropOldest removes whole blocks oldest first; reads, search and sizes stay consistent', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make } = (window as any).historyQa;
+    let added = 0;
+    const { archive, write } = make(80, 10, 500, 64, () => added++);
+    const stream = Array.from({ length: 1000 }, (_, i) => `row ${i}`).join('\r\n') + '\r\n';
+    for (let offset = 0; offset < stream.length; offset += 4096) await write(stream.slice(offset, offset + 4096));
+    await archive.flush();
+    const before = archive.stats();
+    const sizes = archive.blocks.map((block: any) => block.data.length);
+    // Decoded blocks are cached; a dropped block must not be served from that cache.
+    await archive.lines(0, 200);
+    const first = archive.dropOldest();
+    const second = archive.dropOldest();
+    const after = archive.stats();
+    const fromZero = await archive.lines(0, 200);
+    const window64 = await archive.lines(128, 64);
+    const droppedSearch = await archive.search('row 100');
+    const keptSearch = await archive.search('row 130');
+    const remainingBlocks = archive.stats().blocks;
+    let all = 0;
+    while (archive.dropOldest()) all++;
+    const empty = archive.stats();
+    const pendingOnly = await archive.lines(0, empty.archivedLines);
+    return { added, before, sizes, first, second, after, fromZero, window64, droppedSearch, keptSearch, remainingBlocks, all, empty, pendingOnly, none: archive.dropOldest() ?? null };
+  });
+  const rows = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => `row ${from + i}`);
+  // 1000 lines on a 10-row screen: 991 left it, 15 blocks of 64 are sealed, 31 lines pending.
+  expect(result.before).toMatchObject({ archivedLines: 991, blocks: 15, pendingLines: 31, droppedLines: 0, droppedBlocks: 0 });
+  expect(result.added).toBe(15);
+  expect(result.first).toEqual({ lines: 64, bytes: result.sizes[0] });
+  expect(result.second).toEqual({ lines: 64, bytes: result.sizes[1] });
+  expect(result.after).toMatchObject({ archivedLines: 991, blocks: 13, pendingLines: 31, droppedLines: 128, droppedBlocks: 2 });
+  expect(result.after.compressedBytes).toBe(result.before.compressedBytes - result.sizes[0] - result.sizes[1]);
+  expect(result.after.compressedBytes).toBe(result.sizes.slice(2).reduce((sum: number, size: number) => sum + size, 0));
+  expect(result.after.rawBytes).toBeLessThan(result.before.rawBytes);
+  // Line numbers do not move; dropped lines are simply absent.
+  expect(result.fromZero).toEqual(rows(128, 200));
+  expect(result.window64).toEqual(rows(128, 192));
+  expect(result.droppedSearch).toEqual([]);
+  expect(result.keptSearch).toEqual([{ line: 130, column: 0 }]);
+  // Dropping everything leaves only the pending lines, which are never dropped.
+  expect(result.all).toBe(13);
+  expect(result.empty).toMatchObject({ blocks: 0, compressedBytes: 0, rawBytes: 0, droppedLines: 960, droppedBlocks: 15 });
+  expect(result.pendingOnly).toEqual(rows(960, 991));
+  expect(result.none).toBeNull();
 });
 
 test('an undersized hot scrollback is reported as a gap instead of silently losing lines', async ({ page }) => {

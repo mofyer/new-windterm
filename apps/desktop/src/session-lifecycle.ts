@@ -325,7 +325,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
   function terminalChannel(s: Session) {
     const onEvent = new Channel<PtyEvent>();
     s.channel = onEvent;
-    s.history ??= createSessionHistory(s.terminal);
+    // An ended tab's archive is trimmed first; a drop refreshes the status bar notice.
+    s.history ??= createSessionHistory(s.terminal, { ended: () => s.ended, dropped: () => host.progress(s.key) });
     const utf8 = new Utf8Boundary();
     onEvent.onmessage = (event) => {
       if (s.disposed) return;

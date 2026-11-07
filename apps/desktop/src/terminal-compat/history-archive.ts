@@ -1,7 +1,8 @@
 /**
  * Compressed cold history (Q04/Q06). P0 proved the approach in isolation; since P1 slice 5,
- * step 5 every native workspace session captures into one (`history-capture.ts`). There is no
- * history view, search UI or budget enforcement yet.
+ * step 5 every native workspace session captures into one (`history-capture.ts`), which since
+ * step 6 also enforces the budget by dropping whole blocks, oldest first (`dropOldest`). There
+ * is no history view or search UI yet.
  *
  * xterm keeps a bounded "hot" scrollback. Every logical line (wrapped rows joined) that has
  * scrolled off the screen is read, with its SGR attributes, through the terminal-core boundary
@@ -13,13 +14,18 @@
 import type { HistorySource } from "../terminal-core";
 
 export interface HistoryStats {
+  /** Logical lines ever archived, dropped ones included; line numbers count from the first. */
   archivedLines: number;
+  /** Completed blocks still held. */
   blocks: number;
-  /** UTF-8 bytes of the sealed blocks before compression. */
+  /** UTF-8 bytes, before compression, of the sealed blocks still held (queued ones included). */
   rawBytes: number;
-  /** Bytes the sealed blocks occupy, compressed or (if compression failed) not. */
+  /** Bytes the completed blocks still held occupy, compressed or (if compression failed) not. */
   compressedBytes: number;
   pendingLines: number;
+  /** Oldest lines removed by `dropOldest`; the first line still held has this number. */
+  droppedLines: number;
+  droppedBlocks: number;
   /** Times rows were dropped by the terminal before they could be archived. */
   gaps: number;
   /** Times the program reset the terminal or erased its scrollback. */
@@ -34,6 +40,12 @@ export interface CaptureResult {
   readonly lines: number;
   readonly gap: boolean;
   readonly cleared: boolean;
+}
+
+/** What one `dropOldest` removed. */
+export interface DroppedBlock {
+  readonly lines: number;
+  readonly bytes: number;
 }
 
 export interface HistoryMatch {
@@ -70,8 +82,11 @@ export class HistoryArchive {
   private pending: string[] = [];
   private blocks: Block[] = [];
   private queue: Promise<void> = Promise.resolve();
+  /** Decoded blocks, keyed by their first line number (stable when older blocks are dropped). */
   private cache = new Map<number, string[]>();
   private archived = 0;
+  private droppedLines = 0;
+  private droppedBlocks = 0;
   private gaps = 0;
   private clears = 0;
   private rawBytes = 0;
@@ -79,7 +94,11 @@ export class HistoryArchive {
   private uncompressedBlocks = 0;
   private compressMs = 0;
 
-  constructor(source: HistorySource, private readonly blockLines = 512) {
+  /**
+   * @param onBlock Called after each block is compressed and added, so a budget can be applied
+   *   to the new size. Must not throw: it runs in the compression queue.
+   */
+  constructor(source: HistorySource, private readonly blockLines = 512, private readonly onBlock?: () => void) {
     this.source = source;
   }
 
@@ -123,6 +142,23 @@ export class HistoryArchive {
     if (!this.source) return;
     this.blocks.push({ first, count, rawBytes: raw.length, compressed, data });
     this.compressedBytes += data.length;
+    this.onBlock?.();
+  }
+
+  /**
+   * Drops the oldest completed block as a whole and returns what it held; undefined if there is
+   * none. Lines still pending or queued for compression are never dropped. Line numbers of the
+   * remaining lines do not change.
+   */
+  dropOldest(): DroppedBlock | undefined {
+    const block = this.blocks.shift();
+    if (!block) return undefined;
+    this.cache.delete(block.first);
+    this.compressedBytes -= block.data.length;
+    this.rawBytes -= block.rawBytes;
+    this.droppedLines += block.count;
+    this.droppedBlocks++;
+    return { lines: block.count, bytes: block.data.length };
   }
 
   /** Waits for queued compression; optionally seals the partial block too. */
@@ -138,6 +174,8 @@ export class HistoryArchive {
       rawBytes: this.rawBytes,
       compressedBytes: this.compressedBytes,
       pendingLines: this.pending.length,
+      droppedLines: this.droppedLines,
+      droppedBlocks: this.droppedBlocks,
       gaps: this.gaps,
       clears: this.clears,
       uncompressedBlocks: this.uncompressedBlocks,
@@ -145,26 +183,33 @@ export class HistoryArchive {
     };
   }
 
-  private async block(index: number): Promise<string[]> {
-    const cached = this.cache.get(index);
+  private async decode(block: Block): Promise<string[]> {
+    const cached = this.cache.get(block.first);
     if (cached) return cached;
-    const block = this.blocks[index];
     const bytes = block.compressed ? await transform(block.data, new DecompressionStream("deflate-raw")) : block.data;
     const lines = decoder.decode(bytes).split("\n");
+    // A block dropped while it was being decoded is not cached again.
+    if (!this.blocks.includes(block)) return lines;
     if (this.cache.size >= 2) this.cache.delete(this.cache.keys().next().value!);
-    this.cache.set(index, lines);
+    this.cache.set(block.first, lines);
     return lines;
   }
 
-  /** Archived lines `[from, from + count)` with SGR, for rehydration or export. */
+  /**
+   * Archived lines `[from, from + count)` with SGR, for rehydration or export. Dropped lines are
+   * not returned: the result starts at `max(from, stats().droppedLines)`.
+   */
   async lines(from: number, count: number): Promise<string[]> {
     await this.queue;
     const result: string[] = [];
     const end = Math.min(from + count, this.archived);
-    for (let index = 0; index < this.blocks.length && result.length < end - from; index++) {
-      const block = this.blocks[index];
+    from = Math.max(from, this.droppedLines);
+    // A snapshot: blocks dropped while one is being decoded are still read consistently.
+    const blocks = this.blocks.slice();
+    for (const block of blocks) {
+      if (result.length >= end - from) break;
       if (block.first + block.count <= from || block.first >= end) continue;
-      const lines = await this.block(index);
+      const lines = await this.decode(block);
       for (let line = Math.max(from, block.first); line < Math.min(end, block.first + block.count); line++) {
         result.push(lines[line - block.first]);
       }
@@ -174,7 +219,7 @@ export class HistoryArchive {
     return result;
   }
 
-  /** Plain-text search over archived lines, decompressing one block at a time. */
+  /** Plain-text search over the lines still held, decompressing one block at a time. */
   async search(query: string, limit = 100): Promise<HistoryMatch[]> {
     await this.queue;
     const matches: HistoryMatch[] = [];
@@ -182,9 +227,9 @@ export class HistoryArchive {
       const column = stripSgr(line).indexOf(query);
       if (column >= 0) matches.push({ line: number, column });
     };
-    for (let index = 0; index < this.blocks.length && matches.length < limit; index++) {
-      const block = this.blocks[index];
-      (await this.block(index)).forEach((line, offset) => { if (matches.length < limit) scan(line, block.first + offset); });
+    for (const block of this.blocks.slice()) {
+      if (matches.length >= limit) break;
+      (await this.decode(block)).forEach((line, offset) => { if (matches.length < limit) scan(line, block.first + offset); });
     }
     const pendingFirst = this.archived - this.pending.length;
     this.pending.forEach((line, offset) => { if (matches.length < limit) scan(line, pendingFirst + offset); });
