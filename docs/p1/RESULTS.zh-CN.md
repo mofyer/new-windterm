@@ -1229,3 +1229,274 @@ P1 与第四批均未验收，main 不合并。
 | 16 | 覆盖面板 / 停靠窗格 | 保持覆盖面板 |
 
 需要上游 2.7.0 实测的项已汇总到 [上游实机核对清单](UPSTREAM_HANDS_ON_CHECKLIST.zh-CN.md)，按第一组决定第 15 项另约时间、用户在场执行。
+
+## Windows PowerShell 方案 A 验证（工作流 `42345552474`）
+
+本节是 [Windows PowerShell 产品方案预注册](WINDOWS_PRODUCT_OPTION_PLAN.zh-CN.md)第 5.7 节要求的结果小节，方案中拟定的标题为“Windows PowerShell 启动导入方案验证（工作流 `<RUN_ID>`）”。2026-11-07，由 dispatch 执行者以外的独立核验子代理只读核验 [运行 42345552474](https://github.com/mofyer/new-windterm/actions/runs/42345552474)，核验过程中没有 rerun、dispatch、push、revert，也没有修改代码。协调者转述的结论没有直接采用，下列数据都取自 GitHub API、作业日志和重新下载的工件。
+
+**核验结论：方案未通过。按第 5.4 节分类为“场景失败”。** 7 个作业中 6 个 success。Windows Server 2022 WebView2 原生作业 failure：场景 7 `local-terminal-environment` 在 `defaults` 阶段报 `timed out after 30000 ms waiting for default cmd LC_CTYPE absent`，其余 6 个场景通过，其中包括场景 6 `local-terminal-shell`。门禁判据 G2、G4、G5 满足，G1、G3 不满足。效果判据 E1–E4 的原值都满足预注册门槛，但 G 未全部满足，所以 E 只作单次描述，不能据此宣称方案已通过、已验收或有效。按第 5.5 节停止规则，本验证到此结束：不执行 `gh run rerun`（含 `--failed`），不再次 dispatch，不把 `windows_shell_repeats` 改为非 0 来补样本，也不放宽 30 秒行等待、trace 容量、任何断言或 5,000 ms 效果门槛。
+
+### 被测对象与产品差异（5.1）
+
+- `<BASE>` 为 `3fbd25e7fa5fccaa12e54046b4f2ed5b09b6420c`，`<HEAD>` 为 `3f95db57092bf6110c23a39899f9fec0c91eddf0`。核验时执行 `git fetch`，`origin/p1/integration` 仍是 `3f95db5`。7 个作业的 checkout 日志都检出这个 SHA。`3fbd25e` 和 `35aee13` 都是 `3f95db5` 的祖先，HEAD 包含方案提交 `5445318`、`3fbd25e`，实现提交 `b53ed31`，以及文档提交 `c775c0c`、`3f95db5`。
+- `git diff --stat 3fbd25e 3f95db5 -- apps/desktop` 只列出 `apps/desktop/src-tauri/src/local_shell.rs`（1 file changed, 91 insertions(+), 2 deletions(-)）。同一范围内，`tests/native/` 和 `.github/workflows/p0-cross-platform.yml` 都没有差异。
+- 按 5.1 逐项列出 `<BASE>` 相对 `35aee13` 的产品提交：只有 `fb085bd`（`test(p1)`）。它的改动在 `pty.rs` 的 `mod tests`（第 1073–1782 行）内，属于测试 `unix_close_feeds_no_line_terminator_to_a_shell_that_keeps_reading`，是测试代码。因此 `git diff --stat 35aee13 3f95db5 -- apps/desktop` 列出 `local_shell.rs` 和 `pty.rs` 两个文件。`35aee13..3f95db5` 在 `tests/native/` 和该 workflow 上也没有差异。
+- 协调者记录：推送前远端为 `35aee13`，dispatch 前的 UTC 时间为 2026-11-07T06:06:44Z。前者与 `42340067995`（2026-11-07T04:49:01Z 创建，headSha `35aee13…`）一致。推送时间和 dispatch 时间本核验没有独立取得：核验时，仓库 events API 没有返回 2026-11-06T18:08:31Z 之后的推送事件。仓库在 2026-11-07T05:01:00Z 之后创建的运行 `total_count=1`，就是本运行，没有看到推送触发的其他运行。
+
+### 运行绑定（G1）
+
+| 字段 | 实际值 |
+| --- | --- |
+| workflow / event | `P0 cross-platform checks`（`.github/workflows/p0-cross-platform.yml`）/ `workflow_dispatch` |
+| headBranch / headSha | `p1/integration` / `3f95db57092bf6110c23a39899f9fec0c91eddf0` |
+| attempt / run number | 1（REST `run_attempt=1`）/ 64 |
+| status / conclusion | `completed` / **`failure`** |
+| createdAt / updatedAt | 2026-11-07T06:06:52Z / 2026-11-07T06:17:59Z（整个运行 11 分 07 秒） |
+| actor / triggering_actor | `mofyer` / `mofyer` |
+| 同 SHA 运行 | `gh run list --commit 3f95db5…` 只返回这一条（所有 workflow 合计 1 条），没有其他 workflow 的运行需要单独列出 |
+
+REST 和 `gh run view` 都不返回 dispatch 输入。三项输入按 `42268048590` 的方式，从日志和工件间接核实：
+
+- `native_only=false`：带 `if: ${{ !inputs.native_only }}` 的 `gssapi`（128322397159）和 4 个 `desktop` 作业都运行了，结论都是 success；本运行没有 skipped 作业。
+- `windows_shell_repeats=0`：两平台输入校验步骤为 `NATIVE_SHELL_REPEATS_INPUT: 0`，Windows 运行步骤为 `P1_NATIVE_SHELL_REPEATS: 0`，两份 summary 都是 `shellRepeats=0`。
+- `windows_webview_timing=true`：Windows 运行步骤为 `P1_NATIVE_WEBVIEW_TIMING: 1`。Windows 场景 5、6 的 evidence 带 `timings`，Windows trace 有 stage 记录。这与 push/PR 默认门禁不是同一配置。
+
+| 作业 | id | 结论 | UTC 起止 | 时长 | runner 镜像 |
+| --- | --- | --- | --- | --- | --- |
+| Linux x64 — isolated Rust GSSAPI and KDC probe | 128322397159 | success | 06:06:56–06:08:23 | 1 分 27 秒 | ubuntu-24.04 `20261101.360.1` |
+| Linux x64 — build and real PTY | 128322397237 | success | 06:06:56–06:14:26 | 7 分 30 秒 | ubuntu-24.04 `20261101.360.1` |
+| macOS arm64 — build and real PTY | 128322397467 | success | 06:06:57–06:14:43 | 7 分 46 秒 | macos-15-arm64 `20261104.0514.1` |
+| Windows x64 — build and ConPTY lifecycle tests | 128322397319 | success | 06:06:57–06:17:37 | 10 分 40 秒 | windows-2022 `20261101.353.1` |
+| Windows x64 (Server 2025) — build and ConPTY lifecycle tests | 128322397413 | success | 06:06:57–06:17:58 | 11 分 01 秒 | windows-2025-vs2026 `20261103.298.1` |
+| Linux x64 — native WebKitGTK smoke (tauri-driver) | 128322397286 | success | 06:06:57–06:11:57 | 5 分 00 秒 | ubuntu-24.04 `20261101.360.1` |
+| Windows x64 — native WebView2 smoke (tauri-driver) | 128322397436 | **failure** | 06:06:57–06:14:48 | 7 分 51 秒 | windows-2022 `20261101.353.1` |
+
+Windows 原生作业中，失败的只有 `Run native WebView smoke (Windows)` 这一步（06:13:08–06:14:43）。其他未跳过的步骤都是 success，包括安装、构建、helper 单测和之后的上传。annotation 方面：Windows 原生作业只有 `Process completed with exit code 1.`；macOS 作业有一条 arm64 runner 排队时间的 notice；其余 5 个作业没有 annotation。Linux desktop 的 lrzsz 步骤（`continue-on-error: true`）为 success，结果 `11 passed; 0 failed`，只作记录，不计入作业结论。
+
+G1 不满足：运行 `conclusion=failure`，Windows 原生作业 failure。event、分支、SHA、attempt 以及“没有 skipped”都与预期一致。
+
+### 工件下载与 SHA-256（5.7 第 2、4 步）
+
+`gh api repos/mofyer/new-windterm/actions/runs/42345552474/artifacts` 返回 `total_count=7`，名称与 5.2 所列 7 个工件逐一对应，都以 `-1` 结尾，`expired=false`，保留到 2026-11-21。用 `gh api …/artifacts/<id>/zip` 逐个下载到新建的空目录。`shasum -a 256` 的结果与 API digest 去掉 `sha256:` 前缀后按小写比较，7 个全部一致，文件大小也与 `size_in_bytes` 一致。
+
+| 工件 | id | size_in_bytes | zip 条目 | API digest = 本地 zip SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| `p0-gssapi-1` | 13563307566 | 10593 | 3 | `32c37ea4dfd818cf3a62877bb27098709b4db4a1bf69b00e939599753ce9ec79` |
+| `p0-aarch64-apple-darwin-macos-15-1` | 13563473213 | 27034 | 8 | `ab8e878904e8a743020cca58e0573a1218522eb4d5f2576fc6cd597a6537af26` |
+| `p0-x86_64-unknown-linux-gnu-ubuntu-24.04-1` | 13563632973 | 28364 | 11 | `470bfec8d26bb1405c037e1f7f3db49140290e75f463bedc14c6db7ad0d970a9` |
+| `p0-x86_64-pc-windows-msvc-windows-2022-1` | 13564075599 | 19667 | 8 | `a97056d87ac1be99e0fc0fe0796a543c7afc938c6c0ffe22f3bd64b29cdc4ef1` |
+| `p0-x86_64-pc-windows-msvc-windows-2025-1` | 13563548469 | 19304 | 8 | `fe1f4567ecba0f2d204d7d1302f9cf604db5527f6f79ef41a48287276eb085fa` |
+| `p0-native-webview-x86_64-unknown-linux-gnu-ubuntu-24.04-1` | 13562974624 | 472650 | 19 | `83545fecc5360771aee4b6a0e098c95157afd4fdf972f9843aacc467bda9439d` |
+| `p0-native-webview-x86_64-pc-windows-msvc-windows-2022-1` | 13563568000 | 870383 | 23 | `8581ed8b8308a40d86c10a81f50a21cc07f64a3294a73928d153fb380cb095ca` |
+
+zip 条目都是平铺文件名，没有路径穿越。按协调者指定，工件解压到各自新建的空目录 `.artifacts/p1/option-a/42345552474/<name>/`，zip 放在同级 `_zips/`。方案 5.7 写的路径是 `.artifacts/p1/windows-product-option/<RUN_ID>/<name>/`，两者只有目录名不同，不影响核验内容。`.artifacts/` 由 `.gitignore` 的 `/.artifacts/` 规则忽略，工件不提交。核验脚本放在会话临时目录，以 `python3 -I` 运行，只通过路径参数读取工件。
+
+| 文件 | SHA-256 |
+| --- | --- |
+| Linux 原生 `summary.json` | `45a482dbbc1346862fbac748c818f359f989bc6b5e1144c58e888ce9af3fb2ec` |
+| Linux 原生 `06-local-terminal-shell-trace.json` | `db72eff05489fe275fd9f5fc234600984911d40197f5ba9c1108ab7240df5c55` |
+| Linux 原生 `07-local-terminal-environment.json` | `db24ef8c27267eb2a9144121d18c0dcc92cc4cb47f1c15312cfe2cb576eed978` |
+| Windows 原生 `summary.json` | `d75b7e7eff85c3735a681b060aac50f4490efaeb93813eaecf69be9cc1525fd5` |
+| Windows 原生 `06-local-terminal-shell-trace.json` | `6c96d1ff8368ce66d3dcd8cd1be0ea3ab63f4a60ec6a5fa0fe1291c3d4f5ced9` |
+| Windows 原生 `07-local-terminal-environment.json` | 无此文件（场景 7 失败） |
+| Windows 原生 `07-local-terminal-environment-failure.json` | `fee31474aaa2b8b20ccc82a2fe475faf75aedddef0ee459c889e7d0551749b15` |
+| Windows 原生 `failure-local-terminal-environment.json` | `9305d4652500dedd3ffb4f3311b632c71df5a6057b565e241d3e5286a14a21cd` |
+| macOS arm64 `rust-tests.log` | `927c221ae3515fbc7a12adf1a2ff51acc4a467da93a4c9cd4538c6499e323924` |
+| Linux x64 `rust-tests.log` | `d03f032dfa468e9c3451926811df8b5b427546220e5c416a8544d9e9c6af89da` |
+| Windows 2022 `rust-tests.log` | `09a5e10a09e0168b6dfbd9c12489a7e65de375d93ce5a1f033899507c7a7e504` |
+| Windows 2025 `rust-tests.log` | `ce8a3127fa493130e19771cfa43aaad19ef5f9375660b48b012ef482e764aca6` |
+
+Linux `07-local-terminal-environment.json` 的哈希，与 `42268048590` 记录的 Linux 同名文件相同（内容是固定测试值）。runner 级失败快照 `9305d465…` 与 `42268048590` 的 `failure-local-terminal-shell.json` 相同（两者都是只剩演示标签的快照）。这里只原样记录。
+
+### desktop Rust 测试与 GSSAPI（G2）
+
+4 个 desktop 作业都运行 `cargo test --all-features --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets`，计数取自各自的 `rust-tests.log`：
+
+| 平台 | `--lib`：passed / failed / ignored | 全部 test 目标合计：passed / failed / ignored | 两项 argv 测试所在行（均为 `... ok`） |
+| --- | --- | --- | --- |
+| macOS arm64 | 194 / 0 / 7 | 324 / 0 / 33 | 第 305、306 行 |
+| Linux x64 | 193 / 0 / 7 | 323 / 0 / 33 | 第 319、321 行 |
+| Windows 2022 | 193 / 0 / 7 | 316 / 0 / 7 | 第 312、313 行 |
+| Windows 2025 | 193 / 0 / 7 | 316 / 0 / 7 | 第 312、313 行 |
+
+两项 argv 测试是 `local_shell::tests::explicit_shells_use_fixed_argv_and_controlled_environment` 和 `local_shell::tests::windows_powershell_only_appends_unquoted_management_import`，4 个平台都是 `ok`。各日志的 `test result:` 行都是 `ok`，没有 `FAILED` 或 `panicked`。4 个作业的格式检查、check、clippy、链接步骤都是 success；两个 Windows 作业的 ConPTY 诊断步骤，以及 macOS、Linux 的 Unix PTY 探针步骤，也都是 success。附记：`fb085bd` 修改过的 `pty::tests::unix_close_feeds_no_line_terminator_to_a_shell_that_keeps_reading` 在 macOS（第 367 行）和 Linux（第 383 行）都是 `ok`，这是修改后该测试的第一次 CI 运行，只记为单次结果。
+
+GSSAPI 作业为 success。`cases.log` 依次为 `P0_GSSAPI_SERVICE_PREFLIGHT PASS`，`valid` 的 exit 0，`missing`、`expired`、`wrong-service` 的 exit 10，三次 `P0_GSSAPI_HEALTH PASS`，最后是 `P0_GSSAPI_RESULT 4 passed; 0 skipped`。`build.log` 中 Rust 单元测试为 `3 passed; 0 failed`。
+
+G2 满足。
+
+### 原生 summary 与 7×2 场景（G3）
+
+| 字段 | Linux | Windows |
+| --- | --- | --- |
+| `platform/arch`、Node | `linux/x64`、`v26.0.0` | `win32/x64`、`v26.0.0` |
+| `result`、顶层 `error` | `passed`、无 | **`failed`**、无 |
+| `shellRepeats` | 0 | 0 |
+| `counts.base` planned/attempted/passed/failed/skipped | 7/7/7/0/0 | 7/7/**6/1**/0 |
+| `counts.diagnostic` planned/attempted | 0/0 | 0/0 |
+| `scenarios` 名称与顺序 | 与既有 7 项一致，都是 `kind=base`、`artifactPrefix=''` | 同左 |
+| summary `startedAt`–`finishedAt` | 06:10:57.703Z–06:11:52.299Z | 06:13:08.755Z–06:14:43.677Z |
+
+| 序 | 场景 | Linux 状态 / durationMs | Windows 状态 / durationMs |
+| --- | --- | --- | --- |
+| 1 | `workbench` | passed / 4351 | passed / 1244 |
+| 2 | `local-terminal` | passed / 1204 | passed / 1033 |
+| 3 | `ssh-terminal` | passed / 2619 | passed / 2261 |
+| 4 | `local-terminal-reopen` | passed / 2056 | passed / 1588 |
+| 5 | `local-terminal-cwd` | passed / 2037 | passed / 2236 |
+| 6 | `local-terminal-shell` | passed / 2781 | passed / 3682 |
+| 7 | `local-terminal-environment` | passed / 37952 | **failed / 72134** |
+
+G3 在 Linux 满足，在 Windows 不满足，整体不满足。
+
+### 场景证据（按原生刷新方案第 3 步）
+
+| 核对项 | Linux | Windows |
+| --- | --- | --- |
+| `workbench.href` 等 | `tauri://localhost`；`tauriInvoke=function`；`runtimeNote` 以“桌面原型”开头 | `http://tauri.localhost/`；其余同左 |
+| 本地 Shell 身份行 | `help: help [-dms] [pattern ...]` | `Microsoft Windows [Version 10.0.20348.5773]` |
+| SSH 指纹 | `SHA256:SFPVx3T4CND29riosFcQipU3FNsbL2HCDrwzJrMZzu0` | `SHA256:dhZ5K1fOh9X9tyUqQpdPbb1g3dMrSGeJvsa4GrM7ETg` |
+| SSH 其余 | 与 `ssh-fixture.log` 的 `fingerprint=` 行及 `run.log` 的夹具行一致；`03-ssh-terminal.txt` 含 `P0 SSH terminal fixture` 横幅；`> SIZE 135 24`、`> 中文 🌏`、`SSH · 已退出 · code 7` | 一致；`03-ssh-terminal.txt` 的 DOM 渲染行含横幅（无障碍树段为空行）；`> SIZE 94 19`、`> 中文 🌏`、`SSH · 已退出 · code 7` |
+| 重开标签 | `Local 4` → `Local 5`，旧标签保留“已退出 · code 7”，`remainingTabs=1` | 同左 |
+| 场景 5 cwd | 默认 Shell，`expected=/tmp/p1 中文-EaRVeq`；`pwd -P` 首次与重开都与之精确相等 | 默认 Shell，`expected=C:\Users\runneradmin\AppData\Local\Temp\p1 中文-w3GQXb`（表单目录为 `RUNNER~1` 短名）；`cd` 首次与重开都相等 |
+| 场景 6 | Bash，`expected=/tmp/p1 中文-JasMWO`；两次 `identities` 都是 `P1_SHELL=5.2.21(1)-release`；首次与重开 cwd 精确相等；`remainingTabs=1` | Windows PowerShell，`expected=C:\Users\runneradmin\AppData\Local\Temp\p1 中文-opHi6X`（表单目录为短名）；两次 `identities` 都是 `P1_SHELL=5.1.20348.5773`（与 `42268048590` 相同，更早的历史为 `5.1.20348.5622`）；`(Get-Location).Path` 首次与重开都与之相等；`remainingTabs=1` |
+| 场景 7 | Bash；`initial`、`independent`、`retained`、`modified`、`reopened` 各 10 行（场景以精确相等断言读取），`secondStill=P1_SECOND_STILL=[独立 space=two]`，两次 exit 7；默认 Bash 中两个测试变量不存在，`LANG`、`LC_ALL` 为 `C.UTF-8`，没有 `LC_CTYPE`；`remainingTabs=1`；`07-…environment.json` 与 summary evidence 一致（summary 另有 `shell`、`remainingTabs` 两键） | 失败，summary 无 evidence；见下文 |
+| `versions.log` | tauri-driver v2.0.6；`libwebkit2gtk-4.1-0` 与 `webkit2gtk-driver` 都是 `2.52.6-0ubuntu0.24.04.1`；会话 capabilities 为 `wry 0.57` | tauri-driver v2.0.6；WebView2 Runtime `131.0.2903.86`；msedgedriver `131.0.2903.86 (cf5bf303997cad93d7a0bede234d3c3dc01cc63d)` |
+| 运行步骤 `result:` 行 | `result: passed; evidence in /home/runner/work/_temp/p0-native` | `result: failed; evidence in D:\a\_temp\p0-native`，其后为 `##[error]Process completed with exit code 1.` |
+
+Windows 场景 6 的屏幕快照 `06-local-terminal-shell.txt`，首次与重开的第一行都是提示符 `PS C:\Users\runneradmin\AppData\Local\Temp\p1 中文-opHi6X>`，19 行快照中没有可见的错误文本。本次工件没有采集模块状态，所以不能据此确认启动导入实际执行或成功；导入失败路径也没有覆盖。Linux runner 缺少 CJK 字体时截图会出现方块，截图不作为字形验收。
+
+### trace 字段（G4）
+
+| 字段 | Linux | Windows |
+| --- | --- | --- |
+| `schema` / `transport` | 1 / `custom-protocol-callback` | 1 / `custom-protocol-callback` |
+| `limitBytes` | 262144 | 262144 |
+| `incomplete` | false | false |
+| `truncated` / `droppedRecords` | false / 0 | false / 0 |
+| `incompleteReasons` | `[]` | `[]` |
+| 记录数与槽 | 458 条，槽 1 为 227 条、槽 2 为 231 条 | 757 条，槽 1 为 383 条、槽 2 为 374 条 |
+| `pty_open` fulfilled / `exit` 事件 | 2 / 2（code 均为 7） | 2 / 2（code 均为 7） |
+| data 块与字节 | 37 块 303 B + 39 块 277 B，每块都有对应的 `pty_ack` begin/fulfilled | 31 块 1287 B + 28 块 1276 B，每块都有对应的 `pty_ack` begin/fulfilled |
+| stage 记录 | 无（Linux 不开 stage） | 每槽 9 条（`pty-write-enter` 4、`webdriver-input-return` 2、`first-data-after-enter` 3），另有每槽 4 条带 `webview-keydown-enter` 的 `keydown-enter` |
+
+G4 满足。
+
+### helper 单测（G5）
+
+| 平台 | 结果 |
+| --- | --- |
+| Linux | 40 tests：39 pass / 0 fail / 1 skipped（macOS 专有的 `run.mjs skips on macOS…`） |
+| Windows | 40 tests：38 pass / 0 fail / 2 skipped（同一个 macOS 专有项，以及 `fixed environment queries … real Bash child`） |
+
+G5 满足。跳过项不计为通过。
+
+### Windows 场景 5、6 原始计时与效果判据 E
+
+场景 5（默认 cmd，查询 `cd`）evidence 的 `timings` 原值：
+
+| phase | `open-to-ready` | `cwd-typeInTerminal` | `cwd-send-to-row` |
+| --- | ---: | ---: | ---: |
+| `initial cwd query` | `122.76980000000185` | `51.649600000000646` | `290.53600000000006` |
+| `reopened cwd query` | `119.78989999999976` | `49.69260000000213` | `278.3113999999987` |
+
+场景 6（Windows PowerShell，`selected={label: "Windows PowerShell", value: "powershell"}`，查询 `(Get-Location).Path`）evidence 的 10 条 `timings` 原值：
+
+| event | `initial cwd query` | `reopened cwd query` |
+| --- | ---: | ---: |
+| `open-to-ready` | `121.67889999999898` | `122.75789999999688` |
+| `version-typeInTerminal` | `138.71500000000015` | `127.31180000000313` |
+| `version-send-to-row` | `806.789499999999` | `573.1173000000017` |
+| `cwd-typeInTerminal` | `62.14129999999932` | `60.12280000000101` |
+| `cwd-send-to-row` | `309.64110000000073` | `289.3623000000007` |
+
+两次 `identities` 都是 `P1_SHELL=5.1.20348.5773`。
+
+| 判据 | 预注册条件 | 原值 | 结果 |
+| --- | --- | --- | --- |
+| E1 | 首次与重开各 5 条记录，共 10 条 | 共 10 条，每个 phase、每个 event 恰好 1 条 | 满足 |
+| E2 | 两个 `cwd-send-to-row` 都 ≤ 5,000 ms | `309.64110000000073` / `289.3623000000007` | 满足 |
+| E3 | 两个 `version-send-to-row` 都 ≤ 5,000 ms | `806.789499999999` / `573.1173000000017` | 满足 |
+| E4 | 两个 `identities` 相同，都以 `P1_SHELL=5.1.` 开头 | 两次都是 `P1_SHELL=5.1.20348.5773` | 满足 |
+
+E 的结果只作本次单次运行的描述。G1、G3 未满足，分类为“场景失败”，因此不能据 E 宣称方案已通过、已验收或有效，也不能据 E 抵消场景 7 的失败。
+
+### 场景 7 失败固定字段，以及与 `42340067995` 的形态对照
+
+按 `tests/native/scenarios.mjs`（本次被测树），Windows 场景 7 的流程是：先经启动对话框打开两个显式 Windows PowerShell 会话（自定义环境变量，locale `custom` 且 `LANG=C.UTF-8`），读取 `initial`、`independent`、`retained`、`modified`、`reopened` 和 `secondStill`；本次这些 PowerShell 会话使用方案 A 的 argv。然后在第二个 PowerShell 标签仍存活的情况下，用 `#local-open` 打开默认 cmd 会话，依次以 `if defined` 查询 `P1_ENV_SAMPLE`、`P1_ENV_EMPTY`、`LANG`、`LC_ALL`、`LC_CTYPE` 五个名称。失败发生在第 5 个名称。以上只描述测试流程，不据此推断原因。
+
+`07-local-terminal-environment-failure.json` 的固定字段：
+
+- `phase=defaults`；
+- `error` 首行为 `Error: timed out after 30000 ms waiting for default cmd LC_CTYPE absent`，调用栈依次为 `waitFor (…/tests/native/webdriver.mjs:49:13)`、`process.processTicksAndRejections (node:internal/process/task_queues:104:5)`、`async Object.localTerminalEnvironment [as run] (…/tests/native/scenarios.mjs:375:20)`、`async …/tests/native/run.mjs:115:24`；
+- `status`：`state=本机 PTY · 本机 shell 已启动`，`detail=本机 shell / 输入将实际执行`，`size=94 × 19 · 1,048 B 接收`；
+- `evidence`：`initial`、`independent`、`retained`、`modified`、`reopened` 各 10 行，`exitState` 与 `reopenedExitState` 都是 `本机 PTY · 已退出 · code 7`，`secondStill=P1_SECOND_STILL=[独立 space=two]`，没有 `defaults` 键；
+- `rows.dom` 与 `rows.tree` 都是 19 行，内容完全相同，19 行正好等于终端行数。第 1–16 行是前 4 条查询，每条查询占 4 行：命令回显在 94 列处折成两行，然后是输出 `P1_DEFAULT_<名称>=absent`，再是一行空行。第 17–18 行是第 5 条命令 `if defined LC_CTYPE (echo P1_DEFAULT_LC_CTYPE=present) else (echo P1_DEFAULT_LC_CTYPE=absent)` 的折行回显。第 19 行是提示符 `P0 C:\Users\RUNNER~1\AppData\Local\Temp>`。快照中没有 `P1_DEFAULT_LC_CTYPE=absent` 行，提示符前也没有前 4 条查询之后那样的空行。
+
+runner 级的 `failure-local-terminal-environment.json` 是在场景 `finally` 关闭本场景标签之后采集的，内容为 `href=http://tauri.localhost/`、`tabs=["Getting started"]`、`status=演示 · 演示就绪`、`dialogs=[]`、`toast` 为空。`run.log` 记录场景 7 于 06:13:31.443Z 开始，06:14:43.577Z 记为 `FAILED`。工件中还保存了 `07-local-terminal-environment.png`、`07-local-terminal-environment-failure.png`、`failure-local-terminal-environment.png` 三张截图。
+
+对照用的工件是 `42340067995` 的 Windows 原生工件 `p0-native-webview-x86_64-pc-windows-msvc-windows-2022-1`（id 13561930295，868,920 B），重新下载到另一个新建的空目录 `.artifacts/p1/option-a/42340067995/`。zip SHA-256 为 `d37f43d1b6b0b115d5aab45cbf6431d339e25788610533caa133a3345371fe65`，与 API digest 和前文执行记录一致。
+
+| 项 | `42345552474`（本次） | `42340067995` |
+| --- | --- | --- |
+| 被测 SHA | `3f95db5…` | `35aee13…` |
+| 两者 `apps/desktop` 差异 | `local_shell.rs`（方案 A）与 `pty.rs`（仅 `mod tests`）；`tests/native/` 与 workflow 无差异 | — |
+| Windows 原生输入 | `P1_NATIVE_SHELL_REPEATS: 0`、`P1_NATIVE_WEBVIEW_TIMING: 1` | `P1_NATIVE_SHELL_REPEATS: 0`、`P1_NATIVE_WEBVIEW_TIMING: 0`（默认输入） |
+| runner 镜像 / WebView2 / msedgedriver | windows-2022 `20261101.353.1` / `131.0.2903.86` / `131.0.2903.86` | 同左；两份 `versions.log` 与 `msedgedriver.json` 逐字节相同 |
+| Windows `counts.base` | 7/7/6/1/0 | 7/7/6/1/0 |
+| 场景 7 状态 / durationMs | failed / 72134 | failed / 69011 |
+| `run.log` 中场景 7 起止 | 06:13:31.443Z–06:14:43.577Z | 04:56:03.791Z–04:57:12.802Z |
+| 失败 JSON SHA-256 | `fee31474aaa2b8b20ccc82a2fe475faf75aedddef0ee459c889e7d0551749b15` | 同左，两份逐字节相同 |
+| `phase` / `error` / `status` / `rows.dom` / `rows.tree` / `evidence` | 见上文 | 逐项相同 |
+| runner 级失败快照 SHA-256 | `9305d465…` | `9305d465…` |
+
+对照结论只限于形态：两次失败的阶段、错误文本、状态行、19 行屏幕快照和此前各 phase 的读回完全相同。两次运行的被测 SHA、timing 输入和运行时间都不同。失败 JSON 相同，不证明原因相同。本记录不把场景 7 失败归因于方案 A，也不因形态相同把它排除于方案 A 之外；不归因于 Enter 丢失、WebDriver、IPC、ConPTY、cmd 或 PowerShell 初始化、执行策略、早期输入门控或 runner 负载；不称偶发或 flaky；也不用 `42268048590`（被测 `e7faa0f`）场景 7 的通过（41440 ms）来抵消。
+
+### 清理附记
+
+- `driverExit`：Linux 为 `{code: 0, signal: null}`；Windows 为 `{code: null, signal: "SIGTERM"}`，与 `42268048590`、`42340067995` 的 Windows 相同。这里只原样记录。
+- `fixtureExit`：两平台都是 `{code: 0, signal: null, report: "Stopped; active fixture sessions=0; auth attempts=1"}`。
+- `remainingTabs`：Linux 场景 4–7 都是 1；Windows 场景 4–6 都是 1，场景 7 没有 evidence，runner 失败快照中剩 1 个标签（`Getting started`）。
+- `tauri-driver.log`：Linux 只有 AT-SPI 总线和 libEGL DRI3 警告，以及 `[exit] code=0 signal=null`；Windows 只有 `[exit] code=null signal=SIGTERM`。
+- `versions.log` 见上文“场景证据”。
+
+### 判据汇总、结论分类与解读边界
+
+| 判据 | 结果 | 依据 |
+| --- | --- | --- |
+| G1 运行绑定 | **不满足** | `conclusion=failure`；Windows 原生作业 failure；其余绑定字段一致，没有 skipped |
+| G2 desktop | 满足 | 4 个 `rust-tests.log` 都是 0 failed，两项 argv 测试在 4 个平台都是 `ok` |
+| G3 原生 summary | **不满足** | Windows `result=failed`，`counts.base` 为 7/7/6/1/0；Linux 满足 |
+| G4 trace | 满足 | 两平台 `schema=1`、`limitBytes=262144`、`incomplete=false`、`truncated=false`、`droppedRecords=0`、`incompleteReasons=[]` |
+| G5 helper | 满足 | 两平台都是 0 failed |
+| E1–E4 | 原值都满足 | 见上表；只作单次描述 |
+
+**分类：场景失败，方案未通过。** 判定依据：一个原生场景（Windows 场景 7）失败。不属于“作业失败”：场景以外的作业和步骤全部 success，唯一失败的步骤是原生运行步骤，它的失败就是场景 7 的失败。不属于“前置失败”：两平台安装、构建和 helper 步骤全部 success，7 个场景都已进入。不属于“无效”：只有这一条运行，attempt 1，未取消，绑定字段一致，7 个工件齐全，digest 全部一致。也不是“通过”或“效果未达”，因为两者都要求 G 全部满足。
+
+可以如实记录的内容：在本次 GitHub runner 的 Windows Server 2022 WebView2 上，精确 `3f95db5` 的 Windows PowerShell 5.1 会话（argv 含方案 A 的启动导入），首次与重开的普通 `(Get-Location).Path` 都在原 30 秒等待内出现期望目录行，`cwd-send-to-row` 与 `version-send-to-row` 的原值满足 E1–E4。这是单次描述，不能代替方案通过。
+
+不得写：
+
+- 方案 A 已通过、已验收或有效，或慢路径已修复；
+- 根因已定，或 `39063630062`、`42268048590` 的失败已被解释或关闭；
+- 其他模块命令的首次调用也已变快；
+- PowerShell 7、Windows Server 2025 原生、macOS WKWebView、用户真实桌面（执行策略、组策略、模块路径、网络）、PSReadLine/历史、IME、读屏或性能已验收；
+- 单次结果证明稳定，或可以排除间歇失败；
+- 第四批已验收、P1 已通过，或可以合并 main；
+- 显式导入的内部机制已明确，或 392 字节未知 stderr 已解决；
+- 据 G 未满足断言显式导入无效或有害。
+
+本结果不涉及 Windows Server 2025 原生（原生作业只有 windows-2022）、macOS WKWebView、PowerShell 7、IME、读屏、高输出性能、签名公证或真实用户桌面验收。loopback russh 夹具不等同于 OpenSSH，本次 runner 不提供独立 stderr 证据。
+
+### 对既有表述的更正
+
+本执行记录「真实 ConPTY 模块限定命令对照（工作流 `39824348485`）」一节写有“产品启动链本身没有内置 `Get-Location` 查询，目录通过 `CommandBuilder.cwd` 配置”。按方案第 3 节 A“受控启动策略”，这句话对含方案 A 实现的提交不再准确。含方案 A 实现的提交指 `b53ed31` 起的提交，包括本次被测的 `3f95db5` 和当前本地 `p1/integration`。对这些提交，应更正为：产品启动链为显式选择的 Windows PowerShell 5.1 内置一条导入命令（`-NoExit -Command Import-Module -Name Microsoft.PowerShell.Management -ErrorAction Stop`），仍然没有内置 `Get-Location`；目录仍通过 `CommandBuilder.cwd` 配置，普通 `(Get-Location).Path` 仍是原生验收场景输入的命令。历史小节原文不改。[交接词](../HANDOFF.zh-CN.md)中的同类句子“产品仅配置 cwd，没有内置 `Get-Location`”也按此理解。如果按 C1 撤回实现，撤回之后的提交恢复为不内置任何命令。
+
+### 按方案的后续（本核验不执行）
+
+- 按方案第 6 节决定 3 中用户已批准的 C1：由协调者用一个 revert 提交从 `p1/integration` 撤回实现提交 `b53ed31`，不改写历史，保留方案与本记录。`c775c0c` 同步到 `CLAUDE.md` 和[启动后执行命令预案](STARTUP_COMMAND_PLAN.zh-CN.md)的 argv 表述，届时也要相应改回。本核验不执行 revert。
+- 决定 4（D1/D2）只在通过时适用，本次不适用。
+- 之后的任何运行或变体都要先另行预注册，并由用户决定，单独记录，不与本次拼接。这里的运行或变体包括重跑、A2 绝对路径导入、导入更多模块，以及调整 timing、repeats 或门限。
+- Windows 场景 7 默认 cmd 会话的失败，在 `42340067995` 与本次形态相同，原因未定。是否另行处理，需要用户决定。
+
+P1 与第四批均未验收，P2 仅在准备，main 不合并。
