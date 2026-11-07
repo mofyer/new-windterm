@@ -1522,3 +1522,13 @@ P1 与第四批均未验收，P2 仅在准备，main 不合并。
 协调者在本地树上的门禁（macOS 本机）：`npm run build` 通过（JS 540.6 KB，gzip 156.6 KB）；浏览器 E2E 首次 665/666（失败项为历史视图“关闭后回收”断言，单独 ×10 通过、组合负载下复现，经上述轮询修正）；修正后全量 **666/666**；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 193 passed / 7 ignored；`--test ssh_terminal` 14；`--test release_bins` 3；`tools/wincheck/wincheck.sh` 通过。
 
 Windows 原生场景 7 默认 cmd 会话失败（`35aee13`、`3f95db5` 两次失败 JSON 逐字节相同）仍在调查，未定因。P1 与第四批未验收，main 不合并。
+
+## 2026-11-07 Windows 原生场景 7 默认 cmd 失败的调查与尺寸同步修复（本地，未推送）
+
+现象：`42340067995`（被测 `35aee13`）与 `42345552474`（被测 `3f95db5`）中，场景 7 最后的默认 cmd 会话在第 5 条 `if defined LC_CTYPE …` 处超时，两次失败 JSON 逐字节相同：命令回显后屏幕最后一行直接是新提示符，缺少输出行，状态 `94 × 19`。`42268048590`（被测 `e7faa0f`）该场景通过。
+
+调查（追查分支 `p1/scenario7-trace`，提交 `4f042e8`；协调者复核）：快照与“ConPTY 认为的行数多于 xterm”的效果一致——cmd 以绝对定位写到 xterm 第 19 行之后，被夹到最后一行并被提示符覆盖。但 `e7faa0f` 与当前代码在打开成功后都会以当时尺寸补发 `pty_resize`，`onResize` 也都会在 fit 后补发真实尺寸，代码路径上没有找到两版本的差异。浏览器 stub 中 `pty_open` 早于首次 rAF 返回时，调用序列为 `[80×24, 114×20]`：先发出过时的 xterm 默认尺寸，再发真实尺寸。`pty_resize` 是异步 Tauri 命令，两次相近调用在 Rust 端的生效顺序没有保证；“过时尺寸最后生效”是一个可以解释现象的机制，**未在 Windows 上证实**，也没有解释为何 `e7faa0f` 通过。追查报告原称“已确认根因”，协调者认为证据不足，未采用该表述。
+
+修复 `92681e8`：终端仍处于 80×24 默认值时，打开成功后先同步 fit，再补发 `pty_resize`，保证只向后端发送 fit 后的尺寸。新增浏览器 stub 回归测试（修复前失败、修复后通过）；`pty-ui-contract.spec.ts` ×3 102/102；跨块、生命周期、启动命令、本地环境 47/47；本地树全量浏览器 E2E **667/667**。它能否消除 Windows 场景 7 失败只能由 Windows CI 验证。
+
+P1 与第四批未验收，main 不合并。
