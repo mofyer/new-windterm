@@ -1499,4 +1499,8 @@ runner 级的 `failure-local-terminal-environment.json` 是在场景 `finally` �
 - 之后的任何运行或变体都要先另行预注册，并由用户决定，单独记录，不与本次拼接。这里的运行或变体包括重跑、A2 绝对路径导入、导入更多模块，以及调整 timing、repeats 或门限。
 - Windows 场景 7 默认 cmd 会话的失败，在 `42340067995` 与本次形态相同，原因未定。是否另行处理，需要用户决定。
 
+### 本记录的独立审查
+
+另一个独立只读 `code-reviewer` 子代理审查了本节首次提交 `84f1bb2`。它没有采信本节数字，而是从同一批工件、作业日志和只读 GitHub API 重新计算：7 个 zip 的 SHA-256 与 digest、12 个文件哈希、4 个 `rust-tests.log` 的计数与 argv 测试行号、两平台 summary 与 trace 字段、场景 5、6 的 16 个计时原值、场景 7 失败 JSON 及其与 `42340067995` 的对照、作业 id、时长与镜像版本。审查还逐项对照了方案 5.4–5.7 的分类、停止规则、允许与禁止解读和记录内容。结论为 APPROVE，0 critical / 0 high / 0 medium / 0 low。审查者同样只做只读核对，没有 rerun、dispatch 或修改代码。
+
 P1 与第四批均未验收，P2 仅在准备，main 不合并。
