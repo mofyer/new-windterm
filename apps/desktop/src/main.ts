@@ -11,6 +11,8 @@ import {
   createSessionLifecycle, forwardable, reopenable, type Session, type SessionHost,
 } from "./session-lifecycle";
 import { sample, stress } from "./demo-session";
+import { createTerminalBell, paintBellMark } from "./terminal-bell";
+import { createBellSettingsSheet } from "./bell-settings";
 import { isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
@@ -42,6 +44,7 @@ const sessionHost: SessionHost = {
   notify: (message) => toast(message),
   registered: (s) => {
     activeKey = s.key;
+    bell.attach(s.key, s.terminal, s.element);
   },
   focused: (s) => {
     if (activeKey !== s.key) {
@@ -55,10 +58,20 @@ const sessionHost: SessionHost = {
     if (key === activeKey) scheduleStatusUpdate();
   },
   removed: (key) => {
+    bell.forget(key);
     if (activeKey === key) activeKey = sessions.keys().next().value ?? 0;
     paintSessions();
   },
 };
+// In place, so a bell from a background tab never rebuilds the tab strip or moves focus.
+const bell = createTerminalBell({
+  isActive: (key) => key === activeKey,
+  marked: (key) => {
+    for (const dot of document.querySelectorAll<HTMLElement>(`.status-dot[data-key="${key}"]`))
+      if (dot.parentElement) paintBellMark(dot.parentElement, bell.pending(key));
+  },
+  notify: (message) => toast(message),
+});
 const lifecycle = createSessionLifecycle(sessionHost);
 const sessions = lifecycle.sessions;
 const native = isTauri();
@@ -206,6 +219,8 @@ function updateStatus() {
 
 function paintSessions() {
   const query = ($("#session-search") as HTMLInputElement).value.toLowerCase();
+  // Every change of the active session repaints here, so the session in front loses its mark.
+  bell.seen(activeKey);
   $("#tabs").replaceChildren();
   $("#session-list").replaceChildren();
   for (const s of sessions.values()) {
@@ -218,6 +233,7 @@ function paintSessions() {
     label.className = "tab-label";
     label.textContent = s.name;
     button.append(statusDot(s), label);
+    paintBellMark(button, bell.pending(s.key));
     button.onclick = () => selectSession(s.key);
     const close = document.createElement("button");
     close.className = "tab-close";
@@ -234,6 +250,7 @@ function paintSessions() {
       const mode = document.createElement("small");
       mode.textContent = modeName(s);
       row.append(statusDot(s), name, mode);
+      paintBellMark(row, bell.pending(s.key));
       row.onclick = () => selectSession(s.key);
       $("#session-list").append(row);
     }
@@ -287,6 +304,7 @@ function startSftpBrowser(request: SshTerminalRequest): boolean {
 const sshVerification = createSshVerification(startSshTerminal, startSftpBrowser);
 const netTerminal = createNetTerminalDialog(startNetTerminal);
 const forwardSheet = createPortForwardSheet();
+const bellSheet = createBellSettingsSheet(bell);
 function openForwards() {
   const s = active();
   const id = s?.ptyId;
@@ -536,6 +554,7 @@ const commands = [
   { name: "打开 Telnet / Raw TCP 终端 · 仅桌面", action: () => netTerminal.open() },
   { name: "切换当前会话 OSC 52 剪贴板写入 · 默认关闭", action: toggleClipboardWrite },
   { name: "SSH 端口转发 · 当前 SSH 标签 · 仅桌面", action: openForwards },
+  { name: "终端响铃设置 · 样式与重复间隔", action: () => bellSheet.open() },
 ];
 let commandIndex = 0;
 function paintCommands() {

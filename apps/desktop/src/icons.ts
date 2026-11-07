@@ -16,6 +16,7 @@ const PATHS = {
   chevron: '<path d="m9 6 6 6-6 6"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9S4 17 4 12V6Zm-4 9 3 3 5-6"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21h4"/>',
   settings:
     '<path d="M5 5h14M5 12h14M5 19h14"/><circle cx="9" cy="5" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="19" r="2"/>',
 } as const;

@@ -35,7 +35,7 @@ export interface Snapshot {
  * workspace session `{ terminal, vt }` is also pushed to `window.__qaSessions`. Application code
  * is unchanged; the objects are the ones `session-lifecycle.ts` uses.
  */
-async function exposeSessions(page: Page) {
+export async function exposeSessions(page: Page) {
   await page.route(/\/src\/terminal\.ts(\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const body = await response.text();
