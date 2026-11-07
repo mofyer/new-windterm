@@ -26,8 +26,8 @@ const SIDE_EFFECT_DEADLINE: Duration = Duration::from_secs(20);
 const EXIT_DEADLINE: Duration = Duration::from_secs(10);
 /// After the prompt, how long an unsubmitted line is left in the live shell before it is checked.
 const UNSUBMITTED_SETTLE: Duration = Duration::from_millis(1500);
-/// Opt-in observation (not a gate): trials per shell of closing a session whose line editor holds
-/// the unsubmitted command. See `observe_close_with_unsubmitted_line`.
+/// Opt-in: trials per shell of closing a session whose line editor holds the unsubmitted
+/// command. See `close_with_unsubmitted_line`.
 const CLOSE_TRIALS_ENV: &str = "P1_STARTUP_CLOSE_TRIALS";
 const DIAGNOSTIC_TAIL: usize = 2048;
 
@@ -260,8 +260,8 @@ fn probe_shell(sessions: &Sessions, shell: Option<&str>, directory: &Path) -> Re
     println!("PASS startup command shell={label}: {MAX_COMMAND_BYTES}-byte command (+CR, multi-byte UTF-8 at the end) arrived intact, 1 line after exit barrier");
 
     // Control: the same bytes without CR never run while the shell is alive. The line is then
-    // discarded with Ctrl-U (VKILL / kill-line) before the exit barrier. Closing the session instead
-    // would not be an inert barrier: see `observe_close_with_unsubmitted_line`.
+    // discarded with Ctrl-U (VKILL / kill-line) before the exit barrier, so the control does not
+    // depend on the close path, which `close_with_unsubmitted_line` checks separately.
     let control_file = directory.join(format!("{label} control.txt"));
     let command = append_command(&nonce, &control_file)?;
     let mut probe = Probe::open(sessions, shell)?;
@@ -284,12 +284,12 @@ fn probe_shell(sessions: &Sessions, shell: Option<&str>, directory: &Path) -> Re
     Ok(())
 }
 
-/// Observation only, never a pass/fail gate (opt-in through `P1_STARTUP_CLOSE_TRIALS`). On Unix
-/// `Sessions::close` releases the input worker first; dropping portable-pty 0.9.0's master writer
-/// writes "\n" plus VEOF into the PTY before the shell receives SIGHUP. A line still held by the
-/// shell's line editor can therefore be submitted, and start running, while the session closes.
-/// The outcome is a race, so this only counts how often the command's file appears.
-fn observe_close_with_unsubmitted_line(
+/// Opt-in through `P1_STARTUP_CLOSE_TRIALS`. Product close of a session whose line editor holds
+/// the command without CR must not run it. The input worker's handle used to be portable-pty
+/// 0.9.0's master writer, whose Drop wrote "\n" plus VEOF into the PTY before the shell received
+/// SIGHUP; the line then ran in a few percent of closes. Any created file now fails the probe.
+/// The deterministic regressions are the `unix_*` close tests in `pty.rs`.
+fn close_with_unsubmitted_line(
     sessions: &Sessions,
     shell: Option<&str>,
     directory: &Path,
@@ -311,7 +311,10 @@ fn observe_close_with_unsubmitted_line(
         created += usize::from(file.exists());
         appended += usize::from(count_lines(&file)? > 0);
     }
-    println!("OBSERVE startup command shell={label}: {trials} product close(s) with an unsubmitted line held by the shell: command file created {created}, line appended {appended} (diagnostic only, not a gate)");
+    if created > 0 {
+        return Err(format!("{label}: {created} of {trials} product close(s) ran the unsubmitted line (file created {created}, line appended {appended})"));
+    }
+    println!("PASS startup command shell={label}: {trials} product close(s) with an unsubmitted line held by the shell: command file never created");
     Ok(())
 }
 
@@ -345,7 +348,7 @@ pub fn probe_startup_command() -> Result<(), String> {
         }
         if trials > 0 {
             for shell in &shells_run {
-                observe_close_with_unsubmitted_line(&sessions, *shell, &directory, trials)?;
+                close_with_unsubmitted_line(&sessions, *shell, &directory, trials)?;
             }
         }
         if available("pwsh") {

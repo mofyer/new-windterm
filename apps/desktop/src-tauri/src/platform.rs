@@ -46,6 +46,30 @@ pub(crate) fn configure_io(_master: &dyn MasterPty) -> Result<(), String> {
 }
 
 /// The session's input handle, used only by the input worker.
+///
+/// Unix: a plain CLOEXEC duplicate of the master, never portable-pty's `take_writer`. In
+/// portable-pty 0.9.0 that handle's Drop writes "\n" plus VEOF into the PTY; during close the
+/// newline could submit whatever the shell's line editor still held before the hangup reached
+/// it. Closing this duplicate writes nothing. When it is the last master copy, closing it hangs
+/// up the slave exactly as before, so the reaping order and deadlines are unchanged.
+#[cfg(unix)]
+pub(crate) fn input_writer(
+    master: &dyn MasterPty,
+) -> Result<Box<dyn std::io::Write + Send>, String> {
+    use std::os::fd::FromRawFd;
+    let fd = master.as_raw_fd().ok_or("PTY has no native descriptor")?;
+    // SAFETY: master owns fd for this call. CLOEXEC keeps the duplicate, and so the
+    // master, out of the spawned shell; it shares O_NONBLOCK set by `configure_io`.
+    let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    if duplicate < 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    // SAFETY: fcntl returned a new descriptor, owned exactly once here.
+    Ok(Box::new(unsafe { std::fs::File::from_raw_fd(duplicate) }))
+}
+
+/// ConPTY's writer is the input pipe itself; dropping it only closes the handle.
+#[cfg(not(unix))]
 pub(crate) fn input_writer(
     master: &dyn MasterPty,
 ) -> Result<Box<dyn std::io::Write + Send>, String> {
