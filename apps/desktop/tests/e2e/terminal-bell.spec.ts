@@ -323,7 +323,7 @@ test.describe('终端响铃（T27）', () => {
     expect(errors).toEqual([]);
   });
 
-  test('节流语义（模块，假时钟）：前沿窗口、下限、关闭、标记一次与异常隔离', async ({ page }) => {
+  test('节流语义（模块，假时钟）：前沿窗口、改短间隔立即生效、下限、关闭、标记一次、异常隔离与释放', async ({ page }) => {
     await page.goto('/');
     const result = await page.evaluate(async () => {
       const m = await import('/src/terminal-bell.ts');
@@ -347,7 +347,8 @@ test.describe('终端响铃（T27）', () => {
       const leading = [...plays];
       plays.length = 0;
       bell.configure({ style: 'sound', intervalSeconds: 0 });
-      for (const at of [10000, 10399, 10400, 10401, 10800]) ring(at);
+      // 4400 is inside the old 2 s window of the bell at 4000: a shorter interval applies at once.
+      for (const at of [4400, 4799, 4800, 4801, 5200]) ring(at);
       const floor = [...plays];
       plays.length = 0;
       const marksAfterSound = [...marked];
@@ -365,21 +366,29 @@ test.describe('终端响铃（T27）', () => {
       try { ring(40000); } catch { threw = true; }
       const flashed = pane.classList.contains('bell-flash');
       bell.forget(2);
+      bell.attach(3, source, pane);
+      throwOnMark = false;
+      ring(50000);
+      const beforeDispose = { pending: bell.pending(3), flash: pane.classList.contains('bell-flash') };
+      bell.dispose();
+      const afterDispose = { pending: bell.pending(3), flash: pane.classList.contains('bell-flash') };
       return {
-        leading, floor, marksAfterSound, marksAgain, marksOff, offPlays: plays.length, threw, flashed, disposed,
+        leading, floor, marksAfterSound, marksAgain, marksOff, offPlays: plays.length, threw, flashed, disposed, beforeDispose, afterDispose,
         pending: bell.pending(2),
         parse: [m.parseBellSettings('sound', ' 7 '), m.parseBellSettings('beep', '2'), m.parseBellSettings('off', '60'), m.parseBellSettings('off', '61')],
       };
     });
     expect(result.leading).toEqual([0, 2000, 4000]);
-    expect(result.floor).toEqual([10000, 10400, 10800]);
+    expect(result.floor).toEqual([4400, 4800, 5200]);
     expect(result.marksAfterSound).toEqual([2]);
     expect(result.marksAgain).toEqual([2, 2]);
     expect(result.marksOff).toEqual([2, 2, 2]);
     expect(result.offPlays).toBe(0);
     expect(result.threw).toBe(false);
     expect(result.flashed).toBe(true);
-    expect(result.disposed).toBe(1);
+    expect(result.disposed).toBe(2);
+    expect(result.beforeDispose).toEqual({ pending: true, flash: true });
+    expect(result.afterDispose).toEqual({ pending: false, flash: false });
     expect(result.pending).toBe(false);
     expect(result.parse).toEqual([
       { style: 'sound', intervalSeconds: 7 }, '请选择响铃样式', { style: 'off', intervalSeconds: 60 }, '重复间隔须为 0–60 的整数秒',

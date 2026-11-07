@@ -73,6 +73,8 @@ export interface TerminalBell {
   forget(key: number): void;
   /** One tone now, from a user gesture (settings preview). */
   preview(): void;
+  /** Removes the window gesture listeners and every session's subscription and cue. */
+  dispose(): void;
 }
 
 export interface BellOptions {
@@ -112,8 +114,9 @@ export function createTerminalBell(host: BellHost, options: BellOptions = {}): T
   const unlock = () => {
     if (settings.style === "sound" && sound.locked) sound.unlock();
   };
-  window.addEventListener("pointerdown", unlock, { capture: true, passive: true });
-  window.addEventListener("keydown", unlock, { capture: true, passive: true });
+  const listening = new AbortController();
+  for (const type of ["pointerdown", "keydown"])
+    window.addEventListener(type, unlock, { capture: true, passive: true, signal: listening.signal });
 
   function cue(entry: Entry) {
     const { pane } = entry;
@@ -152,6 +155,8 @@ export function createTerminalBell(host: BellHost, options: BellOptions = {}): T
     get settings() {
       return settings;
     },
+    // No stored windows: each bell is compared with the interval in force when it arrives, so
+    // a shorter interval applies at once to the time since the session's last accepted bell.
     configure(next) {
       settings = Object.freeze({ style: next.style, intervalSeconds: next.intervalSeconds });
       told.clear();
@@ -180,18 +185,23 @@ export function createTerminalBell(host: BellHost, options: BellOptions = {}): T
       const entry = entries.get(key);
       if (entry) entry.pending = false;
     },
-    forget(key) {
-      const entry = entries.get(key);
-      if (!entry) return;
-      clearCue(entry);
-      entry.subscription.dispose();
-      entries.delete(key);
-    },
+    forget,
     preview() {
       sound.unlock();
       sound.play();
     },
+    dispose() {
+      listening.abort();
+      for (const key of [...entries.keys()]) forget(key);
+    },
   };
+  function forget(key: number) {
+    const entry = entries.get(key);
+    if (!entry) return;
+    clearCue(entry);
+    entry.subscription.dispose();
+    entries.delete(key);
+  }
 }
 
 /** Accessible text of a mark; static, never built from session or terminal data. */
