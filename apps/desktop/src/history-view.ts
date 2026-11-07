@@ -138,6 +138,7 @@ export class HistoryView {
     const close = button("", "icon-button history-close");
     close.setAttribute("aria-label", "关闭历史，回到终端");
     close.title = "关闭（Esc）";
+    // The only markup in the view: a static icon from icons.ts, no terminal or session text.
     close.innerHTML = icon("close");
     close.addEventListener("click", () => this.close(true));
     actions.append(refresh, close);
