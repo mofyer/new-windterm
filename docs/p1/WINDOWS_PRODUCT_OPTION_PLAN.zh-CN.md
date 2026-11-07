@@ -27,7 +27,7 @@
 ## 2. 当前产品启动契约（源码核对，`35aee13`）
 
 - 八项白名单和 PowerShell 固定 argv 都在 `apps/desktop/src-tauri/src/local_shell.rs` 的 `command_at`。`pty.rs` 只经 `platform::command_with_options`（`pty.rs:580`）取得构造好的命令，没有 PowerShell 专属逻辑。
-- `command_at` 的 argv：`bash` 为 `--noprofile --norc -i`，`zsh` 为 `-f -i`，`"pwsh" | "powershell"` 共用 `-NoLogo -NoProfile`，`cmd` 为 `/D /Q /K`。随后 `env_clear()`。Windows 非 cmd 分支必须有 `SystemRoot`、`PATH`，`ComSpec` 和 `USERPROFILE`、`TEMP`、`TMP`、`APPDATA`、`LOCALAPPDATA` 存在时才复制，合计八项；cwd 默认为 `temp_dir()`。
+- `command_at` 的 argv：`bash` 为 `--noprofile --norc -i`，`zsh` 为 `-f -i`，`"pwsh" | "powershell"` 共用 `-NoLogo -NoProfile`，`cmd` 为 `/D /Q /K`。随后 `env_clear()`。Windows 非 cmd 分支中，`SystemRoot`、`PATH` 必须存在（缺失即报错），`ComSpec`、`USERPROFILE`、`TEMP`、`TMP`、`APPDATA`、`LOCALAPPDATA` 六项存在时才复制，最多合计八项；cwd 默认为 `temp_dir()`。
 - Windows 候选只有 `cmd`、`powershell`、`pwsh`，Unix 候选只有 `bash`、`zsh`、`pwsh`。Windows 默认一键入口是 `platform::local_command` 的 cmd（`SystemRoot`、`ComSpec`、`PATH` 加 `PROMPT`），不经过 `command_at`。
 - `platform::command_with_options` 依次执行：校验 env/locale、校验 cwd、`command_at` 或 `local_command`、设置 cwd，最后 `local_environment::apply`。用户 env 条目在产品环境之后写入，可以覆盖未保留的名称。
 - `local_environment.rs` 的 `RESERVED` 含 `PSModulePath`，保留前缀含 `DOTNET_`、`CORECLR_`、`COR_`、`COMPlus_`；`PSModuleAnalysisCachePath` 不在保留名单中。
