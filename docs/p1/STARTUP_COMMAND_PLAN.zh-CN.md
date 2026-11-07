@@ -175,7 +175,7 @@
 
 **Windows PowerShell 5.1 / PowerShell 7**
 
-- 参数 `-NoLogo -NoProfile`。`-NoProfile` 不等于禁用历史；PSReadLine 若加载，可能把命令写入磁盘历史文件（未验证）。
+- 参数 `-NoLogo -NoProfile`；Windows PowerShell 5.1 按[方案 A](WINDOWS_PRODUCT_OPTION_PLAN.zh-CN.md)在其后追加固定的 `-NoExit -Command Import-Module -Name Microsoft.PowerShell.Management -ErrorAction Stop`，产品启动链因此内置一条导入命令，仍无 `Get-Location`（Windows 运行效果、与启动后命令的先后顺序均未验证）。`-NoProfile` 不等于禁用历史；PSReadLine 若加载，可能把命令写入磁盘历史文件（未验证）。
 - **首次 cmdlet 慢路径**：只引用 [执行记录](RESULTS.zh-CN.md) 的结论，不重新解释根因。在产品白名单环境下，未限定的首次查询有以下观测：
 
   | 运行 | 测量 | 观测值 |
