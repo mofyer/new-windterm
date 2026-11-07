@@ -15,6 +15,7 @@ import { attachInsertTextBridge, attachKeyDefaultGuard, attachPasteGuard, sendUn
 import { demoInput, demoWelcome, type DemoView } from "./demo-session";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 import { createSessionHistory, type SessionHistory } from "./history-capture";
+import { attachKeyboard, snapshotKeyboard, type KeyboardOptions } from "./terminal-keyboard";
 
 /**
  * Session lifecycle and terminal transport. Each session has one entry per action: open
@@ -47,6 +48,8 @@ export type Session = {
   vt: VtAdapters;
   /** Character encoding of output and input; UTF-8 unless chosen (see `session-encoding.ts`). */
   codec: SessionCodec;
+  /** Keyboard and initial modes (see `terminal-keyboard.ts`); a local session's is in `launch`. */
+  keyboard: KeyboardOptions;
   fit: FitAddon;
   element: HTMLElement;
   observer: ResizeObserver;
@@ -222,7 +225,9 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     host.status();
   }
 
-  function createSession(name: string, mode: Mode, options?: LaunchOptions, encoding?: EncodingId): Session | undefined {
+  function createSession(
+    name: string, mode: Mode, options?: LaunchOptions, encoding?: EncodingId, keyboardOptions?: KeyboardOptions,
+  ): Session | undefined {
     if (sessions.size >= MAX_WORKSPACE_SESSIONS) {
       host.notify(`P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`);
       return;
@@ -244,6 +249,10 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     terminal.loadAddon(fit);
     terminal.open(element);
     const launch = snapshotLaunchOptions(options);
+    // Like the encoding, a local session's keyboard options are part of its launch snapshot.
+    const keyboard = mode === "pty" ? launch.keyboard : snapshotKeyboard(mode === "demo" ? undefined : keyboardOptions);
+    // Before any host output or key: sets the option, queues the initial modes, adds the remap.
+    const keys = attachKeyboard(terminal, keyboard);
     const s: Session = {
       key: nextKey++,
       name,
@@ -254,6 +263,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       vt,
       // A local session's encoding is part of its launch snapshot, so reopening keeps it.
       codec: new SessionCodec(mode === "pty" ? launch.encoding : encoding),
+      keyboard,
       fit,
       element,
       observer: new ResizeObserver(() => {
@@ -287,7 +297,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
       }
       // A keystroke, paste or IME commit is encoded as a whole; if any character cannot be
       // represented, none of it is sent. The notice gives a count only, never the input itself.
-      const encoded = s.codec.encode(data);
+      // Backspace / Delete bytes chosen for this session; anything else passes through unchanged.
+      const encoded = s.codec.encode(keys.rewrite(data));
       if (encoded.ok) queueInput(s, encoded.bytes, replyInputDepth > 0 ? "reply" : "user");
       else
         host.notify(`「${s.name}」的输入中有 ${encoded.unencodable} 个字符无法用 ${encodingLabel(s.codec.encoding)} 表示；本次输入未发送。`);
@@ -438,7 +449,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     }
   }
   function openSsh(request: SshTerminalRequest): boolean {
-    const s = createSession(request.name, "ssh", undefined, request.encoding);
+    const s = createSession(request.name, "ssh", undefined, request.encoding, request.keyboard);
     if (!s) return false;
     s.operationId = request.operationId;
     s.status = "正在认证并打开 SSH…";
@@ -479,7 +490,7 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     }
   }
   function openNet(request: NetTerminalRequest): boolean {
-    const s = createSession(request.name, "net", undefined, request.encoding);
+    const s = createSession(request.name, "net", undefined, request.encoding, request.keyboard);
     if (!s) return false;
     s.netKind = netLabel(request.kind);
     // The client-chosen ID can be closed while the connection is still pending.

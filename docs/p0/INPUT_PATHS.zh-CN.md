@@ -116,6 +116,7 @@ Unicode 11 插件下的单元宽度（pty/ssh 以 1 字节分块写入，演示�
 - 若开启 `macOptionIsMeta`（仅测试中运行时切换，未改产品配置）：Option+F 发送 `ESC f`；代价是德语、法语等布局依赖 Option 输入的 `@ [ ] { } | ~` 等字符将无法输入，Option 死键（如美式布局 Option+E）也会变成 `ESC e`。
 - Windows / Linux（`Win32`、`Linux x86_64`）：Alt 即 Meta，Alt+F 发送 `ESC f`，Alt+← 发送 `ESC[1;3D`。
 - 建议后续做成设置项（可参考常见终端“左 Option 作 Meta、右 Option 输入字符”的做法），并在 macOS 原生窗口中用真实键盘布局验证；本轮未修改该配置，也没有核对 WindTerm 2.7.0 的对应行为。
+- 2026-11-07 补记：T31 第一部分已把 macOS Option 作 Meta、Backspace / Delete 发送值与初始光标键模式做成每会话选项，默认仍为上述行为；不区分左右 Option。仍只在 Chrome + IPC stub 中验证，见 [T31 计划](../p1/KEYBOARD_MODES_PLAN.zh-CN.md)。
 
 ## 测试与命令
 

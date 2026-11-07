@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { validateStartupCommand } from "./startup-command";
 import { DEFAULT_ENCODING, isEncodingId, type EncodingId } from "./text-encoding";
 import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
+import { snapshotKeyboard, type KeyboardOptions } from "./terminal-keyboard";
+import { createKeyboardField } from "./terminal-keyboard-ui";
 
 export type EnvironmentVariable = Readonly<{ name: string; value: string }>;
 export type LocaleOptions = Readonly<{ mode: "default" | "custom"; variables: readonly EnvironmentVariable[] }>;
@@ -20,6 +22,11 @@ export type LaunchOptions = Readonly<{
    * only, like `command`: Rust keeps forwarding raw bytes and never receives it.
    */
   encoding: EncodingId;
+  /**
+   * Keyboard and initial modes of the session's terminal (see `terminal-keyboard.ts`). Frontend
+   * only, like `encoding`: never part of the `pty_open` arguments.
+   */
+  keyboard: KeyboardOptions;
 }>;
 /** Exactly the launch fields `pty_open` takes. */
 export type NativeLaunchArguments = Readonly<Pick<LaunchOptions, "cwd" | "shell" | "env" | "locale">>;
@@ -34,6 +41,7 @@ export function snapshotLaunchOptions(options?: Partial<LaunchOptions>): LaunchO
     locale: options?.locale ? Object.freeze({ mode: options.locale.mode, variables: copy(options.locale.variables) }) : null,
     command: options?.command || null,
     encoding: isEncodingId(options?.encoding) ? options.encoding : DEFAULT_ENCODING,
+    keyboard: snapshotKeyboard(options?.keyboard),
   });
 }
 
@@ -76,6 +84,9 @@ export function createLocalLaunchOptions(
     `${ENCODING_HINT}本地 Shell 的 locale 请在下方 Locale 中另行设置（例如 zh_TW.Big5）。`,
   );
   dialog.querySelector("#local-command-hint")!.after(encodingField);
+  // Also about the bytes the session sends; collapsed, so an untouched form keeps the defaults.
+  const keyboard = createKeyboardField("local");
+  encodingField.after(keyboard.field);
   let generation = 0;
   let choices: ShellChoice[] = [];
   let discovered = false;
@@ -261,6 +272,7 @@ export function createLocalLaunchOptions(
       // Exactly as typed: no trimming, quoting or expansion; empty means no command.
       command: command.value === "" ? null : command.value,
       encoding: chosenEncoding,
+      keyboard: keyboard.read(),
     }))) dialog.close();
   };
   if (!native) {
@@ -275,6 +287,7 @@ export function createLocalLaunchOptions(
         command.value = options.command ?? "";
         command.removeAttribute("aria-invalid");
         encoding.value = options.encoding;
+        keyboard.set(options.keyboard);
         render(options.shell ?? "");
         envRows.replaceChildren();
         localeRows.replaceChildren();

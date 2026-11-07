@@ -1,5 +1,6 @@
 import type { Terminal } from "@xterm/xterm";
 import type { SessionHistory } from "./history-capture";
+import { initialModeSequence, type KeyboardOptions } from "./terminal-keyboard";
 
 /**
  * User-triggered clear and reset actions on one workspace terminal (T32; semantics, effects and
@@ -70,6 +71,8 @@ export interface ActionTarget {
   readonly history?: SessionHistory;
   readonly disposed: boolean;
   readonly closing?: boolean;
+  /** The session's T31 options; a hard reset ends in its initial modes, like a new session. */
+  readonly keyboard?: KeyboardOptions;
 }
 
 export interface ActionResult {
@@ -101,10 +104,13 @@ export function unavailableReason(target: ActionTarget | undefined, action: Term
 export function runTerminalAction(target: ActionTarget, action: TerminalAction): Promise<ActionResult> {
   const spec = ACTIONS[action];
   const { terminal } = target;
+  // Same write, so no host output can come between the reset and the session's initial modes.
+  // Empty for default options: the sequence is then exactly the one documented for T32.
+  const sequence = action === "reset-hard" ? spec.sequence + initialModeSequence(target.keyboard) : spec.sequence;
   const notApplied: ActionResult = Object.freeze({ applied: false, alternate: false, clearedLines: 0 });
   return new Promise((resolve) => {
     try {
-      terminal.write(spec.sequence, () => {
+      terminal.write(sequence, () => {
         if (target.disposed) {
           resolve(notApplied);
           return;

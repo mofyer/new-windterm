@@ -5,6 +5,8 @@ import { icon } from "./icons";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 import { DEFAULT_ENCODING, type EncodingId } from "./text-encoding";
 import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
+import { DEFAULT_KEYBOARD, type KeyboardOptions } from "./terminal-keyboard";
+import { createKeyboardField } from "./terminal-keyboard-ui";
 
 type Trust = "new" | "known" | "changed";
 type Challenge = {
@@ -36,6 +38,8 @@ export type SshTerminalRequest = {
   agentForwarding?: boolean;
   // Terminal only: the tab's character encoding. Frontend only; `ssh_open` never receives it.
   encoding?: EncodingId;
+  // Terminal only: the tab's keyboard and initial modes. Frontend only, like `encoding`.
+  keyboard?: KeyboardOptions;
 };
 type Purpose = "verification" | "terminal" | "files";
 
@@ -113,6 +117,11 @@ export function createSshVerification(
   encodingField.id = "ssh-encoding-fields";
   encodingField.hidden = true;
   get("ssh-agent-forward-fields").after(encodingField);
+  const keyboardField = createKeyboardField("ssh");
+  keyboardField.field.hidden = true;
+  encodingField.after(keyboardField.field);
+  // Read with the encoding at probe time and held until hand-off.
+  let keyboard: KeyboardOptions = DEFAULT_KEYBOARD;
   // The terminal's encoding, read with the other fields at probe time and held until hand-off.
   let encoding: EncodingId = DEFAULT_ENCODING;
   // Held only between probe and accept/hand-off; cleared with the dialog.
@@ -163,6 +172,7 @@ export function createSshVerification(
     jumpCredential = undefined;
     agentForwarding = false;
     encoding = DEFAULT_ENCODING;
+    keyboard = DEFAULT_KEYBOARD;
   };
   const clear = () => {
     form.reset();
@@ -184,6 +194,7 @@ export function createSshVerification(
     get("ssh-changed").hidden = true;
     agentForward.checked = false;
     encodingSelect.value = DEFAULT_ENCODING;
+    keyboardField.set(DEFAULT_KEYBOARD);
     get("ssh-agent-forward-warning").hidden = get("ssh-agent-forward-reminder").hidden = true;
     error.textContent = status.textContent = "";
   };
@@ -297,6 +308,7 @@ export function createSshVerification(
     jumpCredential = routed.jumpCredential;
     agentForwarding = purpose === "terminal" && agentForward.checked;
     encoding = purpose === "terminal" ? readEncoding(encodingSelect) : DEFAULT_ENCODING;
+    keyboard = purpose === "terminal" ? keyboardField.read() : DEFAULT_KEYBOARD;
     for (const id of ["ssh-passphrase", "ssh-password", "ssh-kbdint-1", "ssh-kbdint-2"]) get<HTMLInputElement>(id).value = "";
     fields.disabled = probe.disabled = true;
     retry.hidden = true;
@@ -413,7 +425,7 @@ export function createSshVerification(
         challengeToken: token, scopeToken, operationId: crypto.randomUUID(),
         name: `${challenge.host}:${challenge.port}`, credential: credential ?? { method: "key" },
         ...(purpose === "terminal" && agentForwarding ? { agentForwarding: true } : {}),
-        ...(purpose === "terminal" ? { encoding } : {}),
+        ...(purpose === "terminal" ? { encoding, keyboard } : {}),
       };
       const started = purpose === "terminal" ? openTerminal(handoff) : openFiles(handoff);
       if (!started) {
@@ -499,7 +511,7 @@ export function createSshVerification(
       }[mode];
       accept.textContent = { verification: "仅本次信任并验证", terminal: "仅本次信任并打开终端", files: "仅本次信任并浏览文件" }[mode];
       get("ssh-agent-forward-fields").hidden = mode !== "terminal";
-      encodingField.hidden = mode !== "terminal";
+      encodingField.hidden = keyboardField.field.hidden = mode !== "terminal";
       clear();
       resetView();
       get("ssh-browser-note").hidden = desktop;

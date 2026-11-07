@@ -3,12 +3,14 @@ import { icon } from "./icons";
 import { MAX_WORKSPACE_SESSIONS } from "./history-budget";
 import { DEFAULT_ENCODING, type EncodingId } from "./text-encoding";
 import { createEncodingField, ENCODING_HINT, readEncoding } from "./session-encoding-ui";
+import { DEFAULT_KEYBOARD, type KeyboardOptions } from "./terminal-keyboard";
+import { createKeyboardField } from "./terminal-keyboard-ui";
 
 export type NetKind = "telnet" | "raw";
 /** What the desktop backend's `net_open` receives as `target`. */
 export type NetTarget = { kind: NetKind; host: string; port: number };
-/** `encoding` stays in the frontend; `net_open` receives only the target. */
-export type NetTerminalRequest = NetTarget & { name: string; encoding: EncodingId };
+/** `encoding` and `keyboard` stay in the frontend; `net_open` receives only the target. */
+export type NetTerminalRequest = NetTarget & { name: string; encoding: EncodingId; keyboard: KeyboardOptions };
 
 export const netLabel = (kind: NetKind) => (kind === "telnet" ? "Telnet" : "Raw TCP");
 
@@ -50,6 +52,8 @@ export function createNetTerminalDialog(
   const error = get("net-error");
   const { field: encodingField, select: encoding } = createEncodingField("net", ENCODING_HINT);
   get("net-note").after(encodingField);
+  const keyboard = createKeyboardField("net");
+  encodingField.after(keyboard.field);
   const desktop = isTauri();
   const showNote = () => {
     get("net-note").textContent = NOTES[kind.value as NetKind];
@@ -79,7 +83,7 @@ export function createNetTerminalDialog(
       return;
     }
     const name = `${netLabel(target.kind)} ${target.host}:${target.port}`;
-    if (!openTerminal({ ...target, name, encoding: readEncoding(encoding) })) {
+    if (!openTerminal({ ...target, name, encoding: readEncoding(encoding), keyboard: keyboard.read() })) {
       error.textContent = `无法打开新标签：P0 最多同时打开 ${MAX_WORKSPACE_SESSIONS} 个会话。`;
       return;
     }
@@ -91,6 +95,7 @@ export function createNetTerminalDialog(
       port.value = "23";
       host.value = "";
       encoding.value = DEFAULT_ENCODING;
+      keyboard.set(DEFAULT_KEYBOARD);
       error.textContent = "";
       showNote();
       get("net-browser-note").hidden = desktop;
