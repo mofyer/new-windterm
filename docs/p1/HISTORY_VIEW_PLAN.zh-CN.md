@@ -6,6 +6,8 @@
 
 本记录的证据全部来自浏览器 IPC stub（系统 Chrome + Vite 开发服务器）。**没有**原生 WebView、Rust、CI、IME 或读屏验收，没有实测 WindTerm 2.7.0 的查找界面。
 
+2026-11-07 按用户决定（第二组第 12 项）在分支 `p1/history-regex`（基于 `9ba1ad3`）加入正则搜索：只在专用 Web Worker 中编译与匹配，每批设超时，超时或中止时终止 Worker。设计、CSP 与验证见[第 16 节](#16-正则搜索2026-11-07用户决定第二组第-12-项)；第 6、11、12、14 节已按此更新。
+
 ## 1. 上游对照（静态，未实测）
 
 来源同 [T32 预案](CLEAR_RESET_PLAN.zh-CN.md#1-上游盘点静态未实测)：`.reference/WindTerm-P0.app` 的 `terminal/configs/menu.config`（`MNU`）、`global/wind.actions`（`ACT`）、`global/wind.keymaps`（`KEY`），以及[静态复核](../p0/UPSTREAM_STATIC_REVIEW.zh-CN.md#gui-与工作流)的 G20、G21 行。只对照行为，没有复制脚本或资源。
@@ -33,7 +35,7 @@
 
 视图打开期间，终端元素设为 `inert`：被覆盖、看不见的终端不能获得焦点或接收按键（否则用户以为在输入搜索词，字符却发给了 Shell）。`inert` 只是 DOM 属性，不改 xterm 的任何状态；关闭视图时移除。若程序开启了焦点报告（DECSET 1004），焦点从终端移到视图会照常让 xterm 发出一次失焦报告，这与点击工作台其他控件相同。
 
-视图组成（自上而下）：标题行（「历史」、会话名、“第 a–b 行 · 共 n 行”、「刷新」、关闭）、提示行（见第 5 节，没有提示时隐藏）、查找行（搜索框、「区分大小写」切换、状态、「上一处」「下一处」「停止」「复制所选行」）、行列表。
+视图组成（自上而下）：标题行（「历史」、会话名、“第 a–b 行 · 共 n 行”、「刷新」、关闭）、提示行（见第 5 节，没有提示时隐藏）、查找行（搜索框、「区分大小写」与「正则」切换、状态、「上一处」「下一处」「停止」「复制所选行」）、行列表。
 
 ## 4. 热历史、冷归档与屏幕如何拼成连续行号
 
@@ -58,7 +60,8 @@
 
 ## 6. 搜索语义
 
-- **纯文本**：查询词按字面匹配。实现上把它转义为不含量词、分组或分支的正则（带 `u` 标志），匹配时间与行长成线性关系，任何输入都不会造成灾难性回溯。**不提供正则搜索**（待决问题 2）。
+- **纯文本**（默认）：查询词按字面匹配。实现上把它转义为不含量词、分组或分支的正则（带 `u` 标志），匹配时间与行长成线性关系，任何输入都不会造成灾难性回溯。
+- **正则**：「正则」切换开启后，查询词是 JavaScript 正则表达式，只在专用 Web Worker 中编译与匹配，每批行设超时，主线程不执行用户正则（第 16 节）。下列大小写、范围、跨行、宽字符、顺序、上限、起点与取消规则两种模式相同。
 - **大小写**：默认不区分，「区分大小写」切换后立即重新搜索。不区分时用 Unicode 简单大小写折叠（例如不会把 “ß” 与 “SS” 视为相同）。不提供全词匹配、选区内查找与增量查找。
 - **范围**：快照中的全部行，即保留的冷归档（逐块按需解压）加屏幕行；SGR 已去掉，只匹配文字。不搜索已丢弃、已清除的行，不搜索备用屏。
 - **跨行与跨块**：匹配不跨逻辑行（硬换行结束一行）；终端自动换行的多行已合成一个逻辑行，所以跨软换行的匹配能找到。归档块只含整行，块边界不会切开匹配。
@@ -105,7 +108,7 @@
 - 不滚动、不选中、不修改终端；跳转只在视图里。
 - 不实时跟随新输出（快照）；不显示备用屏内容；不搜索已丢弃或已清除的行；缺口不能补回。
 - 宽字符在视图中的对齐取决于等宽字体对 CJK 与 emoji 的字形宽度，不保证与终端单元格逐列对齐；视图不画 OSC 8 超链接、图片、闪烁、下划线颜色等未存入归档的属性。
-- 没有正则、全词、选区内或增量查找，没有命中列表与上下文行数设置，没有打开视图的快捷键，没有右键菜单。
+- 没有全词、选区内或增量查找，没有命中列表与上下文行数设置，没有打开视图的快捷键，没有右键菜单。正则搜索（第 16 节）不接受用户指定的标志，不报告零长度匹配。
 - 双向文字：每行以 `unicode-bidi: isolate` 隔离，主机输出的方向控制字符不会影响其他行或界面，但行内显示仍按浏览器的双向算法，与终端逐格绘制可能不同。
 - 不代表 Q06、G20、G21 已对齐或验收；原生 WebView 中的剪贴板、内存与性能未测。
 
@@ -121,6 +124,7 @@
 | `session-lifecycle.ts` | `Session.historyView` 字段；`close()` 与 `shutdown()` 在释放冷归档之前释放视图（4 行） |
 | `main.ts` | 创建入口、命令面板一项、`focusActive()` 用于选择标签/关闭对话框/T32 后的焦点、状态刷新时同步工具栏按钮 |
 | `style.css` | 视图样式（中性色，强调色只用于当前命中、当前行与焦点；4px 网格）；终端窗格 `isolation: isolate`，使覆盖层盖住 xterm 自身的层而窗格外的菜单仍在上方 |
+| `history-regex.ts`、`history-regex-worker.ts`、`history-regex-protocol.ts`、`history-search-text.ts`（2026-11-07 正则） | 主线程正则搜索客户端（分批、超时、终止）、专用 Worker、消息类型、搜索状态文案；`history-budget.ts` 新增 3 个正则常量，`history-view.ts` 新增「正则」切换并按模式分派，`style.css` 一条选择器（第 16 节） |
 
 所有终端文本、会话名都只经 `textContent` 或属性写入 DOM；唯一的 `innerHTML` 是 `icons.ts` 的静态关闭图标。颜色由 SGR 的数字参数生成（16 色经终端主题的 CSS 变量，256 色与 RGB 由数字计算），不来自主机字符串。
 
@@ -168,6 +172,7 @@
    - A：不提供（现状）。
    - **B（推荐）**：在 Web Worker 中执行正则，设时间上限，超时终止 Worker 并提示“已超时”，主线程永不被回溯卡住；CSP `script-src 'self'` 允许同源 Worker，需原生验证。
    - C：引入线性时间引擎（如 RE2 的 WebAssembly 版），需要新增依赖和 CSP 的 `wasm-unsafe-eval`，不推荐。
+   - **已决定（2026-11-07，第二组第 12 项）：B**。已在 `p1/history-regex` 实现：Worker 中编译与匹配，每批 1 秒超时，超时、停止、新查询、刷新、关闭视图或标签时终止 Worker，CSP 未改；原生 WebView 中的 Worker 与 CSP 仍待验证，见第 16 节。
 3. **命中列表与上下文预览（G21）**
    - A：维持现状，视图本身即上下文。
    - **B（推荐）**：上游实测后，增加“全部命中”列表（每处一行，含前后若干行上下文，点击跳转），上下文行数先按上游默认 2。
@@ -196,11 +201,87 @@
 
 **独立审查**（只读 `code-reviewer`，审查提交 `b06808c`）：APPROVE，无 CRITICAL/HIGH/MEDIUM。审查者自行运行 `npm run build`、`history-view.spec.ts` 11/11 与 `history-archive.spec.ts` 12/12，并逐项核对：终端文本只经 `textContent`/属性写入，颜色只由数字生成；`unreadStart` 只读不改 marker 与复位/清除标记；`sealing` 在同一同步步骤中移出并加入或丢弃，读取先同步取三组快照；Esc、关闭标签与页面卸载都先释放视图再释放归档；被取代的搜索不再更新界面；行映射、按比例滚动与隐藏标签后的位置恢复正确。3 项 LOW：提交署名行（按共享规则与本会话的提交署名要求填写，未改）；视图里唯一的 `innerHTML` 是 `icons.ts` 的静态关闭图标（与 `main.ts` 相同写法，已加注释说明）；`history-view.ts` 757 行接近 800 行上限（本次不拆，接入折叠/大纲时拆出搜索或 DOM 构建）。
 
+## 16. 正则搜索（2026-11-07，用户决定第二组第 12 项）
+
+分支 `p1/history-regex`，基于 `p1/integration` 的 `9ba1ad3`。只改前端，未改 Rust、Tauri 命令、ACL、CSP、Vite 配置与依赖。证据全部来自系统 Chrome（Vite 开发服务器 + IPC stub，另有一次生产构建临时检查），**不是**原生 WebView 结论。
+
+### 16.1 入口与语义
+
+- 查找行「区分大小写」右侧新增文字切换「正则」（`aria-pressed`，与「区分大小写」同一样式与按下态；按去模板化约定不用 `.*` 之类文字字形当图标，没有新增图标，`icons.ts` 未改），默认关闭。关闭时走原来的纯文本搜索函数与转义，行为不变；开启时占位符改为“正则表达式”。有查询词时切换立即重新搜索，与「区分大小写」相同。
+- 输入框的全部内容就是正则的 source，**不解析 `/…/flags`**（斜杠属于模式），用户不能指定标志。标志固定为 `g`、`u`，不区分大小写时加 `i`；**不使用 `v`**（应用最低 macOS 13.3 的 WebKit 相当于 Safari 16.4，不支持 `v`），也不使用 `s`、`m`、`y`、`d`。`u` 下为严格的 Unicode 语法（例如字符类外的 `\-` 无效），`.` 与字符类按码点匹配、不切开代理对，忽略大小写用 Unicode 简单大小写折叠，与纯文本搜索一致。每个逻辑行单独匹配，`^`、`$` 即行首、行尾，匹配不跨行。
+- **后顾（lookbehind）**、前瞻、命名组与反向引用原样交给 WebView 的正则引擎：Chrome 与 WebView2 支持后顾（本次在 Chrome 中验证）；WKWebView 自 Safari 16.4 起支持，与最低系统版本相同；WebKitGTK 取决于发行版的 WebKit 版本，不支持时编译失败并显示“正则表达式无效”。三种原生 WebView 均未实测。
+- 零长度匹配（`^`、`a*` 落在没有 `a` 处等）不计为命中，因为无法高亮；因此不能用 `^$` 找空行。匹配不重叠。
+- 命中上限（最新 10,000 处）、从新到旧顺序、新搜索的起点、跳转与循环、行内高亮、复制整行，都与纯文本搜索相同：两者产出同一种结果结构，由视图同一段代码处理。
+- 状态行只由固定文字和数字组成，不回显查询词，也不显示引擎的英文错误消息：
+
+| 情况 | 状态行 |
+| --- | --- |
+| 模式无法编译 | “正则表达式无效，请检查括号、量词与转义”，搜索框 `aria-invalid="true"` |
+| 某批超过时间上限 | “匹配超时，已停止：第 k 处，已找到 N 处（未搜索完，一批行超过 1 秒）” |
+| Worker 无法启动（加载失败、CSP 拒绝、5 秒内没有应答） | “正则搜索不可用：后台线程未能启动” |
+| 引擎抛错或应答不合法 | “正则匹配出错，已停止：第 k 处，已找到 N 处（未搜索完）” |
+
+超时或出错前已找到的命中仍可用「上一处」「下一处」浏览；与“已停止”相同，在搜索框按 Enter 会重新搜索。
+
+### 16.2 Worker 设计
+
+- `history-regex-worker.ts` 是专用 module Worker，也是**唯一**编译与执行用户正则的地方；`history-regex-protocol.ts` 只有消息类型，不含运行代码，主包不包含匹配代码。
+- `history-regex.ts`（主线程）：每个视图一个 `RegexWorker`，第一次正则搜索时才创建，同一时刻只有一个请求在途。`searchHistoryRegex` 走与纯文本搜索相同的行（屏幕行，然后归档 `scanBackward` 从新到旧逐块按需解压），在主线程用 `plainText` 去掉 SGR，只发送行文本：每批最多 512 行（`ARCHIVE_BLOCK_LINES`）且合计最多 65,536 个 UTF-16 单元，更长的单行单独一批。编译消息只有 `kind/search/source/caseSensitive`，匹配消息只有 `kind/search/batch/lines/limit`，不发送颜色、行号或其他数据。
+- Worker 返回扁平的 `[批内行号, start, end]`，按批内从新到旧、行内从右到左排列，最多返回仍缺少的命中数（每行只保留最右边的若干处，内存有界）。主线程核对搜索号与批号、条数上限，以及每处是整数、非空、在该行长度之内，不合格即作为“出错”终止 Worker，然后才换算为绝对行号。
+- 时间上限（`history-budget.ts` 的命名常量）：`HISTORY_REGEX_BATCH_TIMEOUT_MS = 1_000`（每批匹配）、`HISTORY_REGEX_START_TIMEOUT_MS = 5_000`（加载 Worker 脚本并编译）、`HISTORY_REGEX_BATCH_CHARS = 65_536`（每批文本量）。计时在主线程，到时立即 `terminate()`，不论引擎正在做什么。1 秒是每批上限，不是整次搜索的上限。
+- 终止：搜索运行期间在其 `AbortSignal` 上挂监听，「停止」、新查询（含切换大小写或正则）、「刷新」、Esc / 关闭按钮 / 工具栏按钮关闭视图、关闭标签与页面卸载（经 `Session.historyView` 的释放路径）都会立即 `terminate()` 正在工作的 Worker；超时、Worker `error` / `messageerror`、不合法应答也终止。正常结束的搜索保留空闲 Worker 给下一次查询，视图 `dispose` 时一并终止。下一次正则搜索时重建。
+- 主线程从不编译或执行用户正则：纯文本路径仍只编译转义后的字面量；正则路径只发送字符串。若原生环境中 Worker 无法启动，只显示“不可用”，不会退回主线程执行。
+
+### 16.3 CSP
+
+**未改动**。`tauri.conf.json` 的 `csp` 与 `devCsp` 都是 `default-src 'self'; script-src 'self'; …`，没有 `worker-src`；按 CSP Level 3，Worker 脚本回退到 `script-src 'self'`，允许同源脚本。Vite 生产构建把 Worker 打包为同源文件 `assets/history-regex-worker-<hash>.js`（1.1 KB，IIFE，无导入、无 `eval`），主包以 `new Worker(new URL(...), { type: "module" })` 引用；不使用 `blob:` / `data:` Worker，`new RegExp` 不受 CSP 限制，也不需要 `unsafe-eval` 或 `wasm-unsafe-eval`。因此不需要最小修改，未运行 `cargo check`（Rust 与 Tauri 配置均未改）。
+
+Chrome 中的证据（不是原生）：
+
+1. 新增 E2E：探针页以生产 CSP 作为响应头，经应用模块完成一次三行正则搜索，结果与预期逐项相同；对照组在同一策略后追加 `worker-src 'none'`，结果为“不可用”，说明策略确实约束 Worker 且失败路径可用。
+2. 临时检查（未进测试集）：`vite preview` 提供生产构建，首页响应加上生产 CSP 头，演示会话中正则搜索得到 2 处、无效模式提示正确，Worker 地址为 `/assets/history-regex-worker-hRwqpflR.js`；唯一的 CSP 违规是检查脚本故意发起、用来证明策略生效的 `fetch`（被 `connect-src` 拦截）。
+
+**未验证**：WKWebView（`tauri://localhost` 自定义协议）、WebView2（`http://tauri.localhost`）与 WebKitGTK 中能否加载 module Worker，以及 Tauri 在运行时改写 CSP（注入 hash / nonce）后是否仍放行。
+
+### 16.4 验证
+
+本机 macOS arm64，系统 Chrome，Vite 开发服务器端口 1444，IPC stub，workers 2。
+
+- `npm run build` 通过；生产包中没有 `__WINDTERM_P0_DIAGNOSTICS__`、`p0HistoryBudget`、`p0Diagnostics` 等开发诊断名，也没有测试插桩名；新模块不含开发诊断。
+- 基线：`9ba1ad3` 干净导出副本全量浏览器 E2E **639/639**。
+- 新增 [`history-regex.spec.ts`](../../apps/desktop/tests/e2e/history-regex.spec.ts) 7 项。页面在应用加载前装两个插桩（不属于产品）：包装 `window.Worker`，记录每个 Worker 是否被终止及每条消息的字段名、行数、是否含 ESC；用 `Proxy` 包装全局 `RegExp`，记录主线程构造的每个正则的 source。
+  1. 默认关闭、空输入时不创建 Worker；12,000 行中的 12 个带 SGR 颜色的命中：不区分 12 处、区分 4 处，Enter / Shift+Enter 跳转与循环，跨 SGR 段的命中完整高亮，跳转后复制得到整行；关闭「正则」后同一文本按字面搜索为“没有找到”；后顾只高亮数字；`/needle/i` 按字面为“没有找到”。主线程从未构造含用户模式的正则（同时能看到纯文本搜索构造的转义字面量，证明插桩有效）；Worker 只收到 source 与大小写标志，然后是不含 ESC 的纯文本，第一次搜索恰好发送 12,001 行；整个过程只有一个 Worker 且未被终止。
+  2. 4 种无效模式（未闭合分组、反向范围、反向量词、`u` 下无效的转义）显示固定提示、`aria-invalid`、无高亮、按钮禁用，视图中没有引擎英文消息；同一文本按字面可搜索；改为有效模式后恢复正常；Worker 未被终止。
+  3. 灾难性回溯：`(a+)+$` 对 40 个 `a` 加 `!` 的行。屏幕上的 5 处先找到，含长行的批次约 1 秒后超时，状态为超时文案，Worker 被终止；期间送入 2,000 行输出全部按序 ACK，主线程两次事件循环之间最长 13–24 ms；超时前的命中可用按钮浏览。再次运行同一模式并在 300 ms 后点「停止」：忙碌中的 Worker 被终止，1.5 秒后状态仍是“已停止”，没有迟到的超时。随后新正则搜索建立新 Worker 并正常完成，纯文本搜索不受影响；Esc 关闭视图时终止空闲 Worker；无页面错误。
+  4. 20 万行历史中，在同一任务内开始搜索并分别「停止」、换新查询、Esc 关闭视图、关闭标签：每次正在工作的 Worker 都被终止（换新查询时旧 Worker 终止、新 Worker 继续并完成）；关闭标签后视图、归档、视图的 `WeakRef` 与最后一个 Worker 的 `WeakRef` 在 GC 后都不再存活（R2），无页面错误。
+  5. 12,000 行混合内容中同一组命中（`defghijab`，41,088 处）：纯文本与正则 `d[e]fgh.ja(?=b)b` 都显示“第 10,000 处，共 10,000 处（已达上限…）”，最新一处与最早保留的一处（第 417 新的长行）相同；Worker 每批收到的 `limit` 从 10,000 起不增。
+  6. 含 `<img onerror>`、`<script>`、`<svg onload>` 等的输出被正则命中 3 处，高亮与各行逐字为文本，视图中没有生成对应元素，注入代码未执行。
+  7. 生产 CSP 探针与 `worker-src 'none'` 对照（16.3 第 1 条）。
+- 新增 7 项 `--repeat-each 5`：**35/35**。
+- 反向验证（逐项临时修改、只跑相关用例、还原后逐字节比对，工作树 diff 哈希不变）：把带 SGR 的原始行发给 Worker → 第 1 项失败；搜索运行时 abort 不终止 Worker → 第 4 项失败；视图 `dispose` 不终止 Worker → 第 3 项失败；批超时改为 600 秒 → 第 3 项失败（一直“正在搜索”）；在主线程执行用户正则 → 第 1 项失败（插桩记录到 8 个用户模式）。
+- 全量浏览器 E2E：见 16.5。
+- 未运行 Rust 门禁、wincheck、OpenSSH 夹具、原生 WebView 与任何 CI。
+
+### 16.5 结果与未验证项
+
+- 全量浏览器 E2E：**646/646**（基线 639 + 新增 7；`history-view.spec.ts` 的辅助函数移到 `support/history-view-harness.ts` 供两个文件共用，用例未改）。
+- 界面：1440×900 浅色、深色与 700×650 深色截图中「正则」按下态与「区分大小写」一致，无横向溢出（Chrome 作者检查，不代替原生 WebView）。
+- Chrome 观测（Playwright 计时，含往返，不是上限）：从按 Enter 到显示超时 1.33–1.42 秒。
+
+**未验证与剩余风险**
+
+- 原生 WKWebView、WebView2、WebKitGTK 中 module Worker 的加载、CSP 放行、启动耗时与内存；每个打开的视图至多一个 Worker（每窗口至多 8 个）。Tauri 真实 IPC 与 Rust 未测。
+- 1 秒只限制单批：每批不到 1 秒的慢模式可让整次搜索很久（可随时停止）；超长的单行独占一批，慢机器上线性模式也可能超时；超时值未在原生或慢机器上测量。
+- 正则语法以各 WebView 引擎为准（后顾在旧 WebKitGTK 中不可用等），不保证三端一致；没有与 WindTerm 2.7.0 的 `text.matchRegex` 对照（上游实测清单未执行）。
+- 零长度匹配不计为命中；不能指定标志；读屏、IME 未测。
+- G20 台账状态不改。
+
 ## 复核
 
 在 `apps/desktop` 下先运行 `npm run dev`，然后：
 
 ```sh
+npx playwright test --config playwright.config.ts tests/e2e/history-regex.spec.ts --reporter=list
 npx playwright test --config playwright.config.ts tests/e2e/history-view.spec.ts --reporter=list
 npx playwright test --config playwright.config.ts tests/e2e/history-archive.spec.ts -g "reader|unread" --reporter=list
 ```

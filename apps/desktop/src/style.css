@@ -495,7 +495,7 @@ dialog select, dialog textarea { width: 100%; min-width: 0; color: var(--text); 
 .history-head-actions button:hover:not(:disabled), .history-find button:hover:not(:disabled) { background: var(--hover); }
 .history-head-actions .history-close { width: 28px; min-width: 28px; padding: 0; color: var(--terminal-muted); }
 .history-find button[hidden], .history-notice[hidden] { display: none; }
-.history-case[aria-pressed="true"] { background: var(--pressed); box-shadow: var(--inset-shadow); }
+.history-case[aria-pressed="true"], .history-regex[aria-pressed="true"] { background: var(--pressed); box-shadow: var(--inset-shadow); }
 .history-notice { margin: 0; padding: 8px 20px; border-bottom: 1px solid var(--terminal-line); color: var(--terminal-muted); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
 .history-find { flex-wrap: wrap; min-height: 44px; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--terminal-line); }
 .history-search { width: min(320px, 100%); height: 32px; padding: 0 12px; margin-right: 4px; border: 0; border-radius: 8px; background: var(--sidebar); box-shadow: var(--inset-shadow); font-size: 13px; }

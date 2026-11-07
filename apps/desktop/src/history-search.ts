@@ -4,7 +4,8 @@ import { plainText } from "./history-sgr";
  * Plain-text search of one session's history (G20) for the read-only history view (P1 slice 5,
  * step 7). The query is matched literally: it is escaped into a regular expression with no
  * quantifier, group or alternation, so matching takes time linear in the line length and no input
- * can cause catastrophic backtracking. Regular-expression queries are not offered.
+ * can cause catastrophic backtracking. A regular-expression query (`regex`) never runs here or
+ * anywhere on the main thread: history-regex.ts sends it to a dedicated worker.
  *
  * A match never crosses a logical line (soft-wrapped terminal rows are already joined into one
  * line; a hard line break ends the line). Archive blocks hold whole lines, so block boundaries
@@ -20,7 +21,15 @@ import { plainText } from "./history-sgr";
 export interface SearchQuery {
   readonly text: string;
   readonly caseSensitive: boolean;
+  /** `text` is a regular expression, matched in a worker (history-regex.ts); otherwise literal. */
+  readonly regex?: boolean;
 }
+
+/**
+ * Why a regex search ended early: the pattern does not compile, a batch took longer than
+ * HISTORY_REGEX_BATCH_TIMEOUT_MS, the worker could not start, or matching threw.
+ */
+export type SearchFailure = "invalid" | "timeout" | "unavailable" | "failed";
 
 /** One match: `[start, end)` of line `line`'s plain text. */
 export interface SearchMatch {
@@ -51,6 +60,8 @@ export interface SearchOutcome {
   /** Stopped by the signal. */
   readonly cancelled: boolean;
   readonly scannedLines: number;
+  /** Regex search only: why it ended early, other than the signal or the limit. */
+  readonly failure?: SearchFailure;
 }
 
 export interface SearchOptions {

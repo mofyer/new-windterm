@@ -3,14 +3,17 @@ import type { SessionHistory } from "./history-capture";
 import { observeWrites } from "./terminal-core";
 import { paintRun, segments, type MatchRange, type ParsedLine } from "./history-sgr";
 import { searchHistory, type SearchMatch, type SearchOutcome, type SearchQuery } from "./history-search";
+import { RegexWorker, searchHistoryRegex } from "./history-regex";
+import { searchStatusText } from "./history-search-text";
 import { LineStore, RowMap, takeSnapshot, type RowItem, type Snapshot, type ViewMarkKind } from "./history-view-model";
-import { HISTORY_COPY_MAX_LINES, HISTORY_SEARCH_MAX_MATCHES, HISTORY_VIEW_MAX_CHARS } from "./history-budget";
+import { HISTORY_COPY_MAX_LINES, HISTORY_REGEX_BATCH_TIMEOUT_MS, HISTORY_SEARCH_MAX_MATCHES, HISTORY_VIEW_MAX_CHARS } from "./history-budget";
 import { icon } from "./icons";
 
 /**
  * Read-only history view of one session (P1 slice 5, step 7; Q06, G20, G21): an overlay on the
  * session's own terminal pane that lists the session's history, from the archive and the screen,
- * one logical line per row, with plain-text search, jumping and copying.
+ * one logical line per row, with plain-text and regular-expression search, jumping and copying.
+ * A regular expression is only compiled and run in the view's worker (history-regex.ts).
  *
  * It is a projection, not a second terminal. It never writes to the terminal, never parses its
  * byte stream and never changes its buffer, scroll position, selection or modes; output keeps
@@ -87,6 +90,8 @@ function drawRange(text: string, focus?: number): [number, number] {
   return [from, to];
 }
 
+const pressed = (toggle: HTMLElement) => toggle.getAttribute("aria-pressed") === "true";
+
 let nextViewId = 1;
 
 export class HistoryView {
@@ -99,6 +104,9 @@ export class HistoryView {
   private readonly notice: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly caseToggle: HTMLButtonElement;
+  private readonly regexToggle: HTMLButtonElement;
+  /** Started by the first regex search; terminated by every early end of one and by dispose. */
+  private readonly regexWorker = new RegexWorker();
   private readonly status: HTMLElement;
   private readonly previous: HTMLButtonElement;
   private readonly next: HTMLButtonElement;
@@ -154,6 +162,9 @@ export class HistoryView {
     this.input.spellcheck = false;
     this.caseToggle = button("区分大小写", "history-case");
     this.caseToggle.setAttribute("aria-pressed", "false");
+    this.regexToggle = button("正则", "history-regex");
+    this.regexToggle.setAttribute("aria-pressed", "false");
+    this.regexToggle.title = `按 JavaScript 正则表达式搜索（在后台线程中运行，一批行超过 ${(HISTORY_REGEX_BATCH_TIMEOUT_MS / 1000).toLocaleString()} 秒即停止）`;
     this.status = element("span", "history-status");
     this.status.setAttribute("role", "status");
     this.status.setAttribute("aria-live", "polite");
@@ -164,7 +175,7 @@ export class HistoryView {
     this.stop = button("停止");
     this.stop.hidden = true;
     this.copy = button("复制所选行");
-    find.append(this.input, this.caseToggle, this.status, this.previous, this.next, this.stop, this.copy);
+    find.append(this.input, this.caseToggle, this.regexToggle, this.status, this.previous, this.next, this.stop, this.copy);
     this.list = element("div", "history-list");
     this.list.id = `${this.id}-list`;
     this.list.tabIndex = 0;
@@ -205,10 +216,13 @@ export class HistoryView {
     on(this.list, "mousedown", (event) => this.onListMouseDown(event));
     on(this.list, "wheel", () => this.userMoved());
     on(this.list, "click", (event) => this.onListClick(event));
-    on(this.caseToggle, "click", () => {
-      this.caseToggle.setAttribute("aria-pressed", String(this.caseToggle.getAttribute("aria-pressed") !== "true"));
-      if (this.input.value) this.startSearch();
-    });
+    for (const toggle of [this.caseToggle, this.regexToggle]) {
+      on(toggle, "click", () => {
+        toggle.setAttribute("aria-pressed", String(!pressed(toggle)));
+        this.input.placeholder = pressed(this.regexToggle) ? "正则表达式" : "搜索历史";
+        if (this.input.value) this.startSearch();
+      });
+    }
     on(this.previous, "click", () => this.step(1));
     on(this.next, "click", () => this.step(-1));
     on(this.stop, "click", () => this.cancelSearch());
@@ -590,15 +604,20 @@ export class HistoryView {
 
   // ---- Search ----
 
+  private query(): SearchQuery {
+    return { text: this.input.value, caseSensitive: pressed(this.caseToggle), regex: pressed(this.regexToggle) };
+  }
+
   private navigate(direction: 1 | -1) {
-    const text = this.input.value;
-    const caseSensitive = this.caseToggle.getAttribute("aria-pressed") === "true";
+    const query = this.query();
     const state = this.search;
-    if (!text) {
+    const same = state && state.query.text === query.text && state.query.caseSensitive === query.caseSensitive
+      && !!state.query.regex === query.regex;
+    if (!query.text) {
       this.cancelSearch(true);
       this.paintStatus();
       this.schedule();
-    } else if (!state || state.outcome?.cancelled || state.query.text !== text || state.query.caseSensitive !== caseSensitive) {
+    } else if (!same || state.outcome?.cancelled || state.outcome?.failure) {
       this.startSearch();
     } else this.step(direction);
   }
@@ -626,7 +645,7 @@ export class HistoryView {
 
   private startSearch() {
     this.cancelSearch(true);
-    const query: SearchQuery = { text: this.input.value, caseSensitive: this.caseToggle.getAttribute("aria-pressed") === "true" };
+    const query = this.query();
     const { top, visible } = this.metrics();
     const bottom = this.rows.item(Math.min(this.rows.rowCount - 1, Math.max(0, Math.ceil(top + visible) - 1)));
     const anchor = bottom.kind === "line" ? bottom.line : this.rows.lastLine;
@@ -639,17 +658,21 @@ export class HistoryView {
       const index = state.matches.findIndex((m) => m.line <= state.anchor);
       if (index >= 0) this.select(index);
     };
-    void searchHistory(this.store.searchSource(), query, {
+    const options = {
       limit: HISTORY_SEARCH_MAX_MATCHES,
       signal: state.controller.signal,
-      progress: (matches) => {
+      progress: (matches: readonly SearchMatch[]) => {
         if (this.search !== state) return;
         state.matches = matches;
         pick();
         this.paintStatus();
         this.schedule();
       },
-    }).then((outcome) => {
+    };
+    const source = this.store.searchSource();
+    // The user's pattern never runs on this thread: a regex search only sends text to the worker.
+    const running = query.regex ? searchHistoryRegex(source, query, options, this.regexWorker) : searchHistory(source, query, options);
+    void running.then((outcome) => {
       if (this.search !== state || this.disposed) return;
       state.outcome = outcome;
       state.matches = outcome.matches;
@@ -685,19 +708,10 @@ export class HistoryView {
     if (!force && now - this.statusAt < STATUS_INTERVAL_MS) return;
     this.statusAt = now;
     const state = this.search;
-    let text = "";
-    if (state) {
-      const count = state.matches.length;
-      const at = state.current >= 0 ? `第 ${(count - state.current).toLocaleString()} 处，` : "";
-      const total = `共 ${count.toLocaleString()} 处`;
-      const outcome = state.outcome;
-      if (!outcome) text = `正在搜索… ${at}已找到 ${count.toLocaleString()} 处`;
-      else if (outcome.cancelled) text = `已停止：${at}已找到 ${count.toLocaleString()} 处（未搜索完）`;
-      else if (!count) text = "没有找到";
-      else if (outcome.limited) text = `${at}${total}（已达上限，只列出最新的 ${HISTORY_SEARCH_MAX_MATCHES.toLocaleString()} 处）`;
-      else text = `${at}${total}`;
-    }
+    const text = state ? searchStatusText(state.matches.length, state.current, state.outcome) : "";
     if (this.status.textContent !== text) this.status.textContent = text;
+    if (state?.outcome?.failure === "invalid") this.input.setAttribute("aria-invalid", "true");
+    else this.input.removeAttribute("aria-invalid");
     this.paintControls();
   }
 
@@ -747,6 +761,7 @@ export class HistoryView {
     this.disposed = true;
     this.search?.controller.abort();
     this.search = undefined;
+    this.regexWorker.dispose();
     cancelAnimationFrame(this.frame);
     window.clearTimeout(this.syncTimer);
     for (const cleanup of this.cleanups.splice(0)) cleanup();

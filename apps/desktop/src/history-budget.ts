@@ -88,3 +88,29 @@ export const HISTORY_VIEW_MAX_CHARS = 2_000;
 
 /** Parsed lines the view keeps for redrawing while scrolling. */
 export const HISTORY_VIEW_CACHE_LINES = 2_048;
+
+// Regular-expression search (history-regex.ts; user decision 2026-11-07,
+// second set, item 12): the pattern runs only in a dedicated worker, which is
+// terminated when a batch takes too long.
+
+/**
+ * Longest the worker may spend matching one batch of lines. Past it the
+ * worker is terminated, whatever its engine is doing, and the search stops as
+ * timed out with the matches found so far. A pattern without catastrophic
+ * backtracking needs a few milliseconds for a full batch (Chrome observation),
+ * so this is a guard against runaway patterns, not a time budget.
+ */
+export const HISTORY_REGEX_BATCH_TIMEOUT_MS = 1_000;
+
+/**
+ * Longest a new worker may take to load its script and compile the pattern.
+ * Past it the worker is terminated and regex search is reported unavailable.
+ */
+export const HISTORY_REGEX_START_TIMEOUT_MS = 5_000;
+
+/**
+ * UTF-16 code units of plain text one batch carries (at most
+ * ARCHIVE_BLOCK_LINES lines). A longer line goes alone, so each batch's
+ * timeout covers a bounded amount of text apart from single long lines.
+ */
+export const HISTORY_REGEX_BATCH_CHARS = 65_536;
