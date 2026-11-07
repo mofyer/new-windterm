@@ -1056,7 +1056,7 @@ Windows trace 中槽 1 的时间线如下。时间相对 trace 安装时刻，�
 
 集成过程中发现、尚未处理的事项：
 
-- **关闭本地 Unix 会话可能执行未按回车的文本**（既有问题）：启动命令探针在 macOS 本机每种 Shell 关闭 10 次，Bash 1 次完整执行、zsh 1–2 次开始执行，属竞态。推测与 portable-pty 0.9.0 Unix writer 丢弃时写入换行和 EOF 有关，尚未确认根因；已在独立分支调查与修复，未合并。
+- **关闭本地 Unix 会话可能执行未按回车的文本**（既有问题）：已定位并修复，见下一节 [`P1-PTY-CLOSE-002`](#2026-11-07关闭-unix-会话会执行未按回车的输入p1-pty-close-002)（提交 `6fe28c1`、`7c9cc87`、`8b2464f`、`22cf94d`，macOS 本机验证）。
 - 早期输入 FIFO 的实际接收集合与文档“只接收 CPR”不一致：`pty_open` 前经 VT 适配器发出的回复（CPR、DA、XTVERSION、部分 DECRQSS）都会进入，xterm 内置回复被丢弃；已由回归测试固定，是否调整待用户决定。
 - `docs/p0/VT_MATRIX.zh-CN.md` 的 X02（RIS）标为 supported，与上述两个 xterm.js RIS 缺陷部分矛盾；两缺陷是否进入终端内核 ADR 门禁待用户决定。
 

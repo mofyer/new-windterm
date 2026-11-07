@@ -100,6 +100,7 @@ Windows 专属代码在 macOS 上只能做类型检查：`tools/wincheck/winchec
 PTY 或 SSH channel → Rust 有界队列 → `tauri::ipc::Channel<PtyEvent>` → 前端 `xterm.write` → 每块按 `sequence` 顺序调用 `pty_ack`/`ssh_ack`。`PtyEvent` 有 `data`/`exit`/`error` 三种，`data` 保持原始字节（每块 4096 字节，64 KiB / 64 块未 ACK 预算，ACK 超时 15 秒）。不要按网络块转 UTF-8，也不要在 Rust 再维护一份 vt100/alacritty 屏幕：xterm.js 是唯一的终端状态来源。
 
 - `pty.rs`：`Sessions` 注册表（每窗口有代际 generation，最多 8 个会话）、reader/writer 线程、ACK 流控与子进程回收。
+- Unix PTY 的输入写入端由 `platform::input_writer` 提供（master 的 CLOEXEC 副本），**不要改用 portable-pty 的 `take_writer`**：0.9.0 的 `UnixMasterWriter` 在 Drop 时会写入换行与 VEOF，关闭会话时可能提交 Shell 行编辑器中未按回车的文本（`P1-PTY-CLOSE-002`）。Windows 仍用 ConPTY 输入管道。
 - `platform.rs`：按平台处理 shell、环境变量、Unix I/O 和 EOF（macOS zsh、Linux Bash、Windows `cmd.exe /D /Q /K`）。Windows 细节在 `platform_windows.rs`：kill-on-close Job Object 回收进程树；等待线程在子进程退出后关闭 pseudoconsole，使阻塞读取得到 EOF；会话关闭时终止 Job，而不是在 IPC 线程上关闭 pseudoconsole（可能阻塞）；reader 结束后要排空管道。ConPTY 启动时会发 `ESC[6n` 并等待回复，前端会暂存会话 ID 到达前的输入。Windows 测试在 `pty.rs` 的 `windows_tests` 中，只能在 Windows CI 上运行。
 - Cargo features：`pty-readiness` 是默认关闭的 Unix poll/ACK 通知实验（默认构建仍是 5 ms 轮询）；`pty-diagnostics` 启用计时字段，并与 `dev-tools` 一起启用 `pty_diagnose` 二进制；`dev-tools` 只用于门控 `src/bin` 下的测试/探针二进制。
 
