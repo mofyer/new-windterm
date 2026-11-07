@@ -585,7 +585,7 @@ fn spawn_local_session(
     #[cfg(feature = "pty-readiness")]
     let (readiness, cancel_readiness) = platform::Readiness::new(pair.master.as_ref())?;
     let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    let writer = platform::input_writer(pair.master.as_ref())?;
     if let Some(cwd) = options.cwd {
         platform::validate_cwd(cwd)?;
     }
@@ -1444,6 +1444,279 @@ mod tests {
         assert!(session.wait_closed(Duration::from_secs(1)));
         assert!(session.master.lock().unwrap().is_none());
     }
+
+    /// True once `fd` is readable, within `timeout`.
+    #[cfg(unix)]
+    fn readable_within(fd: &impl std::os::fd::AsRawFd, timeout: Duration) -> bool {
+        let mut descriptor = libc::pollfd {
+            fd: fd.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: the descriptor and the pollfd stay live for the call.
+        let result = unsafe { libc::poll(&mut descriptor, 1, timeout.as_millis() as i32) };
+        result > 0 && descriptor.revents & libc::POLLIN != 0
+    }
+
+    /// The canonical line discipline stands in for a shell's line editor: a partial line is held
+    /// until a line terminator arrives. Dropping the input worker's handle must not supply one.
+    /// The master stays open, so no hangup is involved; only the handle's own Drop is observed.
+    #[cfg(unix)]
+    #[test]
+    fn unix_dropping_the_input_writer_does_not_submit_a_partial_line() {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let pair = native_pty_system()
+            .openpty(checked_size(80, 24).unwrap())
+            .unwrap();
+        platform::configure_io(pair.master.as_ref()).unwrap();
+        let mut slave = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_NOCTTY | libc::O_NONBLOCK)
+            .open(pair.master.tty_name().expect("PTY slave has a device name"))
+            .unwrap();
+        let mut writer = platform::input_writer(pair.master.as_ref()).unwrap();
+        let mut buffer = [0; 64];
+
+        // Control: a complete line written through the handle reaches the slave.
+        writer.write_all(b"control\n").unwrap();
+        assert!(readable_within(&slave, Duration::from_secs(2)));
+        let read = slave.read(&mut buffer).unwrap();
+        assert_eq!(&buffer[..read], b"control\n");
+
+        writer.write_all(b"unsubmitted").unwrap();
+        drop(writer);
+        let submitted = readable_within(&slave, Duration::from_millis(500))
+            .then(|| slave.read(&mut buffer).map(|read| buffer[..read].to_vec()));
+        assert!(
+            submitted.is_none(),
+            "dropping the input writer submitted the partial line: {submitted:?}"
+        );
+        drop(pair);
+    }
+
+    /// A fresh temporary directory, removed on drop (also after a failed assertion).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    struct ScratchDir(std::path::PathBuf);
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl ScratchDir {
+        fn new(prefix: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("{prefix}-{}", uuid::Uuid::new_v4().simple()));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A real local shell driven only through the product session API.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    struct LiveShell {
+        id: String,
+        label: String,
+        session: Arc<Session>,
+        events: std::sync::mpsc::Receiver<PtyEvent>,
+        output: Vec<u8>,
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl LiveShell {
+        const OWNER: &'static str = "close-pending-test";
+
+        /// Opens `shell` 400 columns wide, so typed lines never wrap, and waits for the prompt.
+        fn open(sessions: &Sessions, shell: Option<&str>, label: String) -> Self {
+            let (sender, events) = std::sync::mpsc::channel();
+            let id = sessions
+                .open_with_options(
+                    Self::OWNER,
+                    400,
+                    24,
+                    LocalLaunchOptions {
+                        shell,
+                        ..Default::default()
+                    },
+                    Arc::new(move |event| sender.send(event).map_err(|e| e.to_string())),
+                )
+                .unwrap();
+            let session = sessions.get(Self::OWNER, &id).unwrap();
+            let mut live = Self {
+                id,
+                label,
+                session,
+                events,
+                output: Vec::new(),
+            };
+            live.wait_for("P0 ");
+            live
+        }
+
+        /// Pumps and acknowledges output until it contains `marker`; the shell must stay alive.
+        fn wait_for(&mut self, marker: &str) {
+            let started = Instant::now();
+            while !self
+                .output
+                .windows(marker.len())
+                .any(|part| part == marker.as_bytes())
+            {
+                assert!(
+                    started.elapsed() < Duration::from_secs(10),
+                    "{}: no {marker:?}; output tail={:?}",
+                    self.label,
+                    String::from_utf8_lossy(&self.output[self.output.len().saturating_sub(512)..])
+                );
+                match self.events.recv_timeout(Duration::from_millis(25)) {
+                    Ok(PtyEvent::Data { sequence, data, .. }) => {
+                        self.output.extend(data);
+                        self.session.ack(sequence).unwrap();
+                    }
+                    Ok(event) => panic!("{}: shell ended: {event:?}", self.label),
+                    Err(_) => {}
+                }
+            }
+        }
+
+        /// Types `printf ... >> 'file'` without CR and waits for its echo, which shows the line
+        /// editor has read all of it. The shell itself creates the file (builtin plus redirection),
+        /// so once the shell is reaped the file exists if and only if the line ran.
+        fn hold_line(&mut self, file: &std::path::Path) {
+            let name = file.file_name().unwrap().to_str().unwrap().to_owned();
+            let line = format!("printf '%s\\n' P1CLOSE >> '{}'", file.display());
+            self.session.write(line.into_bytes()).unwrap();
+            self.wait_for(&format!("{name}'"));
+            assert!(!file.exists(), "{}: the line ran before close", self.label);
+        }
+    }
+
+    /// The platform default shell plus explicit Bash and zsh where installed.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn live_shells() -> Vec<(Option<&'static str>, &'static str)> {
+        let shells = local_shells();
+        let mut run = vec![(None, "default")];
+        for id in ["bash", "zsh"] {
+            if shells.iter().any(|shell| shell.id == id && shell.available) {
+                run.push((Some(id), id));
+            } else {
+                eprintln!("SKIP close-pending shell={id}: unavailable on this host");
+            }
+        }
+        run
+    }
+
+    /// A CLOEXEC duplicate of the session's master (nonblocking, like the session's own copies);
+    /// the PTY stays connected while it is held.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn held_master(session: &Session) -> std::fs::File {
+        let master = session.master.lock().unwrap();
+        let fd = master.as_ref().unwrap().as_raw_fd().unwrap();
+        // SAFETY: the master owns fd and stays alive, under its lock, for this borrow.
+        let duplicate = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }
+            .try_clone_to_owned()
+            .unwrap();
+        std::fs::File::from(duplicate)
+    }
+
+    /// Deterministic form of the race below. The shell ignores SIGHUP, so it keeps reading, and
+    /// the test holds a master reference across close, so the hangup that would flush the
+    /// shell's input waits. The held reference also discards output as a terminal would: a
+    /// shell that restores its tty modes with TCSADRAIN after accepting a line must not stall on
+    /// the session reader that close stopped. Anything the product close path writes into the
+    /// PTY then reaches the line editor; a line terminator would run the held line every time.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn unix_close_feeds_no_line_terminator_to_a_shell_that_keeps_reading() {
+        let directory = ScratchDir::new("p1-close-feed");
+        let sessions = Sessions::default();
+        let mut ran = Vec::new();
+        for (shell, label) in live_shells() {
+            for trial in 1..=3 {
+                let file = directory.0.join(format!("{label}-{trial}.txt"));
+                let mut live = LiveShell::open(&sessions, shell, format!("{label} trial {trial}"));
+                // Only the output reads `P1IGNORED`; the echo shows `P1%s`.
+                live.session
+                    .write(b"trap '' HUP; printf 'P1%s\\n' IGNORED\r".to_vec())
+                    .unwrap();
+                live.wait_for("P1IGNORED");
+                live.hold_line(&file);
+                let mut held = held_master(&live.session);
+                sessions.close(LiveShell::OWNER, &live.id).unwrap();
+                let started = Instant::now();
+                let mut discard = [0; CHUNK_BYTES];
+                while !file.exists() && started.elapsed() < Duration::from_millis(500) {
+                    if !matches!(held.read(&mut discard), Ok(read) if read > 0) {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                }
+                drop(held);
+                assert!(
+                    live.session.wait_closed(Duration::from_secs(2)),
+                    "{label} trial {trial}: session not reaped within 2 s"
+                );
+                if file.exists() {
+                    ran.push(format!("{label}#{trial}"));
+                }
+            }
+        }
+        sessions.shutdown();
+        assert!(
+            ran.is_empty(),
+            "close fed a line terminator and ran the held line in {} trial(s): {ran:?}",
+            ran.len()
+        );
+    }
+
+    /// The realistic form: product close of a plain shell holding a line without CR, nothing else
+    /// holding the PTY. Before the fix the line ran in a few percent of closes (a race against the
+    /// hangup), so each shell is closed `P1_CLOSE_PENDING_TRIALS` times (default 20).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn unix_close_does_not_run_a_line_held_without_cr() {
+        let trials = std::env::var("P1_CLOSE_PENDING_TRIALS")
+            .ok()
+            .map_or(20, |value| value.parse::<usize>().unwrap().clamp(1, 1000));
+        let directory = ScratchDir::new("p1-close-pending");
+        let sessions = Sessions::default();
+        let mut ran = Vec::new();
+        for (shell, label) in live_shells() {
+            let before = ran.len();
+            let mut reap_ms = Vec::new();
+            for trial in 1..=trials {
+                let file = directory.0.join(format!("{label}-{trial}.txt"));
+                let mut live = LiveShell::open(&sessions, shell, format!("{label} trial {trial}"));
+                live.hold_line(&file);
+                let closing = Instant::now();
+                sessions.close(LiveShell::OWNER, &live.id).unwrap();
+                assert!(
+                    live.session.wait_closed(Duration::from_secs(2)),
+                    "{label} trial {trial}: session not reaped within 2 s"
+                );
+                reap_ms.push(closing.elapsed().as_millis());
+                if file.exists() {
+                    ran.push(format!("{label}#{trial}"));
+                }
+            }
+            reap_ms.sort_unstable();
+            eprintln!(
+                "close-pending shell={label}: line ran in {}/{trials} close(s); close-to-reaped median {} ms, max {} ms",
+                ran.len() - before,
+                reap_ms[reap_ms.len() / 2],
+                reap_ms[reap_ms.len() - 1]
+            );
+        }
+        sessions.shutdown();
+        assert!(
+            ran.is_empty(),
+            "closing ran the line held without CR in {} trial(s): {ran:?}",
+            ran.len()
+        );
+    }
     #[cfg(all(
         feature = "pty-readiness",
         any(target_os = "macos", target_os = "linux")
@@ -1682,6 +1955,25 @@ mod windows_tests {
         probe.assert_reaped();
         assert_eq!(probe.exit, Some(Some(1)));
         assert!(probe.session.write(b"echo late\r\n".to_vec()).is_err());
+    }
+
+    /// Closing must not run a line typed without Enter. The ConPTY input handle is a plain pipe
+    /// whose Drop only closes it, and close terminates the job before the input worker stops.
+    #[test]
+    fn close_does_not_run_a_line_typed_without_enter() {
+        let marker = uuid::Uuid::new_v4().simple().to_string();
+        // Relative to the shell's cwd (this process's temp directory), short enough not to wrap.
+        let name = format!("p1pend{}.txt", &marker[..16]);
+        let file = std::env::temp_dir().join(&name);
+        let mut probe = Probe::open();
+        probe.ready();
+        probe.send(&format!("type nul>{name}"));
+        probe.expect(&name);
+        probe.session.close();
+        probe.assert_reaped();
+        let ran = file.exists();
+        let _ = std::fs::remove_file(&file);
+        assert!(!ran, "closing ran the line typed without Enter");
     }
 
     #[test]

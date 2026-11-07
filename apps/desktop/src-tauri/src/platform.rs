@@ -45,6 +45,13 @@ pub(crate) fn configure_io(_master: &dyn MasterPty) -> Result<(), String> {
     Err(UNSUPPORTED.into())
 }
 
+/// The session's input handle, used only by the input worker.
+pub(crate) fn input_writer(
+    master: &dyn MasterPty,
+) -> Result<Box<dyn std::io::Write + Send>, String> {
+    master.take_writer().map_err(|e| e.to_string())
+}
+
 /// Windows device-namespace paths (`\\.\pipe\…`, `\\.\COM1`, `\\?\GLOBALROOT…`)
 /// name pipes and devices rather than files; opening one can consume a pipe
 /// instance or block. Always false on Unix, where paths have no prefix.
