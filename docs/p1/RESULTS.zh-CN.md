@@ -1506,3 +1506,19 @@ runner 级的 `failure-local-terminal-environment.json` 是在场景 `finally` �
 P1 与第四批均未验收，P2 仅在准备，main 不合并。
 
 **C1 已执行（2026-11-07）**：按用户批准的 C1，协调者在远端 `p1/integration` 的 `3f95db5` 之上用一个提交 `cb97e8a` 撤回方案 A（`local_shell.rs` 恢复为 `3fbd25e` 内容，并改回 `c775c0c` 在 `CLAUDE.md` 与启动命令预案中的 argv 表述），以快进方式推送，未改写历史，推送后未触发运行；方案文档与本结果记录保留。撤回后的代码未再在 CI 上运行（停止规则：不再 dispatch）。Windows 场景 7 默认 cmd 会话失败另行调查（见后续记录），方案 A 的任何变体都须另行预注册并由用户决定。
+
+## 2026-11-07 第四批并行集成：RIS 补全、历史正则搜索、方案 A 撤回后的本地树（本地，未推送）
+
+远端 `p1/integration` 为 `cb97e8a`（方案 A 撤回）。本地在其后依次接上：此前未推送的第三批集成（RIS 评估、T31、历史视图、快捷键、第二组决定，经两次无冲突变基）、历史正则搜索 `633c1a7`/`80055fd`、方案 A 独立核验记录、RIS 补全 `cad3660`/`7146d9a`（`CLAUDE.md` 相邻两行冲突由协调者合并），以及测试稳定性修正 `ec19ebc`。均未推送、未运行 CI。
+
+| 内容 | 提交 | 验证（Chrome + IPC stub / macOS 本机） | 未验证 |
+| --- | --- | --- | --- |
+| 主机 RIS 补全（用户决定 R1 = E1 + E2）：工厂最先加载的 `ris-repair.ts` 在 xterm 执行 RIS 的同一解析时刻恢复 `convertEol`（公开选项）与光标可见（唯一一处 xterm 私有字段，失效时退回原缺陷）；两项原 `test.fail` 转为正常断言；X02 生产列 supported、原样列 partial；生产统计 39/15/9 | `cad3660`、`7146d9a` | 代理侧全量 659/659；新增 16 项与相关项 `--repeat-each 5` 175/175；反向验证 22 项失败；独立审查 APPROVE | 原生 WebView、真实主机程序、vttest、xterm 6.1/7.0 私有字段 |
+| 历史正则搜索：用户正则只在专用 module Worker 中编译匹配，单批 1 秒、启动 5 秒超时即终止 Worker；CSP 未改 | `633c1a7`、`80055fd` | 代理侧全量 646/646；新增 7 项 `--repeat-each 5` 35/35；反向验证 5 处；独立审查 APPROVE | 原生 WebView 中 module Worker 与运行时 CSP、三种引擎语法差异 |
+| 测试稳定性：`randomCuts` 在长度 5/9/13/17/25/33 死循环，改为有界抽取后补足（2–400 中原可结束的 393 个长度切点逐一不变）；历史视图 / 正则测试“关闭后回收”改为 5 秒内反复 GC 轮询（并行负载下关闭时未完成的异步任务会短暂引用视图；人为全局保留时仍失败） | `ec19ebc` | 组合负载运行 ×3 54/54 | — |
+
+上游 issue：用户审阅草稿后确认原样提交，已提交为 [xtermjs/xterm.js#6302](https://github.com/xtermjs/xterm.js/issues/6302)（mofyer，2026-11-07T07:20:07Z，OPEN），发布正文与草稿一致。
+
+协调者在本地树上的门禁（macOS 本机）：`npm run build` 通过（JS 540.6 KB，gzip 156.6 KB）；浏览器 E2E 首次 665/666（失败项为历史视图“关闭后回收”断言，单独 ×10 通过、组合负载下复现，经上述轮询修正）；修正后全量 **666/666**；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 193 passed / 7 ignored；`--test ssh_terminal` 14；`--test release_bins` 3；`tools/wincheck/wincheck.sh` 通过。
+
+Windows 原生场景 7 默认 cmd 会话失败（`35aee13`、`3f95db5` 两次失败 JSON 逐字节相同）仍在调查，未定因。P1 与第四批未验收，main 不合并。

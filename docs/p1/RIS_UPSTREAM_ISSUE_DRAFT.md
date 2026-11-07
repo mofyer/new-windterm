@@ -1,7 +1,8 @@
 <!--
-DRAFT, NOT SUBMITTED. Body for an issue on xtermjs/xterm.js, written for user review; the
-coordinator submits it only after the user has approved the text (G-CONTRIB). Everything below the
-rule is the proposed issue; nothing above it is part of the issue.
+SUBMITTED 2026-11-07T07:20:07Z as https://github.com/xtermjs/xterm.js/issues/6302 (author mofyer),
+after the user approved this text unchanged (G-CONTRIB). The body below the rule matches the posted
+issue except for one trailing newline. Earlier note: draft written for user review; nothing above
+the rule is part of the issue.
 -->
 
 **Title:** RIS (`ESC c`) keeps a hidden cursor (DECTCEM) and line feed/new line mode (LNM) set

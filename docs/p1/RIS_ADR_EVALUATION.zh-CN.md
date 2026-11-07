@@ -291,3 +291,5 @@ Node 探针（每例先写入 `XYZ CSI ? 25 l CSI 20 h`）：
 - 每次 RIS 多一次处理器调用，开销未测（RIS 罕见，不在热路径）。
 - xterm.js 6.1/7.0 中该私有字段的情况只在评估阶段读过 master 源码，未实测；升级时按 G-UPGRADE 复核。
 - 上游 issue 尚未提交，没有维护者反馈。
+
+**上游 issue 已提交（2026-11-07）**：用户审阅草稿后确认原样提交，协调者以 GitHub 账号 mofyer 提交为 [xtermjs/xterm.js#6302](https://github.com/xtermjs/xterm.js/issues/6302)（2026-11-07T07:20:07Z，OPEN），发布正文与草稿一致（仅末尾换行不同）。按用户决定，内部等待上限为 P1 第 6 片组合验收；在上游修复并发布前，产品继续使用本文第 9 节的 RIS 补全，升级 xterm.js 时按 G-UPGRADE 复核私有字段并评估能否移除补全。
