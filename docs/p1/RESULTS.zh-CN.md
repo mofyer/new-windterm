@@ -1047,11 +1047,12 @@ Windows trace 中槽 1 的时间线如下。时间相对 trace 安装时刻，�
 | 第 5 片第 1–2 步：命名历史与会话预算（`history-budget.ts`，热历史仍 5,000 行）；Chrome 内存观测；关闭会话时断开输出 Channel 回调，不再等后端 `end` 才回收（R1） | `57a9f35`、`06c20b8`、`2bb36e5`、`55a62d5`、`eed93f0` | 关闭运行中标签即释放约 7.66 MiB（Chrome 观测）；移除修复时测试失败（实例数 2）；独立审查 APPROVE | Rust 何时丢弃通道、原生 WebView 回收 |
 | 第 4 片回归：经生产会话路径的复位 15、跨块 10、键盘 14 项（其中 2 项 `test.fail` 固定 xterm.js 6.0.0 的 RIS 缺陷：不恢复 DECTCEM 隐藏的光标、不清除 LNM） | `75a64be`、`f4d647c`、`a2e6923` | `--repeat-each 5` 195/195；独立审查 APPROVE | vttest、真实主机程序、IME |
 | 启动后执行命令语义预案与用户决定（Q1–Q6 全部推荐项） | `8dcc29e`、`05e602a`、`a98c280` | 文档审查 APPROVE | — |
-| 第 5 片第 5 步：在 H4 边界（`terminal-core.ts`）接入冷归档，只捕获、不加界面；修复原型在 Ctrl-L 后重复归档与 RIS 后停止归档 | `c3f9eb9`、`26774ca`、`58ef38a` | 12,000 行混合内容逐行一致、预算内 0 缺口、关闭释放；有界流开销约 +13%（Chrome 观测）；独立审查无 CRITICAL/HIGH | 原生 `CompressionStream`、耗时与内存；**第 6 步前冷归档无上限，不单独合并 main 或发布** |
+| 第 5 片第 5 步：在 H4 边界（`terminal-core.ts`）接入冷归档，只捕获、不加界面；修复原型在 Ctrl-L 后重复归档与 RIS 后停止归档 | `c3f9eb9`、`26774ca`、`58ef38a` | 12,000 行混合内容逐行一致、预算内 0 缺口、关闭释放；有界流开销约 +13%（Chrome 观测）；独立审查无 CRITICAL/HIGH | 原生 `CompressionStream`、耗时与内存（第 6 步已加预算执行，见下行） |
 | 启动后执行命令第一部分：单行字段、白名单传参、`pty_open` 后同一同步段入队恰好一次、一次性状态、重开再发并提示 | `1c60af2` | 浏览器新增 43 项、`--repeat-each 5` 215/215；macOS 真实 PTY（默认 zsh、显式 Bash/zsh）首次 1 次、重开共 2 次、无 CR 0 次；变异检查失败后还原；独立审查 APPROVE | Linux 真实 PTY、Windows cmd/PowerShell 两种 CPR 顺序、原生场景、PowerShell 7 |
+| 第 5 片第 6 步：冷归档预算执行（单会话 64 MiB / 999,999 行、全局 256 MiB，整块删最旧；全局先裁已结束标签，组内按最久未获焦点）与状态栏“已丢弃最早 N 行”提示 | `cd7865f`、`a2aed76` | 新增 4 项 `--repeat-each 5` 20/20；反向验证 5 处均能检出；独立审查 APPROVE；测试经开发构建专用注入把预算调低，生产构建不含注入与诊断字段名 | 原生长时间输出内存趋势、生产预算数值实际触达、压缩队列在跟不上时无上限；运行中标签的裁剪顺序待用户确认 |
 | `release_bins` 门禁误把 `src/bin/support/`（无 `main.rs`）当作 bin 目标，远端 `c3b3a68` 起即失败 | `b62ea82` | 修复后 3/3；临时加入未登记的 `src/bin/<dir>/main.rs` 时仍报错 | CI |
 
-集成树 `b62ea82` 的协调者门禁（macOS 本机，顺序执行）：前端 `npm run build` 通过；浏览器 E2E **533/533**（IPC stub）；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 190 passed / 7 ignored；`--test ssh_terminal` 14 passed；`--test release_bins` 3 passed；`tools/wincheck/wincheck.sh` 通过。未运行真实 OpenSSH 夹具、原生 WebView 与任何 CI。
+并入第 6 步后（`a2aed76`）重跑前端门禁：`npm run build` 通过，浏览器 E2E **537/537**；第 6 步未改 Rust，Rust 结果沿用下句。集成树 `b62ea82` 的协调者门禁（macOS 本机，顺序执行）：前端 `npm run build` 通过；浏览器 E2E **533/533**（IPC stub）；`cargo fmt --check`、`cargo check`、`cargo clippy -D warnings`（`--locked --all-targets --all-features`）通过；`--lib` 190 passed / 7 ignored；`--test ssh_terminal` 14 passed；`--test release_bins` 3 passed；`tools/wincheck/wincheck.sh` 通过。未运行真实 OpenSSH 夹具、原生 WebView 与任何 CI。
 
 集成过程中发现、尚未处理的事项：
 
