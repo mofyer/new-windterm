@@ -1061,3 +1061,74 @@ Windows trace 中槽 1 的时间线如下。时间相对 trace 安装时刻，�
 - `docs/p0/VT_MATRIX.zh-CN.md` 的 X02（RIS）标为 supported，与上述两个 xterm.js RIS 缺陷部分矛盾；两缺陷是否进入终端内核 ADR 门禁待用户决定。
 
 P1、第四批与第 4、5 片均未完成；第四批 Windows 首次查询停滞未归因；main 不合并。
+
+## 2026-11-07：关闭 Unix 会话会执行未按回车的输入（`P1-PTY-CLOSE-002`）
+
+分支 `p1/close-pending-input`，基于 `p1/integration` 的 `1c60af2`（启动命令切片之后），仅本地提交：未推送、未触发 CI、未合并。测试提交 `ce57055`（修复前失败），修复提交 `98456a1`。本机只有 macOS（Darwin arm64，默认 `/bin/zsh -f -i` 5.9、显式 `/bin/bash` 3.2.57、显式 `/bin/zsh` 5.9），**Linux 与 Windows 均未在本机运行**。
+
+### 问题与来源
+
+启动命令切片的真实 PTY 探针观察到（见[启动命令方案 11.3](STARTUP_COMMAND_PLAN.zh-CN.md)）：关闭本地 Unix 会话时，Shell 行编辑器里还未按回车的文本有时会被执行。这是既有关闭路径的问题，影响任何已键入未提交的文本（例如半行危险命令），不只是启动命令。
+
+### 根因证据（portable-pty 0.9.0 源码，只读，未复制进仓库）
+
+- `src/unix.rs:357-364`：`take_writer` 返回 `UnixMasterWriter`（master 的 dup）。`src/unix.rs:393-405`：它的 `Drop` 先 `tcgetattr`，只要 `c_cc[VEOF] != 0` 就 `write_all(&[b'\n', eot])`（第 401 行），然后才关闭描述符。`src/lib.rs:98-102` 的接口注释也写明 “Dropping the writer will send EOF to the slave end”。
+- 修复前的产品关闭顺序（`pty.rs`）：`Session::close` 丢弃 `master`；reader 线程退出循环后丢弃 reader（readiness 构建还丢弃 poll 副本），再 join 输入线程。输入线程发现会话已关闭就返回并丢弃 writer：先写入 `\n` 和 VEOF，再关闭最后一个 master 副本。最后一个 master 关闭时内核挂断从端，清空输入并向会话首进程发 SIGHUP。之后 `cleanup_child` 才调用 portable-pty 的 `kill`（`src/lib.rs:340-373`：先 SIGHUP，约 200 ms 宽限后 SIGKILL）。Shell 如果在“写入”与“关闭”之间读到 `\n`，就会把行编辑器里的文本当作一行提交，这是竞态。
+- Windows：`src/win/conpty.rs:99-108` 的 `take_writer` 返回 ConPTY 输入管道本身的 `FileDescriptor`；filedescriptor 0.8.3 `src/windows.rs:153-160` 的 Drop 只调用 `CloseHandle`，不写入任何字节。产品 Windows `Session::close` 先执行 `tree.terminate()`（`platform_windows.rs:71-74`，`TerminateJobObject`），waiter 在 Shell 退出后才关闭 pseudoconsole（`PsuedoCon` 的 Drop 调用 `ClosePseudoConsole`，`src/win/psuedocon.rs:73-77`）。因此源码层面 Windows 没有同样的注入。这只是源码分析，本机未在 Windows 上运行。
+
+### 回归测试（`ce57055`，修复前失败）
+
+| 测试 | 判据 | 修复前（macOS 本机） |
+| --- | --- | --- |
+| `unix_dropping_the_input_writer_does_not_submit_a_partial_line` | 规范模式 PTY，master 保持打开（不涉及挂断）：经输入句柄写入不带换行的 `unsubmitted`，再丢弃句柄，从端不应读到完整一行 | 确定性失败：从端读到 `unsubmitted\n` |
+| `unix_close_feeds_no_line_terminator_to_a_shell_that_keeps_reading` | 默认、显式 Bash、显式 zsh 各 3 次。Shell 先执行 `trap '' HUP`，测试在产品关闭期间持有并排出一份 master 副本，让挂断不会掩盖注入的字节；以 Shell 自己创建的副作用文件为判据 | 10 轮共 90/90 次执行了未提交的行 |
+| `unix_close_does_not_run_a_line_held_without_cr` | 真实产品关闭，不持有任何副本；每个 Shell 关闭 `P1_CLOSE_PENDING_TRIALS` 次（默认 20） | 每个 Shell 200 次：默认 zsh 8/200、Bash 0/200、显式 zsh 9/200；默认 20 次的两轮为 1/60 与 2/60 |
+| `windows_tests::close_does_not_run_a_line_typed_without_enter` | cmd.exe 键入不带 Enter 的 `type nul>文件` 后关闭，文件不得出现 | 只在 Windows CI 运行，本机未运行 |
+
+修复前的探针 `P1_STARTUP_CLOSE_TRIALS=20` 观察值：默认后端为默认 zsh 1/20、Bash 0/20、显式 zsh 3/20；`pty-readiness` 构建为 1/20、0/20、0/20。这些都是创建了重定向文件的次数，追加行数均为 0。
+
+第二项的设计说明：只用 `trap '' HUP` 时，Bash 每次都执行，而默认 zsh 3/3 未执行。推断原因是 zsh 接受一行后以 TCSADRAIN 恢复终端模式，在无人读取 master 时被阻塞；这一点只是推断，未读 zsh 源码确认。测试持有的副本同时丢弃输出后，三个 Shell 都确定执行。这样做只是为了让注入可以被确定地观察到，不代表产品实际场景；实际场景由第三项覆盖。
+
+### 修复（`98456a1`）
+
+`platform::input_writer`：在 Unix 上用 `fcntl(F_DUPFD_CLOEXEC)` 复制 master，包装成普通 `std::fs::File`，作为输入线程的写入句柄，不再调用 `take_writer`。这样进程中不存在 `UnixMasterWriter`，丢弃句柄只会关闭描述符。该副本和原写入句柄一样共享同一个打开文件描述（包括 `configure_io` 设置的 `O_NONBLOCK`），带 CLOEXEC，不进入子进程。Windows 继续使用 `take_writer`（即管道句柄）。`pty.rs` 的关闭顺序、ACK、期限与 `cleanup_child` 都不变：最后一个 master 副本仍是输入句柄，关闭它照旧触发挂断，P1-PTY-CLOSE-001 确立的“先释放全部 I/O 并回收 writer，再等待 child”保持不变。探针的 `P1_STARTUP_CLOSE_TRIALS` 阶段由只观察改为门禁：显式启用时，任一关闭创建了文件即失败。
+
+| 候选方案 | 评估 |
+| --- | --- |
+| 绕开 `take_writer`，用自有 dup 写入（采用） | 去掉了唯一会补换行的来源；不改回收顺序与期限；不泄漏描述符；不依赖 Shell 的键绑定 |
+| 先向进程组发 SIGHUP 或终止，有界等待后再丢弃 writer | 只是缩小窗口：忽略 SIGHUP 的 Shell 或前台程序仍会收到 `\n` 和 VEOF；在释放 I/O 前等待 child 与 P1-PTY-CLOSE-001 的顺序冲突，还会增加关闭耗时 |
+| 丢弃前把 VEOF 改为 0，让 Drop 跳过写入 | 与 Shell 自己的 `tcsetattr` 竞争，并改动终端状态；macOS 的 `_POSIX_VDISABLE` 是 0xff，只有恰好为 0 时才会跳过 |
+| `tcflush` 加行清除（Ctrl-U） | Drop 仍会在之后写入 `\n`；行清除依赖 Shell 或程序的键绑定，只是启发式 |
+| 用 `ManuallyDrop` 或 `forget` 阻止 Drop | 泄漏 master 描述符，PTY 不会挂断，关闭会卡住 |
+
+### 修复后验证（macOS 本机）
+
+| 检查 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 输入句柄丢弃（单元，确定性） | 失败，从端读到 `unsubmitted\n` | 通过；随 `unix_` 组 `--all-features` 与默认 feature 各 10 轮全部通过 |
+| 持续读取的 Shell（确定性，每轮 9 次） | 10 轮 90/90 执行 | `--all-features` 与默认 feature 各 10 轮，均 0/90 |
+| 真实关闭，每个 Shell 200 次 | `--all-features`：8/200、0/200、9/200 | `--all-features` 与默认 feature 均为 0/200、0/200、0/200 |
+| 探针 `P1_STARTUP_CLOSE_TRIALS=20` | 默认后端 1/0/3，`pty-readiness` 1/0/0（只观察） | 默认后端与 `pty-readiness` 均 0/0/0，门禁通过 |
+
+`--all-features` 包含 `pty-readiness`；“默认 feature”指不加 feature 的 `cargo test --lib`，即产品默认的 5 ms 轮询后端。
+
+关闭耗时用既有探针的 12 次关闭周期对比（修复前取 `ce57055` 构建、修复后取 `98456a1` 构建，两者交替各跑 3 轮，`P1_STARTUP_CLOSE_TRIALS=0`），只记本机观测：
+
+| 构建 | 周期 | 回收成功 | `wait_ms` 最小/中位/最大 | `total_ms` 中位/最大 |
+| --- | --- | --- | --- | --- |
+| 修复前，默认后端 | 36 | 36 | 67 / 78 / 84 | 113 / 120 |
+| 修复后，默认后端 | 36 | 36 | 68 / 77 / 83 | 115 / 121 |
+| 修复前，`pty-readiness` | 36 | 36 | 72 / 78 / 82 | 115 / 121 |
+| 修复后，`pty-readiness` | 36 | 36 | 68 / 77.5 / 85 | 114 / 120 |
+
+新的真实 Shell 测试从关闭到回收完成，修复前后中位均约 80 ms，最大 85 ms 以内；`close_ms` 均 ≤1 ms。
+
+本机门禁（`98456a1`，`--locked --all-features`，`RUST_TEST_THREADS=2`，已先执行 `npm ci` 与 `npm run build`）：fmt、check、clippy `-D warnings`、`tools/wincheck/wincheck.sh` 通过；`--lib` 193 通过、7 忽略（基线 190 加 3 项新的 Unix 测试；Windows 新测试只属于 Windows 目标，经 `wincheck` 类型检查，未运行）；`--test ssh_terminal` 14 通过；`git diff --check` 通过。`--test release_bins` 的 `every_src_bin_target_requires_dev_tools` 失败，原因是该测试把基线已有的 `src/bin/support/` 目录当作缺少 `[[bin]]` 的目标。这是既有失败，与本修复无关，由协调者在 `p1/integration` 单独修复，本分支未修改该测试。改动不涉及前端契约，未运行浏览器 E2E。
+
+### 残余风险与未验证项
+
+- Linux（N_TTY、Bash 5）与 Windows 未在本机运行。新测试会在 CI 的 Rust 步骤里运行（本次未触发 CI），Windows 新测试只做了 `wincheck` 类型检查。
+- 修复只保证产品关闭路径不再向 PTY 写入任何字节。挂断后，各 Shell 和前台程序如何处理挂断与 EOF 取决于它们自己的实现：本机默认 zsh 5.9、Bash 3.2.57、显式 zsh 5.9 都没有执行。忽略 SIGHUP 并在挂断 EOF 时提交非空行的程序没有覆盖；用户 rc、PowerShell 7、REPL 等前台程序也没有测试。
+- 以前 writer 在关闭时还会额外发送 VEOF，现在从端直接经历挂断。产品回收不依赖这个 EOF 让 Shell 退出（由挂断与 `cleanup_child` 的 SIGHUP/SIGKILL 完成），本机关闭耗时实测不变。
+- 第三项统计测试默认每个 Shell 20 次。修复前单次发生率约 3%（两个 zsh 约 4%，Bash 3.2 在该场景 0/200），单轮未必能检出回归；回归主要靠前两项确定性测试把关。
+- 本结果不表示 P1 已通过、终端已完整可用或可以合并 main；合并须另行批准。
