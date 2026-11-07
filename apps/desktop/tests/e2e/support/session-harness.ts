@@ -15,6 +15,8 @@ export interface OpenOptions {
   platform?: string;
   /** Resize the terminal after opening, so screen snapshots stay small and stable. */
   size?: { cols: number; rows: number };
+  /** Page query string, e.g. `?p0Diagnostics` (development-only switches). */
+  query?: string;
 }
 
 export interface Snapshot {
@@ -213,7 +215,7 @@ export class Session {
     }
     await installIpc(page);
     await page.addInitScript(installTools);
-    await page.goto('/');
+    await page.goto(`/${options.query ?? ''}`);
     const session = new Session(page, transport, await page.context().newCDPSession(page));
     if (open) await session.start(options);
     return session;

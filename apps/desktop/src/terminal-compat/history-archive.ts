@@ -1,8 +1,9 @@
 /**
  * Compressed cold history (Q04/Q06). P0 proved the approach in isolation; since P1 slice 5,
  * step 5 every native workspace session captures into one (`history-capture.ts`), which since
- * step 6 also enforces the budget by dropping whole blocks, oldest first (`dropOldest`). There
- * is no history view or search UI yet.
+ * step 6 also enforces the budget by dropping whole blocks, oldest first (`dropOldest`), and
+ * since T32 empties it when the user clears the scrollback (`clear`). There is no history view
+ * or search UI yet.
  *
  * xterm keeps a bounded "hot" scrollback. Every logical line (wrapped rows joined) that has
  * scrolled off the screen is read, with its SGR attributes, through the terminal-core boundary
@@ -23,12 +24,16 @@ export interface HistoryStats {
   /** Bytes the completed blocks still held occupy, compressed or (if compression failed) not. */
   compressedBytes: number;
   pendingLines: number;
-  /** Oldest lines removed by `dropOldest`; the first line still held has this number. */
+  /** Oldest lines removed by `dropOldest`. The first line still held has number `droppedLines + clearedLines`. */
   droppedLines: number;
   droppedBlocks: number;
+  /** Lines removed by `clear` (the user cleared the scrollback), counted separately from budget drops. */
+  clearedLines: number;
+  /** Times `clear` was called. */
+  userClears: number;
   /** Times rows were dropped by the terminal before they could be archived. */
   gaps: number;
-  /** Times the program reset the terminal or erased its scrollback. */
+  /** Times the terminal was reset or its scrollback erased, by the program or by a user action (T32). */
   clears: number;
   /** Blocks kept uncompressed because the WebView could not compress them. */
   uncompressedBlocks: number;
@@ -87,6 +92,10 @@ export class HistoryArchive {
   private archived = 0;
   private droppedLines = 0;
   private droppedBlocks = 0;
+  private clearedLines = 0;
+  private userClears = 0;
+  /** Bumped by `clear`: a compression result of an older generation is discarded on arrival. */
+  private generation = 0;
   private gaps = 0;
   private clears = 0;
   private rawBytes = 0;
@@ -123,11 +132,12 @@ export class HistoryArchive {
     const raw = encoder.encode(this.pending.join("\n"));
     this.pending = [];
     this.rawBytes += raw.length;
-    this.queue = this.queue.then(() => this.compress(first, count, raw));
+    const generation = this.generation;
+    this.queue = this.queue.then(() => this.compress(first, count, raw, generation));
   }
 
-  private async compress(first: number, count: number, raw: Uint8Array): Promise<void> {
-    if (!this.source) return;
+  private async compress(first: number, count: number, raw: Uint8Array, generation: number): Promise<void> {
+    if (!this.source || generation !== this.generation) return;
     const started = performance.now();
     let data = raw;
     let compressed = false;
@@ -135,11 +145,12 @@ export class HistoryArchive {
       data = await transform(raw, new CompressionStream("deflate-raw"));
       compressed = true;
     } catch {
-      // Counted in stats; the block is kept as is, so no history is lost.
-      this.uncompressedBlocks++;
+      // Counted in stats below; the block is kept as is, so no history is lost.
     }
     this.compressMs += performance.now() - started;
-    if (!this.source) return;
+    // Disposed, or cleared while this block was being compressed: it is no longer held.
+    if (!this.source || generation !== this.generation) return;
+    if (!compressed) this.uncompressedBlocks++;
     this.blocks.push({ first, count, rawBytes: raw.length, compressed, data });
     this.compressedBytes += data.length;
     this.onBlock?.();
@@ -161,6 +172,27 @@ export class HistoryArchive {
     return { lines: block.count, bytes: block.data.length };
   }
 
+  /**
+   * Discards every line held, as the user's "clear scrollback" asks (T32): completed blocks,
+   * blocks still being compressed (their results are dropped when they arrive) and the pending
+   * lines. Returns how many lines that was. Line numbers keep counting, so the next archived line
+   * gets number `archivedLines` and no cleared line is ever returned again. The source is kept:
+   * capture continues where the terminal is now. Counts of what was observed (gaps, clears,
+   * budget drops) are kept as well.
+   */
+  clear(): number {
+    const held = this.archived - this.droppedLines - this.clearedLines;
+    this.generation++;
+    this.pending = [];
+    this.blocks = [];
+    this.cache.clear();
+    this.rawBytes = 0;
+    this.compressedBytes = 0;
+    this.clearedLines += held;
+    this.userClears++;
+    return held;
+  }
+
   /** Waits for queued compression; optionally seals the partial block too. */
   async flush(sealPartial = false): Promise<void> {
     if (sealPartial) this.seal();
@@ -176,6 +208,8 @@ export class HistoryArchive {
       pendingLines: this.pending.length,
       droppedLines: this.droppedLines,
       droppedBlocks: this.droppedBlocks,
+      clearedLines: this.clearedLines,
+      userClears: this.userClears,
       gaps: this.gaps,
       clears: this.clears,
       uncompressedBlocks: this.uncompressedBlocks,
@@ -196,14 +230,15 @@ export class HistoryArchive {
   }
 
   /**
-   * Archived lines `[from, from + count)` with SGR, for rehydration or export. Dropped lines are
-   * not returned: the result starts at `max(from, stats().droppedLines)`.
+   * Archived lines `[from, from + count)` with SGR, for rehydration or export. Dropped and cleared
+   * lines are not returned: the result starts at `max(from, droppedLines + clearedLines)`.
    */
   async lines(from: number, count: number): Promise<string[]> {
     await this.queue;
     const result: string[] = [];
     const end = Math.min(from + count, this.archived);
-    from = Math.max(from, this.droppedLines);
+    // Both removals take the oldest lines still held, so the lines held stay one contiguous range.
+    from = Math.max(from, this.droppedLines + this.clearedLines);
     // A snapshot: blocks dropped while one is being decoded are still read consistently.
     const blocks = this.blocks.slice();
     for (const block of blocks) {

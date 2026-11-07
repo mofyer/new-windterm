@@ -35,6 +35,9 @@ function createDiagnostics() {
     historyTrimmedBytes: 0,
     historyTrimmedEndedBlocks: 0,
     historyTrimmedRunningBlocks: 0,
+    // User clears of the scrollback (T32): how often, and how many archived lines they discarded.
+    historyUserClears: 0,
+    historyUserClearedLines: 0,
   };
   Object.defineProperty(window, "__WINDTERM_P0_DIAGNOSTICS__", {
     value: Object.freeze({ snapshot: () => Object.freeze({ ...counters }) }),

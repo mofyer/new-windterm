@@ -137,6 +137,13 @@ kbd {
 .terminal-tools > div { display: flex; gap: 4px; }
 .terminal-tools button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-size: 12px; }
 .terminal-tools button:hover { background: var(--hover); }
+/* T32 clear and reset menu: neutral, like the command palette; it overlays the terminal below. */
+.terminal-actions { position: relative; display: inline-flex; }
+.terminal-actions-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: 160px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.terminal-actions-menu[hidden] { display: none; }
+.terminal-tools .terminal-actions-menu button { width: 100%; justify-content: flex-start; text-align: left; white-space: nowrap; }
+.terminal-tools .terminal-actions-menu button:disabled { color: var(--muted); background: transparent; cursor: default; }
+.terminal-actions-menu [role="separator"] { height: 1px; margin: 4px 6px; background: var(--line); }
 .terminal-row { display: flex; flex: 1; min-height: 0; }
 #terminals { display: flex; flex: 1; min-width: 0; min-height: 0; background: var(--terminal); }
 .terminal-pane { flex: 1; min-width: 0; min-height: 0; padding: 16px 20px 8px; overflow: hidden; }

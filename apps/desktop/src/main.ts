@@ -14,6 +14,7 @@ import {
 import { sample, stress } from "./demo-session";
 import { createTerminalBell, paintBellMark } from "./terminal-bell";
 import { createBellSettingsSheet } from "./bell-settings";
+import { createTerminalActions } from "./terminal-actions-ui";
 import { isTauri } from "@tauri-apps/api/core";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
@@ -325,6 +326,10 @@ function openForwards() {
   forwardSheet.open({ id, name: s.name, alive: () => forwardable(s) && s.ptyId === id });
 }
 $("#forward-open").onclick = openForwards;
+// T32: clear and reset the active terminal locally (tool bar menu and palette entries).
+const terminalActions = createTerminalActions($(".terminal-tools > div"), {
+  active, notify: toast, focusTerminal: () => active()?.terminal.focus(),
+});
 $("#sftp-connect").onclick = () => sshVerification.open("files");
 $(".file-inspector").addEventListener("sftp-reconnect", () => sshVerification.open("files"));
 for (const button of document.querySelectorAll<HTMLButtonElement>(
@@ -558,6 +563,7 @@ const commands = [
     action: () => ($("#compact-toggle") as HTMLButtonElement).click(),
   },
   { name: "查看 P0 验证边界", action: () => showDialog("#about-dialog") },
+  ...terminalActions.commands,
   { name: "打开真实 SSH 终端 · 仅桌面", action: () => sshVerification.open("terminal") },
   { name: "SSH 验证 · 真实指纹与固定命令 · 仅桌面", action: () => sshVerification.open() },
   { name: "只读浏览远端文件 · SFTP · 仅桌面", action: () => sshVerification.open("files") },

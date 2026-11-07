@@ -22,11 +22,22 @@ import { responsivenessDiagnostics as diagnostics } from "./responsiveness";
  * Only completed blocks are dropped: the newest, not yet sealed lines (fewer than one block per
  * session) and blocks still being compressed are neither counted in bytes nor dropped. Every
  * dropped line is counted per session for the "已丢弃最早 N 行" notice; nothing is dropped silently.
+ *
+ * The user's 清除回滚 and 全部清除 (T32, `terminal-actions.ts`) also empty the archive through
+ * `clear`; a reset or scrollback erase sent by the program keeps what was archived.
  */
 export interface SessionHistory {
   /** Archives what the last write scrolled off. Call from the xterm write callback; never throws. */
   capture(): void;
-  /** Oldest lines dropped from this session's archive to stay within budget, cumulative. */
+  /**
+   * The user cleared the scrollback (T32 清除回滚 / 全部清除): discards every archived line and
+   * resets the "已丢弃最早 N 行" count, whose dropped lines belonged to the cleared history. Call
+   * after `capture()` in the callback of the local write that erased xterm's scrollback, so the
+   * source has already restarted behind the erase. Returns the archived lines discarded; never
+   * throws. Resets and erases sent by the program never call this.
+   */
+  clear(): number;
+  /** Oldest lines dropped to stay within budget since the archive started or was last cleared. */
   readonly droppedLines: number;
   /** Releases the archive and its terminal hooks; idempotent. */
   dispose(): void;
@@ -109,7 +120,7 @@ function dropOldest(entry: Entry, global?: "ended" | "running"): DroppedBlock | 
 function enforceSession(entry: Entry): boolean {
   const over = () => {
     const stats = entry.archive!.stats();
-    const sealedLines = stats.archivedLines - stats.pendingLines - stats.droppedLines;
+    const sealedLines = stats.archivedLines - stats.pendingLines - stats.droppedLines - stats.clearedLines;
     return { bytes: stats.compressedBytes > limits.sessionBytes, lines: sealedLines > limits.lines };
   };
   const first = over();
@@ -228,6 +239,19 @@ export function createSessionHistory(terminal: Terminal, hooks: SessionHistoryHo
         release();
         if (diagnostics) diagnostics.historyCaptureErrors++;
       }
+    },
+    clear() {
+      if (!entry.archive) return 0;
+      const cleared = entry.archive.clear();
+      entry.droppedLines = 0;
+      if (diagnostics) {
+        diagnostics.historyUserClears++;
+        diagnostics.historyUserClearedLines += cleared;
+        syncSizes([entry]);
+      }
+      // Hides the notice if this is the active tab.
+      entry.hooks.dropped();
+      return cleared;
     },
     get droppedLines() {
       return entry.droppedLines;

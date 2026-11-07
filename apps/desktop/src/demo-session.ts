@@ -1,5 +1,6 @@
 import type { Terminal } from "@xterm/xterm";
 import { clipToGraphemes, dropLastGrapheme } from "./terminal-input";
+import { runTerminalAction } from "./terminal-actions";
 
 /**
  * The part of a session the browser demo reads and updates. The demo never runs a command and
@@ -34,8 +35,8 @@ export function demoWelcome(s: DemoState) {
   );
   prompt(s);
 }
-function prompt(s: DemoState) {
-  s.terminal.write("\r\n\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % ");
+function prompt(s: DemoState, newline = true) {
+  s.terminal.write(`${newline ? "\r\n" : ""}\x1b[32mdemo\x1b[0m \x1b[34m~/workspace\x1b[0m % `);
 }
 export function sample(s: DemoState) {
   s.outputRun++;
@@ -106,8 +107,12 @@ function demoToken(s: DemoState, data: string, view: DemoView) {
   if (data === "\r") {
     const command = s.line.trim();
     s.line = "";
-    if (command === "clear") s.terminal.clear();
-    else if (command === "help")
+    if (command === "clear") {
+      // Like a shell's `clear`: the same local write as 全部清除 (T32), then a prompt at the top.
+      void runTerminalAction(s, "clear-all");
+      prompt(s, false);
+      return;
+    } else if (command === "help")
       s.terminal.write(
         "\r\n演示命令: help · clear · pwd · ls · sample · stress\r\n此会话不执行真实命令。使用「本地终端」启动本机 shell。",
       );

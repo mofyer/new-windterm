@@ -184,6 +184,62 @@ test('dropOldest removes whole blocks oldest first; reads, search and sizes stay
   expect(result.none).toBeNull();
 });
 
+test('clear (T32) discards held, queued and pending lines; numbering, reads, search and later drops stay consistent', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const { make } = (window as any).historyQa;
+    let added = 0;
+    const { archive, write } = make(80, 10, 500, 64, () => added++);
+    const rows = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => `row ${from + i}\r\n`).join('');
+    await write(rows(0, 300)); // 291 lines left the screen: 4 blocks of 64 sealed, 35 pending
+    await archive.flush();
+    archive.dropOldest(); // a budget drop before the clear
+    await write(rows(300, 400)); // two more blocks sealed; their compression is still queued
+    const cleared = archive.clear();
+    const atClear = archive.stats();
+    const addedAtClear = added;
+    await archive.flush();
+    const afterFlush = archive.stats();
+    const addedAfterFlush = added;
+    const nothing = await archive.lines(0, 1000);
+    const noMatch = await archive.search('row');
+    await write(rows(400, 600));
+    await archive.flush();
+    const later = archive.stats();
+    const linesLater = await archive.lines(0, later.archivedLines);
+    const search = await archive.search('row 450');
+    const sizes = archive.blocks.map((block: any) => block.data.length);
+    const drop = archive.dropOldest();
+    const afterDrop = archive.stats();
+    const linesAfterDrop = await archive.lines(0, afterDrop.archivedLines);
+    return {
+      cleared, atClear, addedAtClear, afterFlush, addedAfterFlush, nothing, noMatch, later, linesLater, search, sizes, drop,
+      afterDrop, linesAfterDrop,
+    };
+  });
+  const rows = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => `row ${from + i}`);
+  // 391 lines archived, 64 dropped by the budget: 327 were held (sealed, queued or pending).
+  expect(result.cleared).toBe(327);
+  expect(result.atClear).toMatchObject({
+    archivedLines: 391, blocks: 0, pendingLines: 0, rawBytes: 0, compressedBytes: 0,
+    droppedLines: 64, clearedLines: 327, userClears: 1,
+  });
+  // Blocks still being compressed at the clear are discarded when they arrive, without onBlock.
+  expect(result.afterFlush).toMatchObject({ blocks: 0, rawBytes: 0, compressedBytes: 0 });
+  expect(result.addedAfterFlush).toBe(result.addedAtClear);
+  expect(result.nothing).toEqual([]);
+  expect(result.noMatch).toEqual([]);
+  // Numbering continues: the 9 lines that were on screen and the next ones get 391 onwards.
+  expect(result.later).toMatchObject({ archivedLines: 591, blocks: 3, pendingLines: 8, droppedLines: 64, clearedLines: 327 });
+  expect(result.linesLater).toEqual(rows(391, 591));
+  expect(result.search).toEqual([{ line: 450, column: 0 }]);
+  // A later budget drop takes the oldest block after the clear; reads start right behind it.
+  expect(result.drop).toEqual({ lines: 64, bytes: result.sizes[0] });
+  expect(result.afterDrop).toMatchObject({ droppedLines: 128, clearedLines: 327, blocks: 2 });
+  expect(result.afterDrop.compressedBytes).toBe(result.sizes[1] + result.sizes[2]);
+  expect(result.linesAfterDrop).toEqual(rows(455, 591));
+});
+
 test('an undersized hot scrollback is reported as a gap instead of silently losing lines', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
