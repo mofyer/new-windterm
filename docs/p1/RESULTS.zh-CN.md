@@ -1170,3 +1170,25 @@ P1、第四批与第 4、5 片均未完成；第四批 Windows 首次查询停�
 | 13 | T32 快捷键 | 仅 macOS 提供 Cmd+L（清屏）、Cmd+Shift+L（全部清除）；Windows/Linux 待上游实测，Ctrl+L 仍发送 0x0c（待 T31 合并后实现） |
 | 14 | 原生启动命令场景 | 开始 Windows 验收时一并加入 |
 | 15 | 上游 2.7.0 实机核对 | 安排一次，在用户桌面用 CUA 合并核对响铃 7 项、T32 动作、启动命令、编码十六进制等；需用户在场，另约时间 |
+
+## 2026-11-07 完整跨平台 CI（工作流 `42340067995`，被测 `35aee13`）
+
+按用户决定第 1 项：推送 `p1/integration`（`e7faa0f` → `35aee13`，推送前核对 63 个文件未命中任何 `p1-windows-*` 触发路径、分支无进行中运行，推送后确认未触发工作流），并只 dispatch 一次 `p0-cross-platform.yml`（默认输入，7 作业，2026-11-07T04:49:01Z–05:00:13Z）。按决定不重跑。
+
+| 作业 | 结论 |
+| --- | --- |
+| Linux x64 — build and real PTY | success |
+| Linux x64 — native WebKitGTK smoke | success |
+| Linux x64 — isolated Rust GSSAPI and KDC probe | success |
+| Windows x64 — build and ConPTY lifecycle tests | success |
+| Windows x64 (Server 2025) — build and ConPTY lifecycle tests | success |
+| macOS arm64 — build and real PTY | **failure** |
+| Windows x64 — native WebView2 smoke | **failure** |
+
+**macOS 失败**：`--lib` 192 passed / 1 failed / 7 ignored，失败项为 `P1-PTY-CLOSE-002` 新增的确定性测试 `unix_close_feeds_no_line_terminator_to_a_shell_that_keeps_reading`（`bash#2`、`bash#3` 执行了未回车行；默认 Shell 与 zsh 未执行；Linux 同一测试通过）。协调者分析：该测试让 Shell `trap '' HUP` 后，在释放测试持有的 master 副本、PTY 真正挂断之后才判断。协调者在 macOS 本机用独立 PTY 实验复现：`/bin/bash` 3.2.57 忽略 HUP 时，**仅关闭 master、不写任何字节**，未回车行 5/5 被执行；`/bin/zsh` 0/5。这与修复报告中已列出的未覆盖边界（忽略 SIGHUP 并在 EOF 时提交非空行的程序）一致，不是关闭路径写入了换行。测试已改为只在挂断之前（持有副本的窗口内）判断：本机修复后 10/10 通过；临时把 `platform::input_writer` 改回 `take_writer` 时该测试 9/9 失败（默认 Shell、bash、zsh 各 3 次），恢复后通过。修正后的测试尚未在 CI 上运行。
+
+**Windows 原生失败**：7 场景中 6 passed、1 failed。场景 6 `local-terminal-shell` 本次 **passed**（场景耗时 49,062 ms，trace `incomplete=false`、`truncated=false`、`droppedRecords=0`，`P1_SHELL=5.1.20348.5773`）；场景 7 `local-terminal-environment` 在最后的默认 cmd 会话检查 `default cmd LC_CTYPE absent` 处超时 30,000 ms（场景耗时 69,011 ms）。失败快照：前四条 `if defined …` 查询均输出 `absent`；最后一条命令回显后屏幕直接出现新提示符，缺少输出行，此后无变化；状态 `本机 PTY · 本机 shell 已启动`、`94 × 19 · 1,048 B 接收`。Windows 工件 `p0-native-webview-x86_64-pc-windows-msvc-windows-2022-1`（id 13561930295，868,920 B），zip SHA-256 `d37f43d1b6b0b115d5aab45cbf6431d339e25788610533caa133a3345371fe65` 与 API digest 一致。
+
+与原生刷新 `42268048590`（被测 `e7faa0f`：场景 6 超时、场景 7 通过）相比，本次 Windows 原生被测树多了前端改动（生命周期拆分、冷归档、启动命令、编码、响铃、清屏复位等）；Rust 侧 Windows 输入写入端仍为 `take_writer`，产品行为未变。本次结果不能确定场景 7 失败原因，不归因于某项改动，也不称偶发；不把场景 6 本次通过写成停滞已解决。以上为单次运行结论，未经独立核验者复核。
+
+P1 与第四批均未验收，main 不合并。

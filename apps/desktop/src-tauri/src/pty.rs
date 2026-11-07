@@ -1654,12 +1654,18 @@ mod tests {
                         thread::sleep(Duration::from_millis(5));
                     }
                 }
+                // Judge only while the PTY is still held, i.e. before any hangup: that window
+                // isolates what the product close path itself wrote. Once `held` drops, the
+                // hangup reaches a shell that ignores SIGHUP as EOF, and readline in macOS
+                // /bin/bash 3.2 submits a non-empty line on EOF without any byte from us
+                // (macOS CI 42340067995; a direct PTY hangup reproduced it 5/5, zsh 0/5).
+                let ran_while_held = file.exists();
                 drop(held);
                 assert!(
                     live.session.wait_closed(Duration::from_secs(2)),
                     "{label} trial {trial}: session not reaped within 2 s"
                 );
-                if file.exists() {
+                if ran_while_held {
                     ran.push(format!("{label}#{trial}"));
                 }
             }
