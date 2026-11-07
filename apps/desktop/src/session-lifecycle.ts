@@ -252,6 +252,8 @@ export function createSessionLifecycle(host: SessionHost): SessionLifecycle {
     // Like the encoding, a local session's keyboard options are part of its launch snapshot.
     const keyboard = mode === "pty" ? launch.keyboard : snapshotKeyboard(mode === "demo" ? undefined : keyboardOptions);
     // Before any host output or key: sets the option, queues the initial modes, adds the remap.
+    // Its only resource is an `onKey` listener, released with the terminal by `close` / `shutdown`
+    // (`terminal.dispose()` disposes the emitter); dispose `keys` too if that ever changes.
     const keys = attachKeyboard(terminal, keyboard);
     const s: Session = {
       key: nextKey++,

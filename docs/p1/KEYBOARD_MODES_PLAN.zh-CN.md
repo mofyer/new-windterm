@@ -129,4 +129,6 @@ grep -n -A1 '"en": "Backspace sends"\|"en": "Delete sends"\|"en": "Alt modifier 
 - 全量浏览器 E2E：623/623 通过（`dd11418` 实测基线 598 + 新增 25），既有键盘、输入法、粘贴、T32 清屏与复位、编码与启动选项测试未改动且全部通过。
 - 反向验证：临时让 `rewrite` 原样返回、不写入初始模式、硬复位不追加后，新 spec 25 项中 15 项失败（其余 10 项为默认零变化、Option 作 Meta、字段显示与参数不外泄，本就不依赖这三处），已还原。
 
+独立只读审查（提交 `d4e75d0`）：0 个 CRITICAL / HIGH，1 个 MEDIUM——`attachKeyboard` 返回的 `onKey` 订阅没有显式 `dispose()`，实际随 `terminal.dispose()` 释放。已在创建处注明归属（行为不变）；修正后新 spec `--repeat-each 5` 125/125，全量浏览器 E2E 复跑 623/623。审查同时核对了默认路径不设选项、不挂监听、不写入，粘贴、输入法提交、终端回复与 `insertText` 都不经 `onKey`，因此不会被改写。
+
 未运行：Rust 门禁（未改 Rust）、原生 WebView、CI、上游对照。
